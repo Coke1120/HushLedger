@@ -1,0 +1,74 @@
+{
+  "name": "hushledger",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Open-source privacy-first personal finance PWA and expense tracker for Hong Kong, with recurring transactions on Cloudflare Workers and D1.",
+  "keywords": [
+    "personal-finance",
+    "expense-tracker",
+    "money-manager",
+    "income-tracker",
+    "recurring-transactions",
+    "privacy-first",
+    "self-hosted",
+    "pwa",
+    "react",
+    "typescript",
+    "cloudflare-workers",
+    "cloudflare-d1"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Coke1120/HushLedger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Coke1120/HushLedger/issues"
+  },
+  "homepage": "https://github.com/Coke1120/HushLedger#readme",
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint . --max-warnings 0 && oxlint --deny-warnings",
+    "lint:fast": "oxlint --deny-warnings",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:integration": "node scripts/worker-integration.mjs",
+    "typecheck": "tsc -b --pretty false",
+    "types:worker": "wrangler types",
+    "verify": "npm test && npm run typecheck && npm run lint && npm run build && npm run test:integration",
+    "dev:worker": "wrangler dev",
+    "db:local": "wrangler d1 migrations apply hushledger --local"
+  },
+  "dependencies": {
+    "hono": "^4.12.29",
+    "lucide-react": "^1.24.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260711.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "eslint": "^10.7.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "oxlint": "^1.71.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.63.0",
+    "vite": "^8.1.1",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.110.0"
+  }
+}

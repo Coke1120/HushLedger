@@ -1,0 +1,40 @@
+name: Setup help
+description: Ask for help with local development or Cloudflare configuration.
+title: "[Setup]: "
+labels: [documentation, question]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Setup area
+      options:
+        - Local development
+        - Cloudflare D1
+        - Cloudflare Access
+        - Worker deployment
+        - Cron trigger
+        - Backup or restore drill
+        - PWA installation
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: Commands or steps attempted
+      description: Redact account IDs, database IDs, domains, emails, tokens, and financial data.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Redacted output
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, identifiers, private domains, emails, and financial data.
+          required: true

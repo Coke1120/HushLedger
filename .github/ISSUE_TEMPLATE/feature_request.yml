@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused improvement to the private finance workflow.
+title: "[Feature]: "
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Explain the user problem before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+      description: Describe the smallest useful behavior, including mobile use where relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Data and privacy considerations
+      description: Note any effect on financial data, imports, authentication, backups, or third-party services.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This proposal supports a private, single-user finance tracker.
+          required: true
+        - label: I searched existing issues for similar proposals.
+          required: true
