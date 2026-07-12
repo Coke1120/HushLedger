@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { translate, type Locale, type Translator } from '../i18n'
-import { deleteDemo, getDemoTransactions, updateDemo } from './demo'
+import { deleteDemo, demoSummary, getDemoTransactions, updateDemo } from './demo'
 
 function translator(locale: Locale): Translator {
   return (key, values) => translate(locale, key, values)
@@ -33,6 +33,25 @@ describe('localized demo data', () => {
     assert.equal(creditFood.length, 1)
     assert.equal(creditFood[0]?.accountId, 3)
     assert.equal(creditFood[0]?.categoryId, 3)
+  })
+
+  it('ranks monthly expense categories by exact total and retains transaction counts', () => {
+    const summary = demoSummary('2026-07')
+
+    assert.equal(summary.expense, 1_717_950)
+    assert.deepEqual(
+      summary.expenseByCategory.map(({ categoryId, amountMinor, transactionCount }) => ({
+        categoryId,
+        amountMinor,
+        transactionCount,
+      })),
+      [
+        { categoryId: 6, amountMinor: 1_550_000, transactionCount: 1 },
+        { categoryId: 7, amountMinor: 118_300, transactionCount: 2 },
+        { categoryId: 3, amountMinor: 45_440, transactionCount: 2 },
+        { categoryId: 4, amountMinor: 4_210, transactionCount: 1 },
+      ],
+    )
   })
 
   it('keeps edits and deletions local to the current demo session', () => {

@@ -6,6 +6,7 @@ import type {
   AccountLocalizationKey,
   Category,
   CategoryLocalizationKey,
+  ExpenseCategorySummary,
   PayeeSuggestion,
   Summary,
   Transaction,
@@ -404,19 +405,50 @@ export async function deleteTransaction(
 
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
-  const row = await database.prepare(`
-    SELECT
-      COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
-      COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END), 0) AS expense
-    FROM transactions
-    WHERE occurred_on >= ? AND occurred_on < ?
-  `)
-    .bind(start, end)
-    .first<SummaryRow>()
+  const [row, expenseByCategoryResult] = await Promise.all([
+    database.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END), 0) AS expense
+      FROM transactions
+      WHERE occurred_on >= ? AND occurred_on < ?
+    `)
+      .bind(start, end)
+      .first<SummaryRow>(),
+    database.prepare(`
+      SELECT
+        category.id AS categoryId,
+        category.name AS categoryName,
+        category.localization_key AS categoryLocalizationKey,
+        category.icon AS categoryIcon,
+        category.color AS categoryColor,
+        SUM(t.amount_minor) AS amountMinor,
+        COUNT(*) AS transactionCount
+      FROM transactions t
+      INNER JOIN categories category ON category.id = t.category_id
+      WHERE t.type = 'expense' AND t.occurred_on >= ? AND t.occurred_on < ?
+      GROUP BY
+        category.id,
+        category.name,
+        category.localization_key,
+        category.icon,
+        category.color,
+        category.sort_order
+      ORDER BY amountMinor DESC, category.sort_order ASC, category.id ASC
+    `)
+      .bind(start, end)
+      .all<ExpenseCategorySummary>(),
+  ])
 
   const income = row?.income ?? 0
   const expense = row?.expense ?? 0
-  return { month, income, expense, balance: income - expense }
+  return {
+    month,
+    income,
+    expense,
+    balance: income - expense,
+    expenseByCategory: expenseByCategoryResult.results,
+  }
 }
 
 function escapeLike(value: string) {

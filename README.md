@@ -31,6 +31,8 @@ knowledge and explains every command and dashboard click.
 ## Features
 
 - Monthly income, expenses, balance, and recent transactions.
+- A ranked top-five monthly expense breakdown by category, with exact totals,
+  transaction counts, and one-tap drilldown into the matching ledger records.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Stack search, income/expense, account, and category filters across the 200 most
   recent matching transactions in each month, with inactive references still
@@ -65,8 +67,9 @@ knowledge and explains every command and dashboard click.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
-- A one-tap screen privacy mode that masks every formatted amount, editable amount
-  field, pasted AI bank text, and raw mapped-CSV sample for safer screen sharing.
+- A one-tap screen privacy mode that masks every formatted amount, category-share
+  bar, editable amount field, pasted AI bank text, and raw mapped-CSV sample for
+  safer screen sharing.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
@@ -172,8 +175,9 @@ and recurring-rule names are always preserved exactly as entered.
 
 The eye button in the header and the matching Settings control enable screen
 privacy mode for the current tab. It replaces displayed amounts with a stable
-currency mask, masks editable amount fields, and covers pasted bank text without
-hover-to-reveal behavior. Reloading turns the mode off. This is a visual screen-
+currency mask, removes category-spending proportions, masks editable amount
+fields, and covers pasted bank text without hover-to-reveal behavior. Reloading
+turns the mode off. This is a visual screen-
 sharing aid only: it does not encrypt, delete, or alter D1 data, API responses, CSV
 exports, browser memory, or text already sent to a configured AI provider.
 
@@ -393,7 +397,7 @@ DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM
+GET    /api/summary?month=YYYY-MM  (totals plus ranked expense categories)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

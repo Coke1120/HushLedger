@@ -469,6 +469,21 @@ async function verifyWorkerApi() {
     useCount: 205,
   }])
 
+  const categorySummary = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.equal(categorySummary.response.status, 200)
+  assert.equal(categorySummary.payload.data.income, 0)
+  assert.equal(categorySummary.payload.data.expense, 41_615)
+  assert.equal(categorySummary.payload.data.balance, -41_615)
+  assert.deepEqual(categorySummary.payload.data.expenseByCategory, [{
+    categoryId: 3,
+    categoryName: '餐飲',
+    categoryLocalizationKey: 'category.food',
+    categoryIcon: 'utensils',
+    categoryColor: '#C16B4B',
+    amountMinor: 41_615,
+    transactionCount: 205,
+  }])
+
   const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
   assert.equal(duplicateMonth.response.status, 400)
   assert.equal(duplicateMonth.payload.error.code, 'INVALID_QUERY')
@@ -1465,6 +1480,7 @@ async function verifyWorkerApi() {
     uncappedCsvRows,
     transactionFilterGuards: 2,
     transactionFilterQueries: 3,
+    categorySummaries: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,

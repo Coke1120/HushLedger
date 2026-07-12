@@ -199,6 +199,17 @@ export type Summary = {
   income: number
   expense: number
   balance: number
+  expenseByCategory: ExpenseCategorySummary[]
+}
+
+export type ExpenseCategorySummary = {
+  categoryId: number
+  categoryName: string
+  categoryLocalizationKey: CategoryLocalizationKey | null
+  categoryIcon: string
+  categoryColor: string
+  amountMinor: number
+  transactionCount: number
 }
 
 export type PayeeSuggestion = {

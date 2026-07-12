@@ -1,6 +1,14 @@
 import { monthRangeDates } from './date'
 import type { MessageKey, Translator } from '../i18n'
-import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from './schema'
+import type {
+  Account,
+  Category,
+  ExpenseCategorySummary,
+  Summary,
+  Transaction,
+  TransactionInput,
+  TransactionType,
+} from './schema'
 
 export const demoAccounts: Account[] = [
   { id: 1, name: '現金', type: 'cash', currency: 'HKD', isActive: true, sortOrder: 10, localizationKey: 'account.cash', updatedAt: '2026-07-11T10:30:00.000Z' },
@@ -272,5 +280,26 @@ export function demoSummary(month: string): Summary {
   const rows = getDemoTransactions(month, 'all', '')
   const income = rows.reduce((sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0), 0)
   const expense = rows.reduce((sum, transaction) => sum + (transaction.type === 'expense' ? transaction.amountMinor : 0), 0)
-  return { month, income, expense, balance: income - expense }
+  const expenseByCategory = [...rows.reduce((categories, transaction) => {
+    if (transaction.type !== 'expense') return categories
+    const existing = categories.get(transaction.categoryId)
+    if (existing) {
+      existing.amountMinor += transaction.amountMinor
+      existing.transactionCount += 1
+      return categories
+    }
+
+    categories.set(transaction.categoryId, {
+      categoryId: transaction.categoryId,
+      categoryName: transaction.categoryName,
+      categoryLocalizationKey: transaction.categoryLocalizationKey,
+      categoryIcon: transaction.categoryIcon,
+      categoryColor: transaction.categoryColor,
+      amountMinor: transaction.amountMinor,
+      transactionCount: 1,
+    })
+    return categories
+  }, new Map<number, ExpenseCategorySummary>()).values()]
+    .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
+  return { month, income, expense, balance: income - expense, expenseByCategory }
 }

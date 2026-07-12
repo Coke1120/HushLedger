@@ -31,6 +31,8 @@ not operate an independent database server or a multi-user identity system.
 ### Review a month
 
 - View HKD income, expense, and balance for a selected month.
+- Review the top five expense categories by exact total and transaction count;
+  select one to open the existing expense/category transaction filters.
 - Browse the latest 200 transactions for a selected month; the UI explicitly
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
@@ -46,8 +48,9 @@ not operate an independent database server or a multi-user identity system.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
   replacement.
-- Mask formatted amounts, editable amount fields, pasted bank text, and raw mapped
-  CSV samples with a current-tab screen privacy control before sharing the screen.
+- Mask formatted amounts, category proportions, editable amount fields, pasted
+  bank text, and raw mapped CSV samples with a current-tab screen privacy control
+  before sharing the screen.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 
@@ -247,7 +250,7 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
   account/category/type/search filters, matching filtered transaction CSV export,
-  deterministic preview-first HushLedger and
+  ranked category-spending drilldown, deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
 - Versioned five-table JSON backup, SHA-256 integrity checking, preview-only

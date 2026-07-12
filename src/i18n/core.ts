@@ -52,6 +52,7 @@ const singularMessageKeys: Partial<Record<MessageKey, MessageKey>> = {
   recurringRuleCount: 'recurringRuleCountOne',
   generatedCount: 'generatedCountOne',
   deleteRecurringDescription: 'deleteRecurringDescriptionOne',
+  moreSpendingCategories: 'moreSpendingCategoriesOne',
 }
 
 export function isSupportedLocale(value: unknown): value is Locale {

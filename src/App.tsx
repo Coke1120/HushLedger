@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { BankImportPanel } from './components/BankImportPanel'
+import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
@@ -118,6 +119,17 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(null)
   }, [])
 
+  const openCategoryTransactions = useCallback((categoryId: number) => {
+    const category = data.categories.find((item) => item.id === categoryId)
+    if (!category) return
+    setSearch('')
+    setFilter(category.type)
+    setAccountFilterId(null)
+    setCategoryFilterId(category.id)
+    setImportMode(null)
+    changeView('transactions')
+  }, [changeView, data.categories])
+
   const handleLedgerRestored = useCallback(async () => {
     const refreshed = await refreshMoneyData(false)
     setLedgerGeneration((generation) => generation + 1)
@@ -180,6 +192,13 @@ function App({ initialMonth }: { initialMonth: string }) {
               onNext={() => setMonth((value) => shiftMonth(value, 1))}
             />
             <SummaryCards summary={data.summary} loading={loading} />
+            {view === 'overview' ? (
+              <CategorySpending
+                summary={data.summary}
+                loading={loading}
+                onSelect={openCategoryTransactions}
+              />
+            ) : null}
           </div>
 
           <section className="transactions-panel" aria-labelledby="transactions-title">
