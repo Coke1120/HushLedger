@@ -31,9 +31,10 @@ const iconMap: Record<string, LucideIcon> = {
 type TransactionListProps = {
   transactions: Transaction[]
   loading: boolean
+  onEdit: (transaction: Transaction) => void
 }
 
-export function TransactionList({ transactions, loading }: TransactionListProps) {
+export function TransactionList({ transactions, loading, onEdit }: TransactionListProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
 
   if (loading) {
@@ -62,34 +63,37 @@ export function TransactionList({ transactions, loading }: TransactionListProps)
         const title = transaction.payee || categoryName
         const generatedLabel = t('generatedByRule', { name: transaction.recurringRuleName ?? t('unnamedRule') })
         return (
-          <li className="transaction-row" key={transaction.id}>
-            <span
-              className="category-icon"
-              style={{ color: transaction.categoryColor, backgroundColor: `${transaction.categoryColor}18` }}
-              aria-hidden="true"
-            >
-              <Icon />
-            </span>
-            <span className="transaction-main">
-              <strong className="transaction-title">
-                <span>{title}</span>
-                {transaction.recurringRuleId ? (
-                  <span className="auto-generated-badge" title={generatedLabel}>
-                    <Repeat aria-hidden="true" />
-                    <span className="sr-only">{generatedLabel}</span>
-                  </span>
-                ) : null}
+          <li key={transaction.id}>
+            <button className="transaction-row" type="button" onClick={() => onEdit(transaction)}>
+              <span className="sr-only">{t('edit')}</span>
+              <span
+                className="category-icon"
+                style={{ color: transaction.categoryColor, backgroundColor: `${transaction.categoryColor}18` }}
+                aria-hidden="true"
+              >
+                <Icon />
+              </span>
+              <span className="transaction-main">
+                <strong className="transaction-title">
+                  <span>{title}</span>
+                  {transaction.recurringRuleId ? (
+                    <span className="auto-generated-badge" title={generatedLabel}>
+                      <Repeat aria-hidden="true" />
+                      <span className="sr-only">{generatedLabel}</span>
+                    </span>
+                  ) : null}
+                </strong>
+                <small>
+                  {categoryName} · {accountName}
+                </small>
+              </span>
+              <time dateTime={transaction.occurredOn}>{formatDate(transaction.occurredOn)}</time>
+              <strong className={`transaction-amount ${transaction.type}`}>
+                <span className="sr-only">{transaction.type === 'income' ? t('income') : t('expense')}</span>
+                {transaction.type === 'income' ? '+' : '−'}
+                {formatMoney(transaction.amountMinor)}
               </strong>
-              <small>
-                {categoryName} · {accountName}
-              </small>
-            </span>
-            <time dateTime={transaction.occurredOn}>{formatDate(transaction.occurredOn)}</time>
-            <strong className={`transaction-amount ${transaction.type}`}>
-              <span className="sr-only">{transaction.type === 'income' ? t('income') : t('expense')}</span>
-              {transaction.type === 'income' ? '+' : '−'}
-              {formatMoney(transaction.amountMinor)}
-            </strong>
+            </button>
           </li>
         )
       })}

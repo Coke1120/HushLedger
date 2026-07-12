@@ -530,20 +530,35 @@ textarea:focus-visible {
 
 .transaction-row {
   display: grid;
+  width: 100%;
   grid-template-columns: 44px minmax(180px, 1fr) 150px minmax(132px, auto);
   gap: 14px;
   align-items: center;
   min-height: 78px;
   padding: 14px 24px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  cursor: pointer;
+  font: inherit;
 }
 
-.transaction-row:last-child {
+.transaction-list > li:last-child .transaction-row {
   border-bottom: 0;
 }
 
 .transaction-row:hover {
   background: #fbfcfb;
+}
+
+.transaction-row:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
 }
 
 .category-icon {
@@ -841,11 +856,16 @@ textarea:focus-visible {
 }
 
 .dialog-actions {
+  display: flex;
+  gap: 10px;
   padding-top: 2px;
 }
 
+.dialog-actions .button {
+  flex: 1;
+}
+
 .save-button {
-  width: 100%;
   min-height: 50px;
 }
 

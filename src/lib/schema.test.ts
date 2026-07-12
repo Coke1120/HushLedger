@@ -5,8 +5,10 @@ import {
   recurringRuleDeleteSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
+  transactionDeleteSchema,
   transactionInputSchema,
   transactionQuerySchema,
+  transactionUpdateSchema,
 } from './schema'
 
 const valid = {
@@ -42,6 +44,22 @@ describe('transaction validation', () => {
 
   it('rejects unknown input fields', () => {
     assert.equal(transactionInputSchema.safeParse({ ...valid, privateMemo: 'nope' }).success, false)
+  })
+
+  it('accepts conflict-safe update and delete payloads', () => {
+    const { id, ...fields } = valid
+    assert.match(id, /-/)
+    const updatedAt = '2026-07-11T10:30:00.000Z'
+    assert.equal(transactionUpdateSchema.safeParse({ ...fields, updatedAt }).success, true)
+    assert.equal(transactionDeleteSchema.safeParse({ updatedAt }).success, true)
+  })
+
+  it('rejects an update that tries to replace its immutable ID', () => {
+    const { id, ...fields } = valid
+    assert.equal(
+      transactionUpdateSchema.safeParse({ ...fields, id, updatedAt: '2026-07-11T10:30:00.000Z' }).success,
+      false,
+    )
   })
 })
 

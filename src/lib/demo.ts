@@ -174,10 +174,11 @@ const demoTransactionCopy: Readonly<
   '7598bb40-b9ac-4cf9-b81e-d0a0f8f9334f': { payee: 'demoPayeeRent' },
   '092ed4e3-29f7-40b1-a917-84d102ebbc1f': { payee: 'demoPayeeSalary' },
 }
+const editedDemoTransactionIds = new Set<string>()
 
 function localizeDemoTransaction(transaction: Transaction, t?: Translator): Transaction {
   const copy = demoTransactionCopy[transaction.id]
-  if (!copy || !t) return transaction
+  if (!copy || !t || editedDemoTransactionIds.has(transaction.id)) return transaction
   return {
     ...transaction,
     payee: t(copy.payee),
@@ -226,6 +227,34 @@ export function addDemo(input: TransactionInput) {
   }
   demoTransactions = [transaction, ...demoTransactions]
   return transaction
+}
+
+export function updateDemo(input: TransactionInput) {
+  const existing = demoTransactions.find((transaction) => transaction.id === input.id)
+  const account = demoAccounts.find((item) => item.id === input.accountId)
+  const category = demoCategories.find((item) => item.id === input.categoryId)
+  if (!existing || !account || !category) throw new Error('The selected demo transaction was not found')
+
+  const transaction: Transaction = {
+    ...existing,
+    ...input,
+    accountName: account.name,
+    accountLocalizationKey: account.localizationKey,
+    categoryName: category.name,
+    categoryLocalizationKey: category.localizationKey,
+    categoryIcon: category.icon,
+    categoryColor: category.color,
+    updatedAt: new Date().toISOString(),
+  }
+  editedDemoTransactionIds.add(input.id)
+  demoTransactions = demoTransactions.map((item) => item.id === input.id ? transaction : item)
+  return transaction
+}
+
+export function deleteDemo(id: string) {
+  const exists = demoTransactions.some((transaction) => transaction.id === id)
+  if (!exists) throw new Error('The selected demo transaction was not found')
+  demoTransactions = demoTransactions.filter((transaction) => transaction.id !== id)
 }
 
 export function demoSummary(month: string): Summary {

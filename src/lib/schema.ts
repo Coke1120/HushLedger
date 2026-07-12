@@ -9,18 +9,29 @@ const calendarDateSchema = z
   .string()
   .refine(isValidCalendarDate, '交易日期必須是有效的 YYYY-MM-DD 日期')
 
-export const transactionInputSchema = z
-  .object({
-    id: z.string().uuid('交易 ID 必須是 UUID'),
-    type: transactionTypeSchema,
-    amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    currency: z.literal('HKD').default('HKD'),
-    accountId: z.number().int().positive(),
-    categoryId: z.number().int().positive(),
-    occurredOn: calendarDateSchema,
-    payee: z.string().trim().max(80).default(''),
-    note: z.string().trim().max(200).default(''),
-  })
+export const transactionIdSchema = z.string().uuid('交易 ID 必須是 UUID')
+
+const transactionFieldsSchema = z.object({
+  type: transactionTypeSchema,
+  amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  currency: z.literal('HKD').default('HKD'),
+  accountId: z.number().int().positive(),
+  categoryId: z.number().int().positive(),
+  occurredOn: calendarDateSchema,
+  payee: z.string().trim().max(80).default(''),
+  note: z.string().trim().max(200).default(''),
+})
+
+export const transactionInputSchema = transactionFieldsSchema
+  .extend({ id: transactionIdSchema })
+  .strict()
+
+export const transactionUpdateSchema = transactionFieldsSchema
+  .extend({ updatedAt: z.string().datetime({ offset: true }) })
+  .strict()
+
+export const transactionDeleteSchema = z
+  .object({ updatedAt: z.string().datetime({ offset: true }) })
   .strict()
 
 export const transactionQuerySchema = z
@@ -39,6 +50,7 @@ export const transactionQuerySchema = z
   .strict()
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
+export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 
 export const accountLocalizationKeys = [
   'account.cash',

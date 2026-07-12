@@ -34,6 +34,8 @@ knowledge and explains every command and dashboard click.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Search and income/expense filtering across the 200 most recent transactions in
   each month, with an explicit notice when the result limit is reached.
+- Edit or delete an existing transaction with conflict detection if another
+  session changed it first.
 - Custom payees and notes.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
   paused, resumed, and deleted.
@@ -66,6 +68,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
   transaction time field.
 - `created_at` and `updated_at` are internal UTC audit timestamps, not user-entered
   transaction times.
+- Transaction edits preserve recurring-rule provenance and use `updated_at` as an
+  optimistic concurrency token; stale updates and deletes are rejected.
 - A recurring rule occurrence date is an immutable idempotency key. Editing a rule
   affects only future occurrences that have not been generated. Pausing or deleting
   a rule never deletes historical transactions.
@@ -286,6 +290,9 @@ GET    /api/accounts
 GET    /api/categories
 GET    /api/transactions?month=YYYY-MM&type=expense|income&search=...
 POST   /api/transactions
+GET    /api/transactions/:id
+PUT    /api/transactions/:id
+DELETE /api/transactions/:id
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules

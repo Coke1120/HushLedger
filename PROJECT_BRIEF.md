@@ -1,6 +1,6 @@
 # HushLedger product brief
 
-> Updated: 2026-07-12 (HKT)
+> Updated: 2026-07-13 (HKT)
 >
 > Status: core transaction and recurring-rule release implemented locally
 >
@@ -41,6 +41,8 @@ not operate an independent database server or a multi-user identity system.
 ### Record money
 
 - Add income or expense in a short responsive form.
+- Correct or delete an existing transaction; reject stale changes made from an
+  out-of-date view.
 - Choose an active account and a matching income or expense category.
 - Add a custom payee or note.
 - Select a calendar date only; no transaction-time field exists.
@@ -79,7 +81,8 @@ updated_at            internal UTC audit timestamp
 
 HK$123.45 is stored as `12345`. Binary floating point is never authoritative.
 `occurred_on` is intentionally date-only; audit timestamps must not be presented
-as transaction time.
+as transaction time. `updated_at` is also the optimistic concurrency token for
+editing and deleting a transaction. Edits never replace recurring provenance.
 
 ### Accounts and categories
 
@@ -118,6 +121,9 @@ GET    /api/accounts
 GET    /api/categories
 GET    /api/transactions?month=YYYY-MM&type=...&search=...  (latest 200)
 POST   /api/transactions
+GET    /api/transactions/:id
+PUT    /api/transactions/:id
+DELETE /api/transactions/:id
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -166,8 +172,8 @@ Database and stack errors are never returned to the client.
 
 - D1 schema, seed, constraints, indexes, and date-only migration.
 - Accounts, categories, transactions, summary, and recurring-rule APIs.
-- Responsive dashboard, transaction form/list, recurring-rule management, and
-  language settings.
+- Responsive dashboard, conflict-safe transaction create/edit/delete,
+  recurring-rule management, and language settings.
 - Daily 00:05 HKT Cron plus manual due generation.
 - Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
   preview, fresh migration, and upgrade migration validation.
@@ -199,7 +205,8 @@ supplies authoritative integer amounts or database IDs. See
 
 - Clean checkout supports `npm ci` and local D1 migrations.
 - Local Next.js development and the OpenNext workerd preview read and write D1.
-- A transaction appears in its list and monthly summary.
+- A transaction can be created, edited, and deleted; each change appears in its
+  list and monthly summary, and stale mutations are rejected.
 - Daily, weekly, and monthly rules can be created, edited, paused, resumed, run,
   and deleted without duplicate occurrences or history loss.
 - Date-only behavior is visible across UI, API, tests, and migrations.

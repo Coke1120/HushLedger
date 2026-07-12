@@ -14,6 +14,12 @@ export const formatMoney = (minor: number, currency: string = DEFAULT_CURRENCY, 
   }).format(minor / 100)
 }
 
+export function formatAmountInput(minor: number, locale = 'en') {
+  if (!Number.isSafeInteger(minor) || minor < 0) throw new Error('Amount exceeds the safe integer range')
+  const separator = locale.toLowerCase().startsWith('fr') ? ',' : '.'
+  return `${Math.floor(minor / 100)}${separator}${String(minor % 100).padStart(2, '0')}`
+}
+
 export function parseAmount(value: string, locale = 'en'): number {
   const normalized = locale.toLowerCase().startsWith('fr')
     ? value.trim().replace(',', '.')

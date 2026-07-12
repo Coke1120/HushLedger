@@ -1,9 +1,16 @@
-import { ArrowDownRight, ArrowUpRight, LoaderCircle, X } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, LoaderCircle, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useI18n } from '../i18n'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
-import { parseAmount } from '../lib/money'
-import { transactionInputSchema, type Account, type Category, type TransactionInput, type TransactionType } from '../lib/schema'
+import { formatAmountInput, parseAmount } from '../lib/money'
+import {
+  transactionInputSchema,
+  type Account,
+  type Category,
+  type Transaction,
+  type TransactionInput,
+  type TransactionType,
+} from '../lib/schema'
 
 type TransactionDialogProps = {
   accounts: Account[]
@@ -11,8 +18,10 @@ type TransactionDialogProps = {
   saving: boolean
   serverError: string
   online: boolean
+  transaction: Transaction | null
   onClose: () => void
   onSubmit: (input: TransactionInput) => Promise<boolean>
+  onDelete: (transaction: Transaction) => Promise<boolean>
 }
 
 export function TransactionDialog({
@@ -21,19 +30,26 @@ export function TransactionDialog({
   saving,
   serverError,
   online,
+  transaction,
   onClose,
   onSubmit,
+  onDelete,
 }: TransactionDialogProps) {
   const { locale, localizeEntityName, t } = useI18n()
-  const [type, setType] = useState<TransactionType>('expense')
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? 0)
-  const [categoryId, setCategoryId] = useState(categories.find((category) => category.type === 'expense')?.id ?? 0)
-  const [date, setDate] = useState(() => currentHongKongDate().date)
+  const [type, setType] = useState<TransactionType>(transaction?.type ?? 'expense')
+  const [accountId, setAccountId] = useState(transaction?.accountId ?? accounts[0]?.id ?? 0)
+  const [categoryId, setCategoryId] = useState(
+    transaction?.categoryId
+      ?? categories.find((category) => category.type === 'expense')?.id
+      ?? 0,
+  )
+  const [date, setDate] = useState(transaction?.occurredOn ?? currentHongKongDate().date)
+  const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
-  const draftIdRef = useRef(crypto.randomUUID())
+  const draftIdRef = useRef(transaction?.id ?? crypto.randomUUID())
   const savingRef = useRef(saving)
 
   const matchingCategories = useMemo(() => categories.filter((category) => category.type === type), [categories, type])
@@ -109,18 +125,18 @@ export function TransactionDialog({
     }
 
     const parsed = transactionInputSchema.safeParse({
-        id: draftIdRef.current,
-        type,
-        amountMinor,
-        currency: 'HKD',
-        accountId,
-        categoryId: matchingCategories.some((category) => category.id === categoryId)
-          ? categoryId
-          : (matchingCategories[0]?.id ?? 0),
-        occurredOn: date,
-        payee: String(data.get('payee') ?? ''),
-        note: String(data.get('note') ?? ''),
-      })
+      id: draftIdRef.current,
+      type,
+      amountMinor,
+      currency: 'HKD',
+      accountId,
+      categoryId: matchingCategories.some((category) => category.id === categoryId)
+        ? categoryId
+        : (matchingCategories[0]?.id ?? 0),
+      occurredOn: date,
+      payee: String(data.get('payee') ?? ''),
+      note: String(data.get('note') ?? ''),
+    })
     if (!parsed.success) {
       setLocalError(t('invalidForm'))
       return
@@ -128,6 +144,14 @@ export function TransactionDialog({
 
     const saved = await onSubmit(parsed.data)
     if (saved) onClose()
+  }
+
+  const handleDelete = async () => {
+    if (!transaction || !window.confirm(t('deleteTransactionConfirm'))) return
+    setDeleting(true)
+    const deleted = await onDelete(transaction)
+    if (deleted) onClose()
+    else setDeleting(false)
   }
 
   const error = localError || serverError
@@ -149,7 +173,7 @@ export function TransactionDialog({
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
-          <h2 id="transaction-dialog-title">{t('addTransaction')}</h2>
+          <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : 'addTransaction')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
@@ -178,6 +202,7 @@ export function TransactionDialog({
                 autoComplete="off"
                 placeholder={locale === 'fr' ? '0,00' : '0.00'}
                 pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
+                defaultValue={transaction ? formatAmountInput(transaction.amountMinor, locale) : undefined}
                 aria-invalid={Boolean(error)}
                 required
               />
@@ -213,11 +238,22 @@ export function TransactionDialog({
 
           <label>
             <span>{t('payee')}</span>
-            <input name="payee" maxLength={80} placeholder={type === 'expense' ? t('expensePayeeExample') : t('incomePayeeExample')} />
+            <input
+              name="payee"
+              maxLength={80}
+              defaultValue={transaction?.payee}
+              placeholder={type === 'expense' ? t('expensePayeeExample') : t('incomePayeeExample')}
+            />
           </label>
           <label>
             <span>{t('noteOptional')}</span>
-            <textarea name="note" maxLength={200} rows={2} placeholder={t('notePlaceholder')} />
+            <textarea
+              name="note"
+              maxLength={200}
+              rows={2}
+              defaultValue={transaction?.note}
+              placeholder={t('notePlaceholder')}
+            />
           </label>
 
           {error ? (
@@ -229,9 +265,20 @@ export function TransactionDialog({
           {!online ? <p className="offline-form-note">{t('offlineTransactionForm')}</p> : null}
 
           <div className="dialog-actions">
+            {transaction ? (
+              <button
+                className="button button-danger"
+                type="button"
+                disabled={saving || !online}
+                onClick={() => void handleDelete()}
+              >
+                {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
+                {deleting ? t('deleting') : t('delete')}
+              </button>
+            ) : null}
             <button className="button button-primary save-button" type="submit" disabled={saving || !online}>
-              {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
-              {saving ? t('saving') : t('saveTransaction')}
+              {saving && !deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
+              {saving && !deleting ? t('saving') : t(transaction ? 'saveChanges' : 'saveTransaction')}
             </button>
           </div>
         </form>

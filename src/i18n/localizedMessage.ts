@@ -20,6 +20,8 @@ const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   ACCOUNT_INVALID: 'errorAccountInvalid',
   CATEGORY_INVALID: 'errorCategoryInvalid',
   CATEGORY_TYPE_MISMATCH: 'errorCategoryMismatch',
+  TRANSACTION_NOT_FOUND: 'errorTransactionNotFound',
+  TRANSACTION_VERSION_CONFLICT: 'errorTransactionVersionConflict',
   RULE_NOT_FOUND: 'errorRuleNotFound',
   RULE_VERSION_CONFLICT: 'errorRuleVersionConflict',
   AI_PROVIDER_CONFIG_INVALID: 'errorAiProviderConfig',

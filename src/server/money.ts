@@ -9,6 +9,7 @@ import type {
   Summary,
   Transaction,
   TransactionInput,
+  TransactionUpdateInput,
   TransactionType,
 } from '../lib/schema'
 import type { ReferenceErrorCode } from './recurring'
@@ -67,6 +68,17 @@ export type CreateTransactionResult =
   | { kind: 'created' | 'existing'; transaction: TransactionView }
   | { kind: 'id_conflict' }
   | { kind: 'reference_invalid'; code: ReferenceErrorCode }
+
+export type UpdateTransactionResult =
+  | { kind: 'updated'; transaction: TransactionView }
+  | { kind: 'not_found' }
+  | { kind: 'version_conflict' }
+  | { kind: 'reference_invalid'; code: ReferenceErrorCode }
+
+export type DeleteTransactionResult =
+  | { kind: 'deleted'; id: string }
+  | { kind: 'not_found' }
+  | { kind: 'version_conflict' }
 
 const transactionSelect = `
   SELECT
@@ -174,7 +186,7 @@ export async function createTransaction(
   database: D1Database,
   input: TransactionInput,
 ): Promise<CreateTransactionResult> {
-  const existing = await findTransaction(database, input.id)
+  const existing = await getTransaction(database, input.id)
   if (existing) {
     return matchesInput(existing, input)
       ? { kind: 'existing', transaction: existing }
@@ -212,7 +224,7 @@ export async function createTransaction(
     )
     .run()
 
-  const transaction = await findTransaction(database, input.id)
+  const transaction = await getTransaction(database, input.id)
   if (!transaction) throw new Error('Transaction insert did not produce a row')
   if (!matchesInput(transaction, input)) return { kind: 'id_conflict' }
 
@@ -220,6 +232,68 @@ export async function createTransaction(
     kind: Number(inserted.meta.changes) > 0 ? 'created' : 'existing',
     transaction,
   }
+}
+
+export async function updateTransaction(
+  database: D1Database,
+  id: string,
+  input: TransactionUpdateInput,
+): Promise<UpdateTransactionResult> {
+  const referenceError = await validateReferences(database, input)
+  if (referenceError) return { kind: 'reference_invalid', code: referenceError }
+
+  const updated = await database.prepare(`
+    UPDATE transactions
+    SET
+      type = ?,
+      amount_minor = ?,
+      currency = ?,
+      account_id = ?,
+      category_id = ?,
+      occurred_on = ?,
+      payee = ?,
+      note = ?,
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE id = ? AND updated_at = ?
+  `)
+    .bind(
+      input.type,
+      input.amountMinor,
+      input.currency,
+      input.accountId,
+      input.categoryId,
+      input.occurredOn,
+      input.payee,
+      input.note,
+      id,
+      input.updatedAt,
+    )
+    .run()
+
+  if (Number(updated.meta.changes) === 0) {
+    const existing = await getTransaction(database, id)
+    return existing ? { kind: 'version_conflict' } : { kind: 'not_found' }
+  }
+
+  const transaction = await getTransaction(database, id)
+  if (!transaction) throw new Error('Transaction update did not produce a row')
+  return { kind: 'updated', transaction }
+}
+
+export async function deleteTransaction(
+  database: D1Database,
+  id: string,
+  updatedAt: string,
+): Promise<DeleteTransactionResult> {
+  const deleted = await database.prepare('DELETE FROM transactions WHERE id = ? AND updated_at = ?')
+    .bind(id, updatedAt)
+    .run()
+
+  if (Number(deleted.meta.changes) === 0) {
+    const existing = await getTransaction(database, id)
+    return existing ? { kind: 'version_conflict' } : { kind: 'not_found' }
+  }
+  return { kind: 'deleted', id }
 }
 
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
@@ -243,7 +317,7 @@ function escapeLike(value: string) {
   return value.replace(/[\\%_]/g, '\\$&')
 }
 
-async function findTransaction(database: D1Database, id: string) {
+export async function getTransaction(database: D1Database, id: string) {
   return database
     .prepare(`${transactionSelect} WHERE t.id = ? LIMIT 1`)
     .bind(id)
@@ -266,7 +340,7 @@ function matchesInput(transaction: TransactionView, input: TransactionInput) {
 
 async function validateReferences(
   database: D1Database,
-  input: TransactionInput,
+  input: Pick<TransactionInput, 'accountId' | 'categoryId' | 'currency' | 'type'>,
 ): Promise<ReferenceErrorCode | null> {
   const [account, category] = await Promise.all([
     database.prepare(`

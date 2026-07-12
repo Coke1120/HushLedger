@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createTransactionAction } from '../app/actions'
+import {
+  createTransactionAction,
+  deleteTransactionAction,
+  updateTransactionAction,
+} from '../app/actions'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
-import { addDemo, demoAccounts, demoCategories, demoSummary, getDemoTransactions } from '../lib/demo'
+import {
+  addDemo,
+  deleteDemo,
+  demoAccounts,
+  demoCategories,
+  demoSummary,
+  getDemoTransactions,
+  updateDemo,
+} from '../lib/demo'
 import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from '../lib/schema'
 import { actionData } from './actionResult'
 
@@ -112,7 +124,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
   }, [month, refresh, search, type])
 
   const saveTransaction = useCallback(
-    async (input: TransactionInput) => {
+    async (input: TransactionInput, original?: Transaction) => {
       if (submitting.current) return false
       submitting.current = true
       setSaving(true)
@@ -126,20 +138,68 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
         }
 
         if (source === 'demo') {
-          addDemo(input)
+          if (original) updateDemo(input)
+          else addDemo(input)
           setSnapshot(demoSnapshot(month, type, search))
-          setActionMessage(message('demoTransactionSaved'))
+          setActionMessage(message(original ? 'demoTransactionChanged' : 'demoTransactionSaved'))
           return true
         }
 
-        await actionData(createTransactionAction(input))
+        if (original) {
+          const { id, ...fields } = input
+          await actionData(updateTransactionAction(id, { ...fields, updatedAt: original.updatedAt }))
+        } else {
+          await actionData(createTransactionAction(input))
+        }
         const refreshed = await refresh(false)
         setActionMessage(
-          message(refreshed ? 'transactionSaved' : 'transactionSavedRefreshFailed'),
+          message(
+            refreshed
+              ? original
+                ? 'transactionUpdated'
+                : 'transactionSaved'
+              : 'transactionSavedRefreshFailed',
+          ),
         )
         return true
       } catch (error) {
         setSaveError(messageForError(error, 'transactionSaveFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [month, refresh, search, source, type],
+  )
+
+  const removeTransaction = useCallback(
+    async (transaction: Transaction) => {
+      if (submitting.current) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      try {
+        if (!navigator.onLine) {
+          setSaveError(message('transactionOfflineError'))
+          return false
+        }
+
+        if (source === 'demo') {
+          deleteDemo(transaction.id)
+          setSnapshot(demoSnapshot(month, type, search))
+          setActionMessage(message('demoTransactionChanged'))
+          return true
+        }
+
+        await actionData(deleteTransactionAction(transaction.id, { updatedAt: transaction.updatedAt }))
+        const refreshed = await refresh(false)
+        setActionMessage(message(refreshed ? 'transactionDeleted' : 'transactionSavedRefreshFailed'))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transactionDeleteFailed'))
         return false
       } finally {
         submitting.current = false
@@ -157,6 +217,8 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
     [month, search, snapshot, source, t, type],
   )
 
+  const clearActionMessage = useCallback(() => setActionMessage(null), [])
+
   return {
     ...visibleSnapshot,
     source,
@@ -166,6 +228,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
     actionMessage: renderMessage(t, actionMessage),
     refresh,
     saveTransaction,
-    clearActionMessage: () => setActionMessage(null),
+    removeTransaction,
+    clearActionMessage,
   }
 }

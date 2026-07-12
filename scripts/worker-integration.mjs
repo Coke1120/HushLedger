@@ -542,6 +542,62 @@ async function verifyWorkerApi() {
   assert.equal(crossOrigin.response.status, 403)
   assert.equal(crossOrigin.payload.error.code, 'ORIGIN_FORBIDDEN')
 
+  const transactionBody = {
+    ...transaction,
+    id: '10000000-0000-4000-8000-000000000003',
+    occurredOn: today,
+  }
+  const createdTransaction = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: transactionBody,
+  })
+  assert.equal(createdTransaction.response.status, 201)
+  assert.equal(createdTransaction.payload.data.amountMinor, 123)
+
+  const fetchedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
+  assert.equal(fetchedTransaction.response.status, 200)
+  assert.equal(fetchedTransaction.payload.data.id, transactionBody.id)
+
+  const { id: immutableId, ...transactionFields } = transactionBody
+  assert.equal(immutableId, transactionBody.id)
+  const staleTransactionUpdate = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
+    method: 'PUT',
+    body: { ...transactionFields, updatedAt: '2026-01-01T00:00:00.000Z' },
+  })
+  assert.equal(staleTransactionUpdate.response.status, 409)
+  assert.equal(staleTransactionUpdate.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+
+  const updatedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
+    method: 'PUT',
+    body: {
+      ...transactionFields,
+      amountMinor: 456,
+      payee: 'edited integration test',
+      updatedAt: createdTransaction.payload.data.updatedAt,
+    },
+  })
+  assert.equal(updatedTransaction.response.status, 200)
+  assert.equal(updatedTransaction.payload.data.amountMinor, 456)
+  assert.equal(updatedTransaction.payload.data.payee, 'edited integration test')
+
+  const staleTransactionDelete = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: createdTransaction.payload.data.updatedAt },
+  })
+  assert.equal(staleTransactionDelete.response.status, 409)
+  assert.equal(staleTransactionDelete.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+
+  const deletedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: updatedTransaction.payload.data.updatedAt },
+  })
+  assert.equal(deletedTransaction.response.status, 200)
+  assert.equal(deletedTransaction.payload.data.deleted, true)
+
+  const missingTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
+  assert.equal(missingTransaction.response.status, 404)
+  assert.equal(missingTransaction.payload.error.code, 'TRANSACTION_NOT_FOUND')
+
   const ruleIds = {
     daily: '20000000-0000-4000-8000-000000000001',
     weekly: '20000000-0000-4000-8000-000000000002',

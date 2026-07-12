@@ -6,7 +6,10 @@ import {
   recurringRuleDeleteSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
+  transactionDeleteSchema,
+  transactionIdSchema,
   transactionInputSchema,
+  transactionUpdateSchema,
   type RecurringGenerationResult,
 } from '../lib/schema'
 import {
@@ -19,7 +22,10 @@ import { getDatabase } from '../server/db'
 import { sanitizeValidationIssues } from '../server/http'
 import {
   createTransaction,
+  deleteTransaction,
+  updateTransaction,
   type TransactionView,
+  type UpdateTransactionResult,
 } from '../server/money'
 import {
   createRecurringRule,
@@ -34,6 +40,7 @@ import {
 import { emptyActionSchema, recurringRuleIdSchema } from '../server/validation'
 
 type DeletedRule = { id: string; deleted: true; revision: number }
+type DeletedTransaction = { id: string; deleted: true }
 
 export async function createTransactionAction(
   input: unknown,
@@ -53,6 +60,54 @@ export async function createTransactionAction(
     }
     if (result.kind === 'reference_invalid') return referenceError(result.code)
     return revalidatedSuccess(result.transaction)
+  })
+}
+
+export async function updateTransactionAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<TransactionView>> {
+  const denied = await accessDenied<TransactionView>()
+  if (denied) return denied
+
+  const id = transactionIdSchema.safeParse(idInput)
+  if (!id.success) return invalidTransactionId(id.error.issues)
+
+  const parsed = transactionUpdateSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('交易資料不正確', parsed.error.issues)
+  }
+
+  return runAction('update_transaction', async () => {
+    const result = await updateTransaction(await getDatabase(), id.data, parsed.data)
+    return transactionMutationResult(result)
+  })
+}
+
+export async function deleteTransactionAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<DeletedTransaction>> {
+  const denied = await accessDenied<DeletedTransaction>()
+  if (denied) return denied
+
+  const id = transactionIdSchema.safeParse(idInput)
+  if (!id.success) return invalidTransactionId(id.error.issues)
+
+  const parsed = transactionDeleteSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('刪除交易資料不正確', parsed.error.issues)
+  }
+
+  return runAction('delete_transaction', async () => {
+    const result = await deleteTransaction(await getDatabase(), id.data, parsed.data.updatedAt)
+    if (result.kind === 'not_found') {
+      return actionError('TRANSACTION_NOT_FOUND', '找不到指定的交易')
+    }
+    if (result.kind === 'version_conflict') {
+      return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
+    }
+    return revalidatedSuccess({ id: result.id, deleted: true })
   })
 }
 
@@ -192,6 +247,14 @@ function invalidRuleId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]
   )
 }
 
+function invalidTransactionId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]) {
+  return actionError<T>(
+    'INVALID_TRANSACTION_ID',
+    '交易 ID 不正確',
+    sanitizeValidationIssues(issues),
+  )
+}
+
 function referenceError<T>(code: ReferenceErrorCode): ActionResult<T> {
   if (code === 'ACCOUNT_INVALID') {
     return actionError(code, '帳戶不存在、已停用或幣別不相符')
@@ -211,6 +274,17 @@ function recurringMutationResult(result: UpdateRuleResult): ActionResult<Recurri
   }
   if (result.kind === 'reference_invalid') return referenceError(result.code)
   return revalidatedSuccess(result.rule)
+}
+
+function transactionMutationResult(result: UpdateTransactionResult): ActionResult<TransactionView> {
+  if (result.kind === 'not_found') {
+    return actionError('TRANSACTION_NOT_FOUND', '找不到指定的交易')
+  }
+  if (result.kind === 'version_conflict') {
+    return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
+  }
+  if (result.kind === 'reference_invalid') return referenceError(result.code)
+  return revalidatedSuccess(result.transaction)
 }
 
 async function accessDenied<T>() {

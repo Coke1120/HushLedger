@@ -17,7 +17,7 @@ import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
-import type { TransactionInput } from './lib/schema'
+import type { Transaction, TransactionInput } from './lib/schema'
 
 const initialAiSettings: AiProviderSettings = {
   baseUrl: 'https://api.openai.com/v1',
@@ -32,6 +32,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const mainRef = useRef<HTMLElement>(null)
@@ -40,17 +41,32 @@ function App({ initialMonth }: { initialMonth: string }) {
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
   const data = useMoneyData(month, filter, deferredSearch)
+  const {
+    clearActionMessage,
+    removeTransaction,
+    saveTransaction: saveMoneyTransaction,
+  } = data
 
   const openDialog = useCallback(() => {
-    data.clearActionMessage()
+    clearActionMessage()
+    setEditingTransaction(null)
     setDialogOpen(true)
-  }, [data])
+  }, [clearActionMessage])
 
-  const closeDialog = useCallback(() => setDialogOpen(false), [])
+  const openTransaction = useCallback((transaction: Transaction) => {
+    clearActionMessage()
+    setEditingTransaction(transaction)
+    setDialogOpen(true)
+  }, [clearActionMessage])
+
+  const closeDialog = useCallback(() => {
+    setDialogOpen(false)
+    setEditingTransaction(null)
+  }, [])
 
   const saveTransaction = useCallback(
-    async (input: TransactionInput) => data.saveTransaction(input),
-    [data],
+    async (input: TransactionInput) => saveMoneyTransaction(input, editingTransaction ?? undefined),
+    [editingTransaction, saveMoneyTransaction],
   )
 
   const changeView = useCallback((nextView: AppView) => {
@@ -158,7 +174,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onConfigure={() => changeView('settings')}
               />
             ) : null}
-            <TransactionList transactions={transactions} loading={loading} />
+            <TransactionList transactions={transactions} loading={loading} onEdit={openTransaction} />
           </section>
         </div>
         <div hidden={view !== 'recurring'}>
@@ -177,8 +193,10 @@ function App({ initialMonth }: { initialMonth: string }) {
           saving={data.saving}
           serverError={data.saveError}
           online={data.online}
+          transaction={editingTransaction}
           onClose={closeDialog}
           onSubmit={saveTransaction}
+          onDelete={removeTransaction}
         />
       ) : null}
     </div>
