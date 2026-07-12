@@ -10,6 +10,12 @@ import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from 'r
 import { messageForError, renderMessage, useI18n, type MessageKey } from '../i18n'
 import { api } from '../lib/api'
 import {
+  detectBankCsvDelimiter,
+  parseBankCsvDocument,
+  type BankCsvDelimiter,
+  type BankCsvDocument,
+} from '../lib/bankCsvImport'
+import {
   MAX_CSV_IMPORT_BYTES,
   csvImportCommitResultSchema,
   csvImportPreviewResultSchema,
@@ -21,6 +27,7 @@ import {
   type CsvImportRowStatus,
 } from '../lib/csvImport'
 import type { Account, Category } from '../lib/schema'
+import { BankCsvMappingForm } from './BankCsvMappingForm'
 
 type CsvImportPanelProps = {
   accounts: Account[]
@@ -41,6 +48,8 @@ export function CsvImportPanel({
 }: CsvImportPanelProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const [fileName, setFileName] = useState('')
+  const [fileText, setFileText] = useState('')
+  const [bankDocument, setBankDocument] = useState<BankCsvDocument | null>(null)
   const [rows, setRows] = useState<CsvImportRow[]>([])
   const [preview, setPreview] = useState<CsvImportPreviewResult | null>(null)
   const [issues, setIssues] = useState<CsvImportIssue[]>([])
@@ -62,6 +71,8 @@ export function CsvImportPanel({
     requestController.current?.abort()
     requestController.current = null
     setRows([])
+    setFileText('')
+    setBankDocument(null)
     setPreview(null)
     setIssues([])
     setSelected(new Set())
@@ -91,29 +102,21 @@ export function CsvImportPanel({
     try {
       const bytes = await file.arrayBuffer()
       const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      setFileText(text)
       const parsed = await parseHushLedgerCsv(text, { accounts, categories })
       if (sequence !== requestSequence.current) return
+      if (parsed.issues.length === 1 && parsed.issues[0].code === 'invalid_header') {
+        const delimiter = detectBankCsvDelimiter(text)
+        const bank = parseBankCsvDocument(text, delimiter)
+        setBankDocument(bank.document)
+        setIssues(bank.issues)
+        return
+      }
       if (parsed.issues.length > 0) {
         setIssues(parsed.issues)
         return
       }
-
-      const response = await api<unknown>('/api/imports/csv', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'preview', rows: parsed.rows }),
-        signal: controller.signal,
-      })
-      if (sequence !== requestSequence.current) return
-      const parsedPreview = csvImportPreviewResultSchema.safeParse(response)
-      if (!parsedPreview.success) throw new Error('Invalid CSV preview response')
-      setRows(parsed.rows)
-      setPreview(parsedPreview.data)
-      setSelected(new Set(
-        parsedPreview.data.rows
-          .filter((row) => row.status === 'new')
-          .map((row) => row.importKey),
-      ))
+      await requestPreview(parsed.rows, sequence, controller)
     } catch (caught) {
       if (controller.signal.aborted || sequence !== requestSequence.current) return
       if (caught instanceof TypeError && /encoded data/i.test(caught.message)) {
@@ -129,6 +132,66 @@ export function CsvImportPanel({
     }
   }
 
+  const requestPreview = async (
+    candidateRows: CsvImportRow[],
+    sequence: number,
+    controller: AbortController,
+  ) => {
+    const response = await api<unknown>('/api/imports/csv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: 'preview', rows: candidateRows }),
+      signal: controller.signal,
+    })
+    if (sequence !== requestSequence.current) return
+    const parsedPreview = csvImportPreviewResultSchema.safeParse(response)
+    if (!parsedPreview.success) throw new Error('Invalid CSV preview response')
+    setRows(candidateRows)
+    setPreview(parsedPreview.data)
+    setSelected(new Set(
+      parsedPreview.data.rows
+        .filter((row) => row.status === 'new')
+        .map((row) => row.importKey),
+    ))
+  }
+
+  const previewMappedRows = async (parsed: { rows: CsvImportRow[]; issues: CsvImportIssue[] }) => {
+    setIssues(parsed.issues)
+    setError('')
+    setStatus('')
+    setPreview(null)
+    setRows([])
+    setSelected(new Set())
+    if (parsed.issues.length > 0) return
+
+    const sequence = ++requestSequence.current
+    const controller = new AbortController()
+    requestController.current = controller
+    setBusy(true)
+    try {
+      await requestPreview(parsed.rows, sequence, controller)
+    } catch (caught) {
+      if (controller.signal.aborted || sequence !== requestSequence.current) return
+      setError(renderMessage(t, messageForError(caught, 'csvImportFailed')))
+    } finally {
+      if (sequence === requestSequence.current) {
+        requestController.current = null
+        setBusy(false)
+      }
+    }
+  }
+
+  const changeBankDelimiter = (delimiter: BankCsvDelimiter) => {
+    requestSequence.current += 1
+    requestController.current?.abort()
+    setPreview(null)
+    setRows([])
+    setSelected(new Set())
+    const parsed = parseBankCsvDocument(fileText, delimiter)
+    if (parsed.document) setBankDocument(parsed.document)
+    setIssues(parsed.issues)
+  }
+
   const toggleRow = (importKey: string) => {
     setSelected((current) => {
       const next = new Set(current)
@@ -136,6 +199,18 @@ export function CsvImportPanel({
       else next.add(importKey)
       return next
     })
+  }
+
+  const returnToBankMapping = () => {
+    requestSequence.current += 1
+    requestController.current?.abort()
+    requestController.current = null
+    setRows([])
+    setPreview(null)
+    setSelected(new Set())
+    setBusy(false)
+    setError('')
+    setStatus('')
   }
 
   const importSelected = async () => {
@@ -169,6 +244,8 @@ export function CsvImportPanel({
           : t('csvImportSuccess', { count: result.data.imported }),
       )
       setFileName('')
+      setFileText('')
+      setBankDocument(null)
       setRows([])
       setPreview(null)
       setSelected(new Set())
@@ -227,6 +304,18 @@ export function CsvImportPanel({
         </div>
       </div>
 
+      {bankDocument ? (
+        <BankCsvMappingForm
+          key={`${fileName}:${bankDocument.delimiter}`}
+          document={bankDocument}
+          accounts={accounts}
+          categories={categories}
+          busy={busy || preview !== null}
+          onDelimiterChange={changeBankDelimiter}
+          onMapped={previewMappedRows}
+        />
+      ) : null}
+
       {busy && !preview ? (
         <p className="csv-import-progress" role="status">
           <LoaderCircle className="spin" aria-hidden="true" />
@@ -264,7 +353,19 @@ export function CsvImportPanel({
               <h4>{t('csvImportReviewTitle')}</h4>
               <p>{t('csvImportReviewHelp')}</p>
             </div>
-            <span>{t('csvImportSelected', { count: selected.size })}</span>
+            <div className="csv-import-review-tools">
+              <span>{t('csvImportSelected', { count: selected.size })}</span>
+              {bankDocument ? (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={returnToBankMapping}
+                >
+                  {t('bankCsvChangeMapping')}
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="csv-import-summary" aria-label={t('csvImportReviewTitle')}>
             <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
@@ -363,6 +464,12 @@ function issueMessageKey(code: CsvImportIssueCode): MessageKey {
     case 'payee_too_long': return 'csvIssuePayeeTooLong'
     case 'note_too_long': return 'csvIssueNoteTooLong'
     case 'invalid_transaction_id': return 'csvIssueInvalidTransactionId'
+    case 'bank_invalid_header': return 'bankCsvIssueInvalidHeader'
+    case 'bank_mapping_incomplete': return 'bankCsvIssueMappingIncomplete'
+    case 'bank_amount_conflict': return 'bankCsvIssueAmountConflict'
+    case 'bank_duplicate_id': return 'bankCsvIssueDuplicateId'
+    case 'bank_invalid_date': return 'bankCsvIssueInvalidDate'
+    case 'bank_invalid_amount': return 'bankCsvIssueInvalidAmount'
   }
 }
 

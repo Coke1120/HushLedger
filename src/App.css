@@ -2619,6 +2619,180 @@ textarea:focus-visible {
   height: 18px;
 }
 
+.bank-csv-mapping {
+  padding: 20px;
+  margin-top: 18px;
+  background: color-mix(in srgb, var(--surface-soft) 72%, var(--surface));
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.bank-csv-mapping-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.bank-csv-mapping-heading > svg {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  color: var(--brand);
+}
+
+.bank-csv-mapping-heading h4,
+.bank-csv-mapping-heading p {
+  margin: 0;
+}
+
+.bank-csv-mapping-heading h4 {
+  font-size: 14px;
+}
+
+.bank-csv-mapping-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.bank-csv-map-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.bank-csv-map-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.bank-csv-map-grid label > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bank-csv-map-grid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 34px 8px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.bank-csv-map-grid select:focus-visible,
+.bank-csv-flip-sign:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--brand) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.bank-csv-flip-sign {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px;
+  margin-top: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.bank-csv-flip-sign input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--brand);
+}
+
+.bank-csv-flip-sign span {
+  display: grid;
+  gap: 3px;
+}
+
+.bank-csv-flip-sign strong {
+  font-size: 12px;
+}
+
+.bank-csv-flip-sign small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.bank-csv-sample {
+  max-height: 210px;
+  margin-top: 16px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.bank-csv-sample:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 24%, transparent);
+  outline-offset: 2px;
+}
+
+.bank-csv-sample table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.bank-csv-sample caption {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+.bank-csv-sample th,
+.bank-csv-sample td {
+  max-width: 240px;
+  padding: 8px 12px;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.bank-csv-sample th {
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-weight: 750;
+}
+
+.bank-csv-map-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.bank-csv-map-actions > span {
+  max-width: 520px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.bank-csv-map-actions .button svg {
+  width: 16px;
+  height: 16px;
+}
+
 .csv-import-issues {
   padding: 14px 16px;
   margin-top: 18px;
@@ -2664,6 +2838,24 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: 7px;
   margin-top: 15px;
+}
+
+.csv-import-review-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.csv-import-review-tools > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.csv-import-review-tools .button {
+  min-height: 36px;
+  padding: 7px 11px;
+  font-size: 11px;
 }
 
 .csv-import-summary span,
@@ -2834,6 +3026,10 @@ textarea:focus-visible {
 
   .ai-draft-category {
     grid-column: 1 / -1;
+  }
+
+  .bank-csv-map-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3507,6 +3703,11 @@ textarea:focus-visible {
     flex-direction: column;
   }
 
+  .csv-import-review-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .bank-import-options,
   .ai-draft-fields {
     grid-template-columns: minmax(0, 1fr);
@@ -3557,6 +3758,23 @@ textarea:focus-visible {
   }
 
   .csv-import-actions .button {
+    width: 100%;
+  }
+
+  .bank-csv-mapping {
+    padding: 16px 12px;
+  }
+
+  .bank-csv-map-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bank-csv-map-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .bank-csv-map-actions .button {
     width: 100%;
   }
 

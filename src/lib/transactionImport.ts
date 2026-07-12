@@ -8,7 +8,7 @@ export const transactionImportKeySchema = z
   .min(20)
   .max(160)
   .regex(
-    /^(?:csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})|ai:statement:row:[0-9a-f]{64})$/,
+    /^(?:csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})|csv:bank:(?:id|row):[0-9a-f]{64}|ai:statement:row:[0-9a-f]{64})$/,
   )
 
 export const transactionImportRowSchema = transactionInputSchema

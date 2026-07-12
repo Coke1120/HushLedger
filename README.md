@@ -37,9 +37,11 @@ knowledge and explains every command and dashboard click.
 - Export every transaction matching the current month and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
-- Re-import HushLedger CSV files through a browser-side preview. New rows are
-  selected automatically, exact matches are flagged, and import tombstones stop
-  the same source row from returning after deletion.
+- Re-import HushLedger CSV files directly, or map a bank CSV's delimiter, date,
+  description, signed amount or debit/credit columns, destination account, and
+  fallback categories in the browser. New rows are selected automatically,
+  exact matches are flagged, and import tombstones stop the same source row from
+  returning after deletion.
 - Download a versioned full-ledger JSON backup from Settings. Restore first shows
   a checksum-verified replacement report, then requires an explicit destructive
   confirmation before one transactional D1 replacement.
@@ -57,7 +59,7 @@ knowledge and explains every command and dashboard click.
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
 - A one-tap screen privacy mode that masks every formatted amount, editable amount
-  field, and pasted AI bank-text surface for safer screen sharing.
+  field, pasted AI bank text, and raw mapped-CSV sample for safer screen sharing.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
@@ -82,6 +84,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
+- Generic bank imports hash an optional bank transaction ID with the destination
+  account. Files without IDs receive stable content-and-occurrence fingerprints;
+  raw bank IDs are not stored in the tombstone key.
 - A transaction stores only a calendar date in `YYYY-MM-DD` format. There is no
   transaction time field.
 - `created_at` and `updated_at` are internal UTC audit timestamps, not user-entered
@@ -386,7 +391,7 @@ POST   /api/recurring-rules/run-due
 POST   /api/ai/models
 POST   /api/imports/parse  (create untrusted AI drafts; never writes D1)
 POST   /api/imports/ai  (preview or commit reviewed AI drafts, maximum 200 rows)
-POST   /api/imports/csv  (preview or commit a HushLedger CSV, maximum 200 rows)
+POST   /api/imports/csv  (preview or commit normalized HushLedger/bank CSV rows, maximum 200)
 ```
 
 Account/category `PATCH` changes `isActive`; `PUT` renames an entry and may also
@@ -403,11 +408,14 @@ the truncated result as complete.
 The transaction export route returns a downloadable UTF-8 CSV rather than the
 JSON success envelope. It applies the same month, type, and search filters, is
 not restricted to 200 rows, and appends `Transaction ID` for deterministic
-round trips. Import parses the file in the browser, previews server-side
-duplicate/reference checks, and writes only explicitly selected rows. This
-convenience round trip is not a complete database backup. Use the Settings JSON
-backup for app-level full-ledger portability, and the encrypted D1 export and
-restore process in the
+round trips. Import parses the file in the browser. HushLedger exports open
+directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,
+five numeric date formats, one signed amount or separate debit/credit columns,
+optional sign reversal, an optional source ID, and explicit account/category
+defaults. The server receives normalized rows only, previews duplicate/reference
+checks, and writes only explicitly selected rows. This convenience round trip is
+not a complete database backup. Use the Settings JSON backup for app-level
+full-ledger portability, and the encrypted D1 export and restore process in the
 [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
 for database-level disaster recovery.
 

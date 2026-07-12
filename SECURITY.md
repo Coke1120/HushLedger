@@ -46,6 +46,16 @@ inside that D1 transaction so a stale preview cannot overwrite intervening write
 The in-app flow is not a substitute for encrypted D1 exports, Time Travel, and
 periodic recovery drills.
 
+## Imported CSV files
+
+HushLedger and generic bank CSV files are decoded, parsed, and mapped in the
+browser. The original file is not uploaded, persisted, logged, or sent to an AI
+provider. Only normalized rows that passed local validation are sent to the
+same-origin private HushLedger server for duplicate/reference preview and an
+explicitly selected transactional commit. Bank source IDs are hashed before they
+become import tombstones. A CSV may still contain plaintext financial data, so
+store and dispose of the source file with the same care as a ledger backup.
+
 ## User-provided AI credentials
 
 The optional AI draft feature accepts an OpenAI-compatible base URL, API key, and

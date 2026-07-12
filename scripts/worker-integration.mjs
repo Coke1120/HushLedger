@@ -801,7 +801,7 @@ async function verifyWorkerApi() {
       ...transactionBody,
       id: csvImportIds.possibleDuplicate,
       sourceRow: 4,
-      importKey: `csv:hushledger:id:${csvImportIds.possibleDuplicate}`,
+      importKey: `csv:bank:id:${'b'.repeat(64)}`,
       include: false,
     },
     {

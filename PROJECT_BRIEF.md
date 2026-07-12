@@ -37,13 +37,15 @@ not operate an independent database server or a multi-user identity system.
 - Filter income and expense.
 - Export all transactions matching the selected month and filters as CSV without
   the interactive 200-row limit; keep disaster-recovery backups separate.
-- Import a HushLedger CSV through local parsing, duplicate preview, explicit row
-  selection, and a transactional commit of at most 200 rows.
+- Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
+  date/description/amount fields, target account, and fallback categories before
+  duplicate preview, explicit row selection, and a transactional commit of at
+  most 200 normalized rows.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
   replacement.
-- Mask formatted amounts, editable amount fields, and pasted bank text with a
-  current-tab screen privacy control before sharing the screen.
+- Mask formatted amounts, editable amount fields, pasted bank text, and raw mapped
+  CSV samples with a current-tab screen privacy control before sharing the screen.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 
@@ -215,8 +217,8 @@ uses Wrangler D1 export and restore.
   focus path that reveals the masked amount.
 - History-safe account and category management with clear inactive states and
   no destructive delete affordance.
-- Preview-first CSV import that defaults possible duplicates to unselected and
-  never sends the source file to an AI provider.
+- Preview-first HushLedger and mapped-bank CSV import that defaults possible
+  duplicates to unselected and never sends the source file to an AI provider.
 - Preview-first full-ledger restore with visible replacement counts, typed
   destructive confirmation, and no partial-write path.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
@@ -232,7 +234,8 @@ uses Wrangler D1 export and restore.
 - Account/category create, rename, disable/re-enable, transaction, summary, and
   recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  filtered transaction CSV export, deterministic preview-first CSV import,
+  filtered transaction CSV export, deterministic preview-first HushLedger and
+  generic bank CSV import,
   recurring-rule management, and language settings.
 - Versioned five-table JSON backup, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
@@ -244,11 +247,9 @@ uses Wrangler D1 export and restore.
   preview, fresh migration, and upgrade migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
-### Next: deeper portability and organization
+### Next: deeper organization
 
 1. Add optional account/category reordering.
-2. Add generic bank CSV column mapping after the HushLedger round-trip format has
-   accumulated real-world fixtures.
 
 ### Implemented: user-configured AI bank-text parser
 

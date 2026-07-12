@@ -45,7 +45,7 @@ export const CSV_IMPORT_HEADERS = [
 const requiredHeaders = CSV_IMPORT_HEADERS.slice(0, 8)
 const allowedHeaders = new Set<string>(CSV_IMPORT_HEADERS)
 const csvImportKeySchema = transactionImportKeySchema.refine(
-  (value) => /^csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})$/.test(value),
+  (value) => /^(?:csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})|csv:bank:(?:id|row):[0-9a-f]{64})$/.test(value),
 )
 
 export const csvImportRowSchema = transactionImportRowSchema
@@ -91,6 +91,12 @@ export type CsvImportIssueCode =
   | 'payee_too_long'
   | 'note_too_long'
   | 'invalid_transaction_id'
+  | 'bank_invalid_header'
+  | 'bank_mapping_incomplete'
+  | 'bank_amount_conflict'
+  | 'bank_duplicate_id'
+  | 'bank_invalid_date'
+  | 'bank_invalid_amount'
 
 export type CsvImportIssue = {
   row: number | null
@@ -301,7 +307,10 @@ function restoreSpreadsheetText(value: string) {
   return /^(?:[\t\r\n]|[ \t\r\n]*[=+\-@])/.test(restored) ? restored : value
 }
 
-function parseCsvRecords(text: string) {
+export function parseCsvRecords(text: string, delimiter = ',') {
+  if (delimiter.length !== 1 || delimiter === '"' || delimiter === '\r' || delimiter === '\n') {
+    throw new Error('Invalid CSV delimiter')
+  }
   const records: string[][] = []
   let record: string[] = []
   let field = ''
@@ -336,13 +345,13 @@ function parseCsvRecords(text: string) {
       continue
     }
 
-    if (closedQuote && character !== ',' && character !== '\r' && character !== '\n') {
+    if (closedQuote && character !== delimiter && character !== '\r' && character !== '\n') {
       throw new Error('Unexpected text after a closing quote')
     }
     if (character === '"') {
       if (field.length > 0 || closedQuote) throw new Error('Unexpected quote')
       quoted = true
-    } else if (character === ',') {
+    } else if (character === delimiter) {
       pushField()
     } else if (character === '\r' || character === '\n') {
       if (character === '\r' && text[index + 1] === '\n') index += 1
