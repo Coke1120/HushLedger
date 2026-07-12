@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hushledger-demo",
+  "main": "./.open-next/worker.js",
+  "workers_dev": true,
+  "preview_urls": false,
+  "compatibility_date": "2026-07-11",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": "./.open-next/assets",
+    "binding": "ASSETS",
+    "run_worker_first": false
+  },
+  "vars": {
+    "HUSHLEDGER_PUBLIC_DEMO": "true"
+  },
+  "observability": {
+    "enabled": false
+  }
+}
