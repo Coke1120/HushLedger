@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  createRecurringRuleAction,
+  deleteRecurringRuleAction,
+  runDueRecurringRulesAction,
+  setRecurringRuleStatusAction,
+  updateRecurringRuleAction,
+} from '../app/actions'
+import {
   message,
   messageForError,
   renderMessage,
@@ -18,6 +25,7 @@ import type {
   RecurringRuleUpdateInput,
 } from '../lib/schema'
 import type { DataSource } from './useMoneyData'
+import { actionData } from './actionResult'
 
 type MutationOptions = {
   successMessage: LocalizedMessage | ((result: unknown) => LocalizedMessage)
@@ -104,7 +112,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
   const { t } = useI18n()
   const [rules, setRules] = useState<RecurringRule[]>(demoRules)
   const [source, setSource] = useState<DataSource>('loading')
-  const [online, setOnline] = useState(() => navigator.onLine)
+  const [online, setOnline] = useState(true)
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [mutatingId, setMutatingId] = useState<string | null>(null)
@@ -215,12 +223,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       return mutate({
         successMessage: message('recurringCreated'),
         demoUpdate: (current) => [toRule(input), ...current],
-        request: () =>
-          api<RecurringRule>('/api/recurring-rules', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(input),
-          }),
+        request: () => actionData(createRecurringRuleAction(input)),
       })
     },
     [mutate],
@@ -232,12 +235,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       return mutate({
         successMessage: message('recurringUpdated'),
         demoUpdate: (current) => current.map((rule) => (rule.id === id ? updateRule(rule, input) : rule)),
-        request: () =>
-          api<RecurringRule>(`/api/recurring-rules/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(input),
-          }),
+        request: () => actionData(updateRecurringRuleAction(id, input)),
       })
     },
     [mutate],
@@ -254,12 +252,10 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
               ? { ...item, isActive, revision: item.revision + 1, updatedAt: new Date().toISOString() }
               : item,
           ),
-        request: () =>
-          api<RecurringRule>(`/api/recurring-rules/${encodeURIComponent(rule.id)}/status`, {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ isActive, revision: rule.revision }),
-          }),
+        request: () => actionData(setRecurringRuleStatusAction(rule.id, {
+          isActive,
+          revision: rule.revision,
+        })),
       })
     },
     [mutate],
@@ -271,12 +267,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       return mutate({
         successMessage: message('recurringDeleted'),
         demoUpdate: (current) => current.filter((item) => item.id !== rule.id),
-        request: () =>
-          api<null>(`/api/recurring-rules/${encodeURIComponent(rule.id)}`, {
-            method: 'DELETE',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ revision: rule.revision }),
-          }),
+        request: () => actionData(deleteRecurringRuleAction(rule.id, { revision: rule.revision })),
       })
     },
     [mutate],
@@ -297,12 +288,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
         })
       },
       demoUpdate: (current) => current,
-      request: () =>
-        api<RecurringGenerationResult>('/api/recurring-rules/run-due', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({}),
-        }),
+      request: () => actionData(runDueRecurringRulesAction()),
     })
     setRunning(false)
     return result

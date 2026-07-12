@@ -25,18 +25,14 @@ npm ci
 npm run db:local
 ```
 
-Run the Worker and frontend in separate terminals:
-
-```bash
-npm run dev:worker
-```
+Start Next.js with the local Cloudflare binding bridge:
 
 ```bash
 npm run dev
 ```
 
-The Vite app is available at `http://localhost:5173`; `/api` requests are
-proxied to the local Worker at `http://localhost:8787`.
+The application is available at `http://localhost:3000`. Use `npm run preview`
+when a change needs validation in the production-like OpenNext workerd runtime.
 
 ## Pull requests
 

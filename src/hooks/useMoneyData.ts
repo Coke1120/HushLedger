@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createTransactionAction } from '../app/actions'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
 import { addDemo, demoAccounts, demoCategories, demoSummary, getDemoTransactions } from '../lib/demo'
 import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from '../lib/schema'
+import { actionData } from './actionResult'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 
@@ -30,7 +32,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
   const { t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => demoSnapshot(month, type, search))
   const [source, setSource] = useState<DataSource>('loading')
-  const [online, setOnline] = useState(() => navigator.onLine)
+  const [online, setOnline] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<LocalizedMessage | null>(null)
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
@@ -131,11 +133,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
           return true
         }
 
-        await api<Transaction>('/api/transactions', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(input),
-        })
+        await actionData(createTransactionAction(input))
         const refreshed = await refresh(false)
         setActionMessage(
           message(refreshed ? 'transactionSaved' : 'transactionSavedRefreshFailed'),

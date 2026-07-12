@@ -9,10 +9,15 @@
 [![HushLedger ledger-and-flow brand artwork](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/brand/hushledger-social-preview.png)](https://github.com/Coke1120/HushLedger/blob/main/design/brand/hushledger-social-preview.png)
 
 HushLedger is a single-user, online-first personal finance tool with interfaces in
-Traditional Chinese, English, Japanese, and French. Built as a React PWA backed by
-Cloudflare Workers and D1, it focuses on fast transaction entry, clear monthly
-summaries, and dependable daily, weekly, and monthly recurring transactions.
+Traditional Chinese, English, Japanese, and French. Built with the Next.js App
+Router and deployed through OpenNext to Cloudflare Workers and D1, it focuses on
+fast transaction entry, clear monthly summaries, and dependable daily, weekly,
+and monthly recurring transactions.
 Production deployments must be protected by Cloudflare Access.
+
+You do not need to deploy HushLedger to use it. Local mode needs no Cloudflare
+account, domain, Access setup, or API key. Deploy only when you want the same
+private ledger available from other devices or outside your computer.
 
 **New to deployment?** Follow the
 [beginner-friendly Cloudflare guide](docs/EASY_DEPLOY.md). It requires no Git
@@ -66,18 +71,32 @@ credit card, or a digital wallet. It is not an additional transaction type.
 ## Architecture
 
 ```text
-React 19 + Vite 8 + TypeScript PWA
-                  |
-                  v
-       Cloudflare Worker + Hono
-                  |
-                  v
-             Cloudflare D1
+Cloudflare Access + custom Worker
+       │ JWT, CSP, Cron
+       ▼
+Next.js 16 App Router via OpenNext
+       │ Server Actions + Route Handlers
+       ▼
+Cloudflare D1
 ```
 
 HushLedger does not require a separate database server, a Docker database,
 third-party fonts, or an application-level login. Cloudflare Access is the
 production authentication boundary.
+
+## Choose how to run HushLedger
+
+| Goal | Command | Database | Cloudflare required? |
+| --- | --- | --- | --- |
+| Use it on this computer | `npm run dev` | Local D1 | No |
+| Test the production-style Worker locally | `npm run preview` | Local D1 | No |
+| Use it privately from multiple devices | `npm run deploy` | Cloudflare D1 | Yes: account, domain, and Access |
+
+The current release does not use an application API key. Local data stays in
+Wrangler's ignored local state and is separate from any deployed D1 database.
+After you attach its protected custom domain, a Cloudflare deployment becomes
+internet-reachable, but the app must remain private behind Cloudflare Access; it
+is not intended to be a public ledger.
 
 ## Languages and settings
 
@@ -99,7 +118,8 @@ and recurring-rule names are always preserved exactly as entered.
 
 ## Local development
 
-Requirements: Node.js 22+ and npm 10+.
+This is also the supported way to use HushLedger on one computer. Requirements:
+Node.js 22+ and npm 10+.
 
 ```bash
 git clone https://github.com/Coke1120/HushLedger.git
@@ -108,28 +128,30 @@ npm ci
 npm run db:local
 ```
 
-Start the Worker and Vite in separate terminals:
+Start Next.js. OpenNext's development bridge supplies the local D1 binding from
+`wrangler.jsonc`, so only one process is needed:
 
 ```bash
-# Terminal A: Worker, API, and local D1
-npm run dev:worker
-```
-
-```bash
-# Terminal B: Vite; proxies /api to 127.0.0.1:8787
 npm run dev
 ```
 
-Open `http://localhost:5173`. If only Vite is running, the app enters a clearly
-labelled demo mode. Demo data remains only in the current page session. Mutations
-are blocked while offline; the app never pretends that an offline change was
-synchronized.
+Open `http://localhost:3000`. Demo data remains only in the current page session
+when live data is unavailable. Mutations are blocked while offline; the app never
+pretends that an offline change was synchronized.
 
-For a production-like preview served by one Worker:
+Local mode has no application sign-in. The project script binds the server to
+`127.0.0.1` only; protect your operating-system account and disk, and treat
+`.wrangler/` as private financial data even though Git ignores it.
+
+`npm run start` is intentionally not defined. A plain Next.js production server
+does not provide HushLedger's Cloudflare D1 binding. Use `npm run dev` for normal
+local use or `npm run preview` for the production-style OpenNext Worker running
+locally.
+
+For a production-like workerd preview using the generated OpenNext bundle:
 
 ```bash
-npm run build
-npm run dev:worker
+npm run preview
 ```
 
 Then open `http://localhost:8787`.
@@ -142,9 +164,11 @@ npm run verify
 npm audit --omit=dev --audit-level=high
 ```
 
-`npm run verify` runs Vitest, TypeScript, ESLint, Oxlint, a production PWA build,
-and a Worker integration gate against an isolated temporary D1 database. The
-integration gate rebuilds fresh and upgraded migration paths and verifies the API,
+`npm run verify` runs the Node-based TypeScript unit suite, TypeScript typechecking,
+ESLint, Oxlint, the Next.js and OpenNext production builds, and a workerd
+integration gate against isolated temporary D1 databases. The gate rebuilds fresh
+and upgraded migration paths and verifies the
+App Router shell, privacy-safe PWA assets, security headers, API contracts,
 configured Cron schedule, recurring-rule CRUD, race-safe idempotency, and history
 preservation.
 
@@ -202,11 +226,16 @@ contains at most 200 transactions. When that limit is reached, the UI explicitly
 states that it is showing the 200 most recent transactions instead of describing
 the truncated result as complete.
 
-Mutation routes require a same-origin browser request, a JSON content type, a body
-within the configured size limit, and a payload accepted by the strict schema.
-These application checks do not replace Cloudflare Access.
+The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
+mutation routes remain available and require a same-origin request, a JSON content
+type, a body no larger than 16 KiB, and a payload accepted by the strict schema.
+These checks complement the custom Worker's cryptographic Cloudflare Access JWT validation.
 
 ## Private Cloudflare deployment
+
+Deployment is optional. For private use on the same computer, follow
+[Local development](#local-development) and stop before this section. No API key
+or Cloudflare login is needed locally.
 
 Start with [the beginner-friendly deployment guide](docs/EASY_DEPLOY.md) if you
 want a safe, copy-and-paste walkthrough with no Git experience required.
@@ -217,14 +246,15 @@ setup, including:
 - Wrangler login, D1 creation, and Worker bindings.
 - Local and remote migrations.
 - Worker deployment and the configured daily Cron schedule.
-- Cloudflare Access protection for the self-hosted application and alternate
-  hostnames.
+- Cloudflare Access protection for the custom hostname and every application
+  path, with alternate Worker URLs disabled.
 - Unauthorized and authorized browser verification.
 - Encrypted external backups and restore drills.
 - The correct location for future AI provider secrets.
 
-Do not enter real financial data until Cloudflare Access protects the UI,
-`/api/*`, the custom domain, `workers.dev`, and preview URLs.
+Do not enter real financial data until Cloudflare Access protects the custom
+hostname and every path, including `/api/*`, while `workers.dev` and Preview URLs
+remain disabled.
 
 ## Planned AI bank-record import
 
@@ -244,7 +274,7 @@ release does **not** enable AI and does not accept an API key in the browser.
   backups, API keys, or real financial data.
 - Never record complete amounts, payees, notes, bank records, account identifiers,
   or request bodies in logs, screenshots, issues, or pull requests.
-- Store Worker secrets with `wrangler secret put`. There are no `VITE_` secrets.
+- Store Worker secrets with `wrangler secret put`. Client bundles never contain secrets.
 - Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 ## Contributing

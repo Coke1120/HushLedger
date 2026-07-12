@@ -1,6 +1,6 @@
 # HushLedger product brief
 
-> Updated: 2026-07-11 (HKT)
+> Updated: 2026-07-12 (HKT)
 >
 > Status: core transaction and recurring-rule release implemented locally
 >
@@ -14,13 +14,13 @@ person across phone, tablet, and desktop. It prioritizes trustworthy data,
 quick daily entry, and calm presentation over accounting-suite complexity.
 
 ```text
-React + Vite + TypeScript PWA
-             │
-             ▼
-     Cloudflare Workers API
-             │
-             ▼
-        Cloudflare D1
+Cloudflare Access + custom Worker
+       │ authenticated OpenNext fetch + Cron
+       ▼
+Next.js App Router
+       │ Server Actions + Route Handlers
+       ▼
+Cloudflare D1
 ```
 
 Production is online-first and protected by Cloudflare Access. The project does
@@ -130,21 +130,23 @@ POST   /api/recurring-rules/run-due
 ```
 
 Responses use one success/error envelope. API input is strict Zod-validated;
-the Worker independently validates amount, currency, account state, category
+the server independently validates amount, currency, account state, category
 state, category type, content type, body size, and same-origin mutation.
 Database and stack errors are never returned to the client.
 
 ## Reliability and privacy
 
-- Cloudflare Access protects every production UI and API hostname.
+- Cloudflare Access protects every production UI and API hostname, and the custom
+  Worker cryptographically verifies its signed JWT before forwarding to Next.js.
 - The Cloudflare account uses strong authentication and MFA.
 - Repository, logs, fixtures, screenshots, issues, and pull requests contain no
   secrets or real financial data.
 - `.wrangler/`, local databases, exports, and backups are ignored by Git.
 - D1 is not the only copy: maintain encrypted off-platform backups and periodic
   restore drills.
-- App-shell caching is allowed. Offline writes and multi-device conflict sync
-  are not claimed in the current release.
+- Only the non-sensitive offline/demo shell and fingerprinted static assets may be
+  cached. API, Server Action, RSC, personalized navigation, and financial responses
+  are never cached. Offline writes and multi-device conflict sync are not claimed.
 
 ## UX direction
 
@@ -167,8 +169,8 @@ Database and stack errors are never returned to the client.
 - Responsive dashboard, transaction form/list, recurring-rule management, and
   language settings.
 - Daily 00:05 HKT Cron plus manual due generation.
-- Unit tests, typecheck, two linters, production PWA build, fresh migration, and
-  upgrade migration validation.
+- Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
+  preview, fresh migration, and upgrade migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
 ### Next: custom master data and deterministic import
@@ -196,7 +198,7 @@ supplies authoritative integer amounts or database IDs. See
 ## Core release definition of done
 
 - Clean checkout supports `npm ci` and local D1 migrations.
-- Local Worker reads and writes D1.
+- Local Next.js development and the OpenNext workerd preview read and write D1.
 - A transaction appears in its list and monthly summary.
 - Daily, weekly, and monthly rules can be created, edited, paused, resumed, run,
   and deleted without duplicate occurrences or history loss.

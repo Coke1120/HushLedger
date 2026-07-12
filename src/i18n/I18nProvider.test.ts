@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 import {
   dictionaries,
   resolveLocale,
@@ -9,21 +10,23 @@ import {
 
 describe('locale resolution', () => {
   it('prefers a valid stored locale', () => {
-    expect(resolveLocale('fr', ['ja-JP'])).toBe('fr')
+    assert.equal(resolveLocale('fr', ['ja-JP']), 'fr')
   })
 
-  it.each([
+  for (const [languages, expected] of [
     [['zh-TW'], 'zh-Hant'],
     [['en-GB'], 'en'],
     [['ja-JP'], 'ja'],
     [['fr-CA'], 'fr'],
     [['de-DE'], 'zh-Hant'],
-  ] as const)('maps browser languages %j to %s', (languages, expected) => {
-    expect(resolveLocale(null, languages)).toBe(expected)
-  })
+  ] as const) {
+    it(`maps browser languages ${JSON.stringify(languages)} to ${expected}`, () => {
+      assert.equal(resolveLocale(null, languages), expected)
+    })
+  }
 
   it('ignores an invalid persisted locale', () => {
-    expect(resolveLocale('de', ['en-US'])).toBe('en')
+    assert.equal(resolveLocale('de', ['en-US']), 'en')
   })
 })
 
@@ -31,23 +34,25 @@ describe('message catalogs', () => {
   it('keeps identical keys in all four catalogs', () => {
     const expected = Object.keys(dictionaries['zh-Hant']).sort()
     for (const locale of supportedLocales) {
-      expect(Object.keys(dictionaries[locale]).sort()).toEqual(expected)
+      assert.deepEqual(Object.keys(dictionaries[locale]).sort(), expected)
     }
   })
 
-  it.each([
+  for (const [locale, expected] of [
     ['zh-Hant', '3 筆交易'],
     ['en', '3 transactions'],
     ['ja', '3件の取引'],
     ['fr', '3 opérations'],
-  ] satisfies ReadonlyArray<readonly [Locale, string]>)('interpolates counts for %s', (locale, expected) => {
-    expect(translate(locale, 'transactionCount', { count: 3 })).toBe(expected)
-  })
+  ] satisfies ReadonlyArray<readonly [Locale, string]>) {
+    it(`interpolates counts for ${locale}`, () => {
+      assert.equal(translate(locale, 'transactionCount', { count: 3 }), expected)
+    })
+  }
 
   it('uses locale-aware singular messages', () => {
-    expect(translate('en', 'transactionCount', { count: 1 })).toBe('1 transaction')
-    expect(translate('fr', 'recurringRuleCount', { count: 1 })).toBe('1 règle')
-    expect(translate('fr', 'recurringRuleCount', { count: 0 })).toBe('0 règles')
+    assert.equal(translate('en', 'transactionCount', { count: 1 }), '1 transaction')
+    assert.equal(translate('fr', 'recurringRuleCount', { count: 1 }), '1 règle')
+    assert.equal(translate('fr', 'recurringRuleCount', { count: 0 }), '0 règles')
   })
 
   it('preserves interpolation placeholders in every locale', () => {
@@ -56,12 +61,12 @@ describe('message catalogs', () => {
     for (const key of Object.keys(dictionaries['zh-Hant']) as Array<keyof typeof dictionaries['zh-Hant']>) {
       const expected = placeholders(dictionaries['zh-Hant'][key])
       for (const locale of supportedLocales) {
-        expect(placeholders(dictionaries[locale][key]), `${locale}.${key}`).toEqual(expected)
+        assert.deepEqual(placeholders(dictionaries[locale][key]), expected, `${locale}.${key}`)
       }
     }
   })
 
   it('keeps unknown interpolation tokens visible for translation QA', () => {
-    expect(translate('en', 'generatedByRule')).toContain('{name}')
+    assert.ok(translate('en', 'generatedByRule').includes('{name}'))
   })
 })

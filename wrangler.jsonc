@@ -1,15 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hushledger",
-  "main": "worker/index.ts",
+  "main": "custom-worker.ts",
   "workers_dev": false,
   "preview_urls": false,
   "compatibility_date": "2026-07-11",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
-    "directory": "./dist",
+    "directory": "./.open-next/assets",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
     "run_worker_first": true
   },
   "d1_databases": [

@@ -1,6 +1,7 @@
+'use client'
+
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
-import './App.css'
 import { AppHeader } from './components/AppHeader'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
@@ -13,14 +14,12 @@ import { TransactionList } from './components/TransactionList'
 import { TransactionToolbar, type TransactionFilter } from './components/TransactionToolbar'
 import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
-import { currentHongKongDate, shiftMonth } from './lib/date'
+import { shiftMonth } from './lib/date'
 import type { TransactionInput } from './lib/schema'
 
-const currentMonth = currentHongKongDate().month
-
-function App() {
+function App({ initialMonth }: { initialMonth: string }) {
   const { t } = useI18n()
-  const [month, setMonth] = useState(currentMonth)
+  const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
   const [search, setSearch] = useState('')
   const [view, setView] = useState<AppView>('overview')
@@ -97,7 +96,7 @@ function App() {
             <div className="overview-region">
               <MonthNavigator
                 month={month}
-                currentMonth={currentMonth}
+                currentMonth={initialMonth}
                 onChange={setMonth}
                 onPrevious={() => setMonth((value) => shiftMonth(value, -1))}
                 onNext={() => setMonth((value) => shiftMonth(value, 1))}

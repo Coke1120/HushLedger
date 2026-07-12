@@ -7,6 +7,11 @@ commands, and click through Cloudflare's dashboard.
 > **Privacy first:** Do not enter real financial data until the final private-
 > browser test shows the Cloudflare sign-in page before HushLedger.
 
+> **Only using one computer?** You can skip Cloudflare completely. Follow the
+> [README local setup](../README.md#local-development), then use `npm run dev`.
+> Local use needs no domain, Cloudflare login, or API key. `npm run start` is not
+> a supported command because HushLedger needs a local D1 binding.
+
 ## What you need
 
 - A Mac or Windows computer.
@@ -75,9 +80,20 @@ npm ci
 ```
 
 Wait until the command finishes and the terminal is ready for another command.
-Warnings about funding are harmless. If the terminal says that `npm` is not
-recognized or not found, install Node.js from the link above, close the terminal,
-open it again, and repeat Step 2.
+Informational notices may appear, but the command must finish without an `npm`
+error. If the terminal says that `npm` is not recognized or not found, install
+Node.js from the link above, close the terminal, open it again, and repeat Step 2.
+
+Before creating anything in Cloudflare, prepare the local database and run the
+complete quality gate:
+
+```bash
+npm run db:local
+npm run verify
+```
+
+Both commands must succeed. They use local or temporary D1 databases and do not
+create or change resources in your Cloudflare account.
 
 ## 4. Sign in to Cloudflare
 
@@ -118,10 +134,12 @@ npx wrangler d1 create hushledger --binding DB --update-config
 ```
 
 This creates the private D1 database and connects it to HushLedger automatically.
-You do not need to copy a database ID or edit any file.
+Wrangler replaces the checked-in placeholder with the new database ID while
+keeping the binding named `DB`. You do not need to copy an ID or edit a file.
 
-Continue only after the terminal says that the database was created. If it says
-that `hushledger` already exists, stop and use the
+Continue only after the terminal says that the database was created and the
+configuration was updated. If it says that `hushledger` already exists, or if
+`wrangler.jsonc` still contains `REPLACE_WITH_D1_DATABASE_ID`, stop and use the
 [advanced deployment guide](CLOUDFLARE_SETUP.md).
 
 ## 6. Prepare the database tables
@@ -137,16 +155,11 @@ If Cloudflare asks for confirmation, check that the database name is
 
 ## 7. Build and upload HushLedger
 
-First build the app:
+Build the Next.js application, adapt it for Cloudflare, and upload it with one
+command:
 
 ```bash
-npm run build
-```
-
-When it finishes, upload it:
-
-```bash
-npx wrangler deploy
+npm run deploy
 ```
 
 It is normal if no working website address appears yet. HushLedger intentionally
@@ -199,6 +212,38 @@ To receive a one-time code by email instead:
 
 Cloudflare Access denies anyone who does not match your **Only me** policy.
 
+### Connect HushLedger's JWT verification
+
+HushLedger also verifies Cloudflare Access's signed token inside its custom Worker.
+This prevents a forged header from being treated as a valid login.
+
+1. In **Zero Trust > Settings**, copy your team domain. It looks like
+   `https://your-team.cloudflareaccess.com` and must include `https://`.
+2. Return to the HushLedger Access application, open **Additional settings**, and
+   copy the Application Audience (AUD) tag.
+3. Return to the terminal and paste:
+
+   ```bash
+   npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
+   ```
+
+4. When prompted, paste the team domain and submit it.
+5. Then paste:
+
+   ```bash
+   npx wrangler secret put CF_ACCESS_AUD
+   ```
+
+6. When prompted, paste the AUD tag and submit it.
+
+Do not continue until both commands succeed. On any non-local hostname, HushLedger
+deliberately refuses requests when these values are missing or a token is invalid.
+
+Each `wrangler secret put` command creates and deploys a new Worker version. The
+Worker is still unreachable because you have not attached a hostname. Reopen
+**Workers & Pages > hushledger > Settings > Domains & Routes** and confirm again
+that **workers.dev** and **Preview URLs** are disabled and no custom domain exists.
+
 ## 9. Give the protected app its web address
 
 Only do this after the Access application from Step 8 exists.
@@ -241,6 +286,8 @@ Save these three details somewhere private:
 HushLedger does not need an app password, AI key, or banking password. AI bank-
 record import is not enabled in the current release. Never paste banking records,
 API keys, passwords, or Cloudflare tokens into GitHub issues or screenshots.
+Wrangler's browser sign-in authorizes deployment; HushLedger itself does not need
+an API key.
 
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).
@@ -250,18 +297,24 @@ For updates, backups, recovery tests, and more advanced security options, use th
 | What you see | What to do |
 | --- | --- |
 | `npm` is not recognized or not found | Install the current Node.js LTS version, close the terminal, reopen it, and repeat Step 2. |
+| `Missing script: "start"` | Use `npm run dev` for normal local use or `npm run preview` for a production-style local Worker. |
 | `package.json` cannot be found | The terminal is in the wrong folder. Repeat Step 2 and make sure you opened `HushLedger-main`. |
+| `wrangler.jsonc` still contains `REPLACE_WITH_D1_DATABASE_ID` | Do not deploy. Use the advanced guide to connect the intended D1 database manually. |
 | Wrangler shows the wrong Cloudflare account | Run `npx wrangler logout`, then repeat Step 4 with the account that owns your domain. |
 | A database or Worker named `hushledger` already exists | Stop. Use the advanced guide so that you do not overwrite an existing installation. |
 | No one-time code arrives | Confirm that the Access policy uses your exact email, check spam, and request a fresh code. Each code is single-use and expires after 10 minutes. |
 | Cloudflare says the custom domain already has a DNS or CNAME record | Choose a new, unused subdomain. Do not delete an existing record unless you know what service depends on it. |
 | The custom domain is still unavailable | Wait a few minutes, then confirm that the hostname in Access and the hostname in Domains & Routes are identical. |
+| HushLedger returns `ACCESS_CONFIG_MISSING` | Repeat the JWT verification steps and confirm both Worker secrets were saved to the `hushledger` Worker. |
 | HushLedger opens without a Cloudflare sign-in screen | Remove the Custom Domain immediately, then correct the Access application and exact-email policy before reconnecting it. |
 
 ## Official Cloudflare references
 
 - [Create a D1 database](https://developers.cloudflare.com/d1/get-started/)
 - [Apply D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
+- [Store Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Worker Preview URLs](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/)
 - [Publish and protect a self-hosted application](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+- [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 - [One-time PIN login](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
 - [Add a Worker Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)

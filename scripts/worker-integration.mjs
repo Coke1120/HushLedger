@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -8,6 +9,8 @@ import { fileURLToPath } from 'node:url'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const wrangler = join(projectRoot, 'node_modules', '.bin', 'wrangler')
+const openNext = join(projectRoot, 'node_modules', '.bin', 'opennextjs-cloudflare')
+const skipBuild = process.argv.includes('--skip-build')
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hushledger-integration-'))
 const freshState = join(temporaryRoot, 'fresh-state')
 const upgradeState = join(temporaryRoot, 'upgrade-state')
@@ -31,8 +34,12 @@ async function availablePort() {
 }
 
 function runWrangler(args) {
+  return runCommand(wrangler, args, 'wrangler')
+}
+
+function runCommand(command, args, label) {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(wrangler, args, {
+    const child = spawn(command, args, {
       cwd: projectRoot,
       env: { ...process.env, CI: '1', NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -48,7 +55,7 @@ function runWrangler(args) {
     child.once('error', reject)
     child.once('exit', (code) => {
       if (code === 0) resolveRun({ stdout, stderr })
-      else reject(new Error(`wrangler ${args.join(' ')} failed (${code})\n${stderr || stdout}`))
+      else reject(new Error(`${label} ${args.join(' ')} failed (${code})\n${stderr || stdout}`))
     })
   })
 }
@@ -65,11 +72,13 @@ async function verifyUpgradeMigration() {
   )
 
   const upgradeConfig = join(temporaryRoot, 'wrangler-upgrade.json')
+  const migrationWorker = join(temporaryRoot, 'migration-worker.js')
+  await writeFile(migrationWorker, "export default { fetch() { return new Response('migration-only') } }\n")
   await writeFile(
     upgradeConfig,
     JSON.stringify({
       name: 'hushledger-upgrade-verification',
-      main: join(projectRoot, 'worker', 'index.ts'),
+      main: migrationWorker,
       compatibility_date: '2026-07-11',
       d1_databases: [
         {
@@ -209,12 +218,94 @@ async function api(baseUrl, path, { method = 'GET', body, origin = baseUrl } = {
   return { response, payload }
 }
 
+function rawHttpGet(baseUrl, headers) {
+  const url = new URL(baseUrl)
+  return new Promise((resolveResponse, reject) => {
+    const request = httpRequest(
+      {
+        headers,
+        hostname: url.hostname,
+        method: 'GET',
+        path: url.pathname,
+        port: url.port,
+      },
+      (response) => {
+        const chunks = []
+        response.on('data', (chunk) => chunks.push(chunk))
+        response.on('end', () =>
+          resolveResponse({
+            body: Buffer.concat(chunks).toString('utf8'),
+            headers: response.headers,
+            status: response.statusCode,
+          }),
+        )
+      },
+    )
+    request.once('error', reject)
+    request.end()
+  })
+}
+
+async function verifyNextShell(baseUrl) {
+  const spoofedAccess = await rawHttpGet(baseUrl, {
+    host: 'ledger.example.com',
+    'x-hushledger-access-verified': 'true',
+  })
+  assert.equal(spoofedAccess.status, 503)
+  assert.deepEqual(JSON.parse(spoofedAccess.body), {
+    ok: false,
+    error: { code: 'ACCESS_CONFIG_MISSING', message: 'Cloudflare Access is not configured.' },
+  })
+  assert.match(spoofedAccess.headers['cache-control'] ?? '', /private.*no-store/)
+
+  const root = await fetch(baseUrl)
+  assert.equal(root.status, 200)
+  assert.match(root.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(root.headers.get('x-frame-options'), 'DENY')
+  assert.match(root.headers.get('x-robots-tag') ?? '', /noindex/)
+  const policy = root.headers.get('content-security-policy') ?? ''
+  assert.match(policy, /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/)
+  assert.doesNotMatch(policy, /unsafe-inline/)
+
+  const nonce = policy.match(/'nonce-([^']+)'/)?.[1]
+  assert(nonce)
+  const html = await root.text()
+  assert.match(html, /HushLedger/)
+  assert(html.includes(`nonce="${nonce}"`), 'Next bootstrap scripts must carry the request CSP nonce')
+
+  const manifest = await fetch(`${baseUrl}/manifest.webmanifest`)
+  assert.equal(manifest.status, 200)
+  const manifestPayload = await manifest.json()
+  assert.match(manifestPayload.name, /^HushLedger/)
+  assert.equal(manifestPayload.display, 'standalone')
+  assert(manifestPayload.icons.some(({ src }) => src === '/pwa-512.png'))
+
+  const serviceWorker = await fetch(`${baseUrl}/sw.js`)
+  assert.equal(serviceWorker.status, 200)
+  assert.match(serviceWorker.headers.get('cache-control') ?? '', /no-cache.*no-store/)
+  assert.match(serviceWorker.headers.get('service-worker-allowed') ?? '', /^\/$/)
+  const serviceWorkerSource = await serviceWorker.text()
+  assert.match(serviceWorkerSource, /\/offline/)
+  assert.match(serviceWorkerSource, /_next\/static/)
+  assert.match(serviceWorkerSource, /caches\.delete/)
+
+  const offline = await fetch(`${baseUrl}/offline`)
+  assert.equal(offline.status, 200)
+  assert.match(await offline.text(), /HushLedger/)
+
+  const unknownApi = await api(baseUrl, '/api/not-a-real-route')
+  assert.equal(unknownApi.response.status, 404)
+  assert.equal(unknownApi.payload.ok, false)
+  assert.equal(unknownApi.payload.error.code, 'NOT_FOUND')
+}
+
 async function verifyWorkerApi() {
   const port = await availablePort()
   const inspectorPort = await availablePort()
   const baseUrl = `http://127.0.0.1:${port}`
   workerProcess = startWorker(port, inspectorPort)
   await waitForHealth(baseUrl)
+  await verifyNextShell(baseUrl)
 
   const today = hktCalendarDate()
   const month = today.slice(0, 7)
@@ -222,6 +313,35 @@ async function verifyWorkerApi() {
   const categoriesResult = await api(baseUrl, '/api/categories')
   assert.equal(accountsResult.response.status, 200)
   assert.equal(categoriesResult.response.status, 200)
+  assert.match(accountsResult.response.headers.get('cache-control') ?? '', /no-store/)
+
+  const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
+  assert.equal(duplicateMonth.response.status, 400)
+  assert.equal(duplicateMonth.payload.error.code, 'INVALID_QUERY')
+
+  const wrongMediaType = await fetch(`${baseUrl}/api/transactions`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', origin: baseUrl },
+    body: '{}',
+  })
+  assert.equal(wrongMediaType.status, 415)
+  assert.equal((await wrongMediaType.json()).error.code, 'UNSUPPORTED_MEDIA_TYPE')
+
+  const invalidJson = await fetch(`${baseUrl}/api/transactions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: baseUrl },
+    body: '{',
+  })
+  assert.equal(invalidJson.status, 400)
+  assert.equal((await invalidJson.json()).error.code, 'INVALID_JSON')
+
+  const oversized = await fetch(`${baseUrl}/api/transactions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', origin: baseUrl },
+    body: JSON.stringify({ padding: 'x'.repeat(17 * 1024) }),
+  })
+  assert.equal(oversized.status, 413)
+  assert.equal((await oversized.json()).error.code, 'PAYLOAD_TOO_LARGE')
   assert.deepEqual(
     Object.fromEntries(accountsResult.payload.data.map(({ name, localizationKey }) => [name, localizationKey])),
     {
@@ -454,12 +574,14 @@ async function stopWorker() {
 }
 
 try {
+  if (!skipBuild) await runCommand(openNext, ['build'], 'opennextjs-cloudflare')
   await runWrangler(['d1', 'migrations', 'apply', 'hushledger', '--local', '--persist-to', freshState])
   await verifyUpgradeMigration()
   const apiEvidence = await verifyWorkerApi()
   console.log(
     JSON.stringify({
       ok: true,
+      runtime: 'next-open-next-workerd',
       freshMigrations: '0001-0006',
       upgradeMigration: '0004-to-0006-preserved-data-and-custom-names',
       ...apiEvidence,

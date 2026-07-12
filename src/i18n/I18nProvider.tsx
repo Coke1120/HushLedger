@@ -1,3 +1,5 @@
+'use client'
+
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { formatHongKongDate, formatMonthLabel } from '../lib/date'
 import { formatMoney as formatCurrency } from '../lib/money'
@@ -11,7 +13,7 @@ import {
   type Translator,
 } from './core'
 
-function readInitialLocale() {
+function readBrowserLocale() {
   let storedLocale: string | null = null
   try {
     storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
@@ -32,7 +34,13 @@ function setMetaContent(selector: string, value: string) {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(readInitialLocale)
+  const [locale, setLocale] = useState<Locale>('zh-Hant')
+
+  useEffect(() => {
+    const browserLocale = readBrowserLocale()
+    const timeout = window.setTimeout(() => setLocale(browserLocale), 0)
+    return () => window.clearTimeout(timeout)
+  }, [])
 
   useEffect(() => {
     try {

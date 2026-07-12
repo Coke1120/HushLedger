@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 import {
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
@@ -22,10 +23,10 @@ const valid = {
 
 describe('transaction validation', () => {
   it('accepts a complete HKD transaction', () => {
-    expect(transactionInputSchema.safeParse(valid).success).toBe(true)
+    assert.equal(transactionInputSchema.safeParse(valid).success, true)
   })
 
-  it.each([
+  for (const [label, patch] of [
     ['fractional minor units', { amountMinor: 1.2 }],
     ['unsafe minor units', { amountMinor: Number.MAX_SAFE_INTEGER + 1 }],
     ['non-UUID id', { id: '1' }],
@@ -33,29 +34,34 @@ describe('transaction validation', () => {
     ['date containing a time', { occurredOn: '2026-07-11T10:30:00.000Z' }],
     ['invalid calendar date', { occurredOn: '2026-02-30' }],
     ['oversized payee', { payee: '商'.repeat(81) }],
-  ])('rejects %s', (_label, patch) => {
-    expect(transactionInputSchema.safeParse({ ...valid, ...patch }).success).toBe(false)
-  })
+  ] as const) {
+    it(`rejects ${label}`, () => {
+      assert.equal(transactionInputSchema.safeParse({ ...valid, ...patch }).success, false)
+    })
+  }
 
   it('rejects unknown input fields', () => {
-    expect(transactionInputSchema.safeParse({ ...valid, privateMemo: 'nope' }).success).toBe(false)
+    assert.equal(transactionInputSchema.safeParse({ ...valid, privateMemo: 'nope' }).success, false)
   })
 })
 
 describe('transaction query validation', () => {
   it('accepts month, type, and a bounded search string', () => {
-    expect(
+    assert.deepEqual(
       transactionQuerySchema.parse({ month: '2026-07', type: 'expense', search: '超級市場' }),
-    ).toEqual({ month: '2026-07', type: 'expense', search: '超級市場' })
+      { month: '2026-07', type: 'expense', search: '超級市場' },
+    )
   })
 
-  it.each([
+  for (const [index, query] of [
     { month: '2026-13' },
     { type: 'transfer' },
     { search: 'x'.repeat(81) },
-  ])('rejects invalid query %#', (query) => {
-    expect(transactionQuerySchema.safeParse(query).success).toBe(false)
-  })
+  ].entries()) {
+    it(`rejects invalid query ${index}`, () => {
+      assert.equal(transactionQuerySchema.safeParse(query).success, false)
+    })
+  }
 })
 
 const validRecurringRule = {
@@ -75,21 +81,23 @@ const validRecurringRule = {
 
 describe('recurring rule validation', () => {
   it('accepts create, update, and status payloads', () => {
-    expect(recurringRuleCreateSchema.safeParse(validRecurringRule).success).toBe(true)
+    assert.equal(recurringRuleCreateSchema.safeParse(validRecurringRule).success, true)
     const { id, ...update } = validRecurringRule
-    expect(id).toMatch(/-/)
-    expect(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success).toBe(true)
-    expect(recurringRuleStatusSchema.safeParse({ isActive: false, revision: 1 }).success).toBe(true)
-    expect(recurringRuleDeleteSchema.safeParse({ revision: 1 }).success).toBe(true)
+    assert.match(id, /-/)
+    assert.equal(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success, true)
+    assert.equal(recurringRuleStatusSchema.safeParse({ isActive: false, revision: 1 }).success, true)
+    assert.equal(recurringRuleDeleteSchema.safeParse({ revision: 1 }).success, true)
   })
 
-  it.each([
+  for (const [label, patch] of [
     ['unsupported frequency', { frequency: 'yearly' }],
     ['invalid start date', { scheduleStartsOn: '2026-02-30' }],
     ['empty rule name', { name: '   ' }],
     ['fractional amount', { amountMinor: 1.5 }],
     ['unknown field', { privateInstruction: 'nope' }],
-  ])('rejects %s', (_label, patch) => {
-    expect(recurringRuleCreateSchema.safeParse({ ...validRecurringRule, ...patch }).success).toBe(false)
-  })
+  ] as const) {
+    it(`rejects ${label}`, () => {
+      assert.equal(recurringRuleCreateSchema.safeParse({ ...validRecurringRule, ...patch }).success, false)
+    })
+  }
 })

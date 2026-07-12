@@ -22,7 +22,10 @@ support branches yet.
 ## Deployment responsibility
 
 The application does not provide its own login system. Operators must protect
-every production route with Cloudflare Access, keep Worker secrets out of the
-frontend and repository, enable strong authentication on their Cloudflare
-account, and maintain encrypted off-platform backups. See
+every production route with Cloudflare Access and configure `CF_ACCESS_TEAM_DOMAIN`
+and `CF_ACCESS_AUD` as Worker secrets. The custom Worker fails closed outside
+localhost and cryptographically verifies each Access JWT's signature, issuer,
+audience, and lifetime before Next.js handles the request. Operators must also
+keep secrets out of client bundles and the repository, enable strong authentication
+on their Cloudflare account, and maintain encrypted off-platform backups. See
 [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md).

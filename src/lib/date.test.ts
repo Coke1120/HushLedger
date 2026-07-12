@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
 import {
   currentHongKongDate,
   formatHongKongDate,
@@ -9,41 +10,43 @@ import {
 
 describe('Hong Kong date helpers', () => {
   it('builds date-only boundaries for a calendar month', () => {
-    expect(monthRangeDates('2026-07')).toEqual({
+    assert.deepEqual(monthRangeDates('2026-07'), {
       start: '2026-07-01',
       end: '2026-08-01',
     })
   })
 
   it('derives today from the Hong Kong calendar without exposing a time field', () => {
-    expect(currentHongKongDate(new Date('2026-06-30T16:30:00.000Z'))).toEqual({
+    assert.deepEqual(currentHongKongDate(new Date('2026-06-30T16:30:00.000Z')), {
       date: '2026-07-01',
       month: '2026-07',
     })
   })
 
   it('moves across year boundaries', () => {
-    expect(shiftMonth('2026-01', -1)).toBe('2025-12')
-    expect(shiftMonth('2026-12', 1)).toBe('2027-01')
+    assert.equal(shiftMonth('2026-01', -1), '2025-12')
+    assert.equal(shiftMonth('2026-12', 1), '2027-01')
   })
 
-  it.each([
+  for (const [date, expected] of [
     ['2024-02-29', true],
     ['2026-02-29', false],
     ['2026-02-30', false],
     ['11-07-2026', false],
-  ])('validates calendar date %s', (date, expected) => {
-    expect(isValidCalendarDate(date)).toBe(expected)
-  })
+  ] as const) {
+    it(`validates calendar date ${date}`, () => {
+      assert.equal(isValidCalendarDate(date), expected)
+    })
+  }
 
   it('formats a transaction date without a time', () => {
-    expect(formatHongKongDate('2026-07-11')).toBe('7月11日')
-    expect(formatHongKongDate('2026-07-11', 'en')).toBe('July 11')
-    expect(formatHongKongDate('2026-07-11', 'ja')).toBe('7月11日')
-    expect(formatHongKongDate('2026-07-11', 'fr')).toBe('11 juillet')
+    assert.equal(formatHongKongDate('2026-07-11'), '7月11日')
+    assert.equal(formatHongKongDate('2026-07-11', 'en'), 'July 11')
+    assert.equal(formatHongKongDate('2026-07-11', 'ja'), '7月11日')
+    assert.equal(formatHongKongDate('2026-07-11', 'fr'), '11 juillet')
   })
 
   it('rejects an invalid month query', () => {
-    expect(() => monthRangeDates('2026-13')).toThrow()
+    assert.throws(() => monthRangeDates('2026-13'))
   })
 })

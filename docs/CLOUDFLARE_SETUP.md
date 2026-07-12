@@ -1,12 +1,25 @@
 # Deploy HushLedger on Cloudflare
 
 This guide creates a private HushLedger deployment with Cloudflare Workers,
-D1, Cron Triggers, and Cloudflare Access. The repository never needs your
-Cloudflare API token or Access credentials.
+D1, Cron Triggers, and Cloudflare Access. The repository never stores your
+Cloudflare API token or user sign-in credentials.
 
 If you are new to terminals or Cloudflare, use the
 [beginner-friendly deployment guide](EASY_DEPLOY.md) first. This page is the
 advanced reference for verification, backups, recovery, and future AI secrets.
+
+## Local use or private deployment
+
+Cloudflare deployment is optional. For use on one computer, follow the
+[README local setup](../README.md#local-development) and run `npm run dev`. Local
+mode uses a local D1 database and requires no Cloudflare account, domain, Access
+configuration, or API key.
+
+Deploy when you need HushLedger from other devices or outside that computer. The
+custom domain is internet-reachable, but Cloudflare Access must keep the
+application private. HushLedger does not define `npm run start`: a plain Next.js
+server would not provide the required D1 binding. Use `npm run preview` for a
+production-style Worker running locally.
 
 Official references:
 
@@ -17,7 +30,10 @@ Official references:
 - [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [Disable `workers.dev`](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
 - [Disable Preview URLs](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/)
-- [Cloudflare Access applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/choose-application-type/)
+- [Cloudflare Access self-hosted applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+- [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
+- [OpenNext for Cloudflare](https://opennext.js.org/cloudflare)
+- [OpenNext custom Worker](https://opennext.js.org/cloudflare/howtos/custom-worker)
 
 ## 1. Prepare the repository
 
@@ -30,6 +46,7 @@ cd HushLedger
 npm ci
 npm run db:local
 npm run verify
+npm audit --omit=dev --audit-level=high
 ```
 
 The local migration command uses Wrangler's local D1 state. It does not modify
@@ -37,16 +54,23 @@ your Cloudflare account.
 
 ## 2. Sign in and create D1
 
-Authenticate in your browser, then create a database:
+Authenticate in your browser and confirm the intended account:
 
 ```bash
 npx wrangler login
 npx wrangler whoami
-npx wrangler d1 create hushledger
 ```
 
-Wrangler prints a `database_id`. Replace only the placeholder value in
-`wrangler.jsonc`:
+For a new installation, create D1 and let Wrangler replace the checked-in
+placeholder:
+
+```bash
+npx wrangler d1 create hushledger --binding DB --update-config
+```
+
+For an existing database, do not run the create command. Find the intended
+database with `npx wrangler d1 list`, then replace only the placeholder
+`database_id` in `wrangler.jsonc`. In either case, verify this final shape:
 
 ```jsonc
 "d1_databases": [
@@ -59,8 +83,9 @@ Wrangler prints a `database_id`. Replace only the placeholder value in
 ]
 ```
 
-The binding must stay named `DB`, and the database ID is deployment metadata,
-not a password. Do not paste tokens or secrets into this file.
+The binding must stay named `DB`, `migrations_dir` must remain `migrations`, and
+the placeholder must be gone before deployment. The database ID is deployment
+metadata, not a password. Do not paste tokens or secrets into this file.
 
 ## 3. Apply remote migrations
 
@@ -79,18 +104,20 @@ of editing a migration that production has already applied.
 
 The checked-in configuration explicitly sets both `workers_dev` and
 `preview_urls` to `false` and does not contain a route. Run the quality gate,
-then create/update the Worker script in this intentionally unreachable state:
+then build Next.js, adapt it with OpenNext, and create/update the Worker in this
+intentionally unreachable state:
 
 ```bash
 npm run verify
-npx wrangler deploy
+npm run deploy
 ```
 
-Wrangler uploads the static app and API, but this configuration must not create
-a `workers.dev`, preview, custom-domain, or route entry point. In **Workers &
-Pages > HushLedger > Settings > Domains & Routes**, verify `workers.dev` and
-Preview URLs are disabled and no route is attached. Stop if any public hostname
-exists.
+OpenNext uploads the App Router application, Route Handlers, Server Actions, PWA
+assets, and the custom Worker that validates Access JWTs and handles Cron. This
+configuration must not create a `workers.dev`, preview, custom-domain, or route
+entry point. In **Workers & Pages > HushLedger > Settings > Domains & Routes**,
+verify `workers.dev` and Preview URLs are disabled and no route is attached. Stop
+if any public hostname exists.
 
 The checked-in Cron expression is:
 
@@ -109,8 +136,9 @@ HushLedger intentionally has no application-level login. Do not enter real
 financial data until Access protects every production entry point.
 
 1. Choose the exact future hostname, but do not attach it to the Worker yet.
-2. In Zero Trust, open **Access > Applications**, add a **Self-hosted**
-   application for that exact HushLedger hostname.
+2. In Zero Trust, open **Access controls > Applications**, select **Create new
+   application**, choose **Self-hosted and private**, then **Add public hostname**
+   for that exact HushLedger hostname.
 3. Add an **Allow** policy limited to your intended identity, such as one exact
    email address or a tightly scoped identity-provider group.
 4. Keep the default-deny behavior for everyone else and require your identity
@@ -118,8 +146,34 @@ financial data until Access protects every production entry point.
 5. Make sure the application covers both `/` and `/api/*`. A path-specific
    policy must not leave another path public.
 6. Reconfirm the checked-in `workers_dev: false` and `preview_urls: false` values.
-7. Only after the Access application and policy exist, attach the custom domain
-   or route to the Worker. Do not enable either alternate URL.
+7. Do not attach the custom domain or route yet, and do not enable either
+   alternate URL.
+
+Before attaching the hostname, configure the two values that the custom Worker
+uses to cryptographically verify Access tokens:
+
+1. In **Zero Trust > Settings**, copy the team domain including `https://` (for
+   example, `https://your-team.cloudflareaccess.com`).
+2. Configure the HushLedger Access application, open **Additional settings**, and
+   copy its Application Audience (AUD) tag.
+3. Store both values on the already-created Worker:
+
+   ```bash
+   npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
+   npx wrangler secret put CF_ACCESS_AUD
+   ```
+
+These values identify the expected issuer and application. Outside localhost,
+HushLedger fails closed when either value is absent or when the JWT signature,
+issuer, audience, or lifetime is invalid.
+
+Each `wrangler secret put` command creates and deploys a new Worker version.
+Before attaching the hostname, recheck **Domains & Routes** and confirm that
+`workers.dev` and Preview URLs remain disabled and no route or custom domain has
+appeared.
+
+Only now attach the exact custom domain or route covered by the Access
+application. Keep both alternate Worker URL types disabled.
 
 This order prevents a public interval between deploy and Access setup. A
 protected custom domain does not automatically protect alternate hostnames.
@@ -175,17 +229,24 @@ npx wrangler secret put AI_API_KEY
 npx wrangler secret put AI_API_BASE_URL
 ```
 
-Never place an AI API key in React code, Vite variables, a GitHub issue, build
-logs, or `wrangler.jsonc`. See [AI_BANK_IMPORT_PLAN.md](../AI_BANK_IMPORT_PLAN.md)
-for the review-before-write security boundary.
+Never place an AI API key in React or Server Component code, client environment
+variables, a GitHub issue, build logs, or `wrangler.jsonc`. See
+[AI_BANK_IMPORT_PLAN.md](../AI_BANK_IMPORT_PLAN.md) for the review-before-write
+security boundary.
 
 ## Deployment checklist
 
 - [ ] `npm run verify` succeeds from a clean checkout.
+- [ ] The production dependency audit has no high-severity finding.
 - [ ] Remote D1 migrations are applied to the intended database.
-- [ ] `database_id` contains no token or secret.
+- [ ] The D1 binding is `DB`, the placeholder is gone, and `database_id` contains
+      no token or secret.
 - [ ] Initial deploy has no `workers.dev`, preview, custom-domain, or route URL.
 - [ ] Access policy exists before the custom hostname is attached.
+- [ ] `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are configured on the Worker.
+- [ ] Alternate Worker URLs are still disabled after secret updates and every
+      later deployment.
+- [ ] A missing or invalid Access JWT is rejected by the custom Worker.
 - [ ] The custom hostname, `/api/*`, and every alternate hostname are private.
 - [ ] An unauthorized session is blocked by Access.
 - [ ] An authorized end-to-end transaction and recurring-rule flow succeeds.
