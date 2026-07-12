@@ -48,7 +48,7 @@ export function BankImportPanel({
   onConfigure,
   onImported,
 }: BankImportPanelProps) {
-  const { locale, localizeEntityName, t } = useI18n()
+  const { locale, localizeEntityName, privacyMode, t } = useI18n()
   const activeAccounts = accounts.filter((account) => account.isActive)
   const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
   const [dateOrder, setDateOrder] = useState<AiDateOrder>('DMY')
@@ -378,20 +378,27 @@ export function BankImportPanel({
 
         <label>
           <span>{t('aiStatement')}</span>
-          <textarea
-            value={statementText}
-            disabled={analyzing || previewing || importing}
-            onChange={(event) => {
-              setStatementText(event.target.value)
-              invalidateDrafts()
-            }}
-            rows={8}
-            maxLength={MAX_AI_STATEMENT_BYTES}
-            autoComplete="off"
-            spellCheck={false}
-            aria-describedby="ai-statement-help"
-            required
-          />
+          <span className="ai-statement-input-wrap">
+            <textarea
+              value={statementText}
+              disabled={analyzing || previewing || importing}
+              onChange={(event) => {
+                setStatementText(event.target.value)
+                invalidateDrafts()
+              }}
+              rows={8}
+              maxLength={MAX_AI_STATEMENT_BYTES}
+              autoComplete="off"
+              spellCheck={false}
+              aria-describedby="ai-statement-help"
+              required
+            />
+            {privacyMode && statementText ? (
+              <span className="ai-statement-privacy-cover" aria-hidden="true">
+                {t('sensitiveTextHidden')}
+              </span>
+            ) : null}
+          </span>
           <small id="ai-statement-help">{t('aiStatementHelp')}</small>
           <small className="ai-byte-count" aria-live="polite">
             {t('aiStatementBytes', { count: statementBytes, limit: MAX_AI_STATEMENT_BYTES })}
@@ -467,7 +474,7 @@ export function BankImportPanel({
                           : t('aiStatusNeedsReview')}
                       </span>
                     </div>
-                    <q>{draft.sourceText}</q>
+                    <q>{privacyMode ? t('sensitiveTextHidden') : draft.sourceText}</q>
                     <small>{t('aiConfidence', { percent: Math.round(draft.confidence * 100) })}</small>
                     {draft.flags.length > 0 ? (
                       <ul className="ai-draft-flags" aria-label={t('aiWarnings')}>
@@ -508,6 +515,7 @@ export function BankImportPanel({
                     <label>
                       <span>{t('amount')}</span>
                       <input
+                        type={privacyMode ? 'password' : 'text'}
                         value={draft.amountText}
                         disabled={importing}
                         onChange={(event) => updateDraftAmount(draft, event.target.value)}

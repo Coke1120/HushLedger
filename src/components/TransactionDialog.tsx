@@ -35,7 +35,7 @@ export function TransactionDialog({
   onSubmit,
   onDelete,
 }: TransactionDialogProps) {
-  const { locale, localizeEntityName, t } = useI18n()
+  const { locale, localizeEntityName, privacyMode, t } = useI18n()
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => account.isActive || account.id === transaction?.accountId),
     [accounts, transaction?.accountId],
@@ -210,6 +210,7 @@ export function TransactionDialog({
               <span>HK$</span>
               <input
                 ref={amountRef}
+                type={privacyMode ? 'password' : 'text'}
                 name="amount"
                 inputMode="decimal"
                 autoComplete="off"

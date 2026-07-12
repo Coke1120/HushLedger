@@ -53,6 +53,8 @@ knowledge and explains every command and dashboard click.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
+- A one-tap screen privacy mode that masks every formatted amount, editable amount
+  field, and pasted AI bank-text surface for safer screen sharing.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
@@ -145,6 +147,13 @@ the Worker, or used to create a user profile.
 Dates, months, amounts, navigation, forms, status messages, and error messages use
 the selected language. User-defined account names, category names, payees, notes,
 and recurring-rule names are always preserved exactly as entered.
+
+The eye button in the header and the matching Settings control enable screen
+privacy mode for the current tab. It replaces displayed amounts with a stable
+currency mask, masks editable amount fields, and covers pasted bank text without
+hover-to-reveal behavior. Reloading turns the mode off. This is a visual screen-
+sharing aid only: it does not encrypt, delete, or alter D1 data, API responses, CSV
+exports, browser memory, or text already sent to a configured AI provider.
 
 App updates are manual by default. Settings can check for a new version and install
 it when you are ready. Automatic mode applies a detected version immediately and

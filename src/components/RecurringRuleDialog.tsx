@@ -38,7 +38,14 @@ export function RecurringRuleDialog({
   onCreate,
   onEdit,
 }: RecurringRuleDialogProps) {
-  const { formatDate, formatMoney, locale, localizeEntityName, t } = useI18n()
+  const {
+    formatDate,
+    formatMoney,
+    locale,
+    localizeEntityName,
+    privacyMode,
+    t,
+  } = useI18n()
   const editing = Boolean(rule)
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => account.isActive || account.id === rule?.accountId),
@@ -243,6 +250,7 @@ export function RecurringRuleDialog({
             <span className="amount-input-wrap">
               <span>HK$</span>
               <input
+                type={privacyMode ? 'password' : 'text'}
                 name="amount"
                 inputMode="decimal"
                 autoComplete="off"

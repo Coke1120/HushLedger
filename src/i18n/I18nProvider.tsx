@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { formatHongKongDate, formatMonthLabel } from '../lib/date'
-import { formatMoney as formatCurrency } from '../lib/money'
+import { formatMoneyForDisplay } from '../lib/privacy'
 import { I18nContext, type I18nContextValue } from './context'
 import {
   LOCALE_STORAGE_KEY,
@@ -35,6 +35,7 @@ function setMetaContent(selector: string, value: string) {
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>('zh-Hant')
+  const [privacyMode, setPrivacyMode] = useState(false)
 
   useEffect(() => {
     const browserLocale = readBrowserLocale()
@@ -62,8 +63,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const t = useCallback<Translator>((key, values) => translate(locale, key, values), [locale])
   const formatMoney = useCallback(
-    (minor: number, currency = 'HKD') => formatCurrency(minor, currency, locale),
-    [locale],
+    (minor: number, currency = 'HKD') => formatMoneyForDisplay(
+      minor,
+      currency,
+      locale,
+      privacyMode,
+    ),
+    [locale, privacyMode],
   )
   const formatMonth = useCallback((month: string) => formatMonthLabel(month, locale), [locale])
   const formatDate = useCallback((date: string) => formatHongKongDate(date, locale), [locale])
@@ -77,6 +83,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       setLocale,
+      privacyMode,
+      setPrivacyMode,
       t,
       formatMoney,
       formatMonth,
@@ -84,7 +92,16 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       formatNumber,
       localizeEntityName,
     }),
-    [formatDate, formatMoney, formatMonth, formatNumber, locale, localizeEntityName, t],
+    [
+      formatDate,
+      formatMoney,
+      formatMonth,
+      formatNumber,
+      locale,
+      localizeEntityName,
+      privacyMode,
+      t,
+    ],
   )
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>

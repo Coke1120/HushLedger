@@ -1,4 +1,4 @@
-import { House, List, Plus, Repeat, Settings } from 'lucide-react'
+import { Eye, EyeOff, House, List, Plus, Repeat, Settings } from 'lucide-react'
 import { useI18n } from '../i18n'
 import type { AppView } from './MobileNavigation'
 
@@ -18,7 +18,8 @@ function HushLedgerMark() {
 }
 
 export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
-  const { t } = useI18n()
+  const { privacyMode, setPrivacyMode, t } = useI18n()
+  const privacyLabel = t(privacyMode ? 'showAmounts' : 'hideAmounts')
 
   return (
     <header className="app-header">
@@ -70,6 +71,16 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             <span className="nav-label">{t('settings')}</span>
           </button>
         </nav>
+        <button
+          className={`icon-button privacy-toggle${privacyMode ? ' is-active' : ''}`}
+          type="button"
+          aria-label={privacyLabel}
+          aria-pressed={privacyMode}
+          title={privacyLabel}
+          onClick={() => setPrivacyMode(!privacyMode)}
+        >
+          {privacyMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+        </button>
         <button className="button button-primary add-button" type="button" onClick={onAdd}>
           <Plus aria-hidden="true" />
           <span>{t('addTransaction')}</span>

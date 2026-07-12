@@ -39,6 +39,8 @@ not operate an independent database server or a multi-user identity system.
   the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV through local parsing, duplicate preview, explicit row
   selection, and a transactional commit of at most 200 rows.
+- Mask formatted amounts, editable amount fields, and pasted bank text with a
+  current-tab screen privacy control before sharing the screen.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 
@@ -183,6 +185,8 @@ restore format.
 - Only the non-sensitive offline/demo shell and fingerprinted static assets may be
   cached. API, Server Action, RSC, personalized navigation, and financial responses
   are never cached. Offline writes and multi-device conflict sync are not claimed.
+- Screen privacy is explicitly visual and current-tab only. It never claims to
+  encrypt D1, API payloads, exports, browser memory, or provider-bound bank text.
 
 ## UX direction
 
@@ -191,6 +195,8 @@ restore format.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
 - A Settings page with immediate language switching and local-only preference
   persistence.
+- A persistent header indicator for temporary screen privacy, with no hover or
+  focus path that reveals the masked amount.
 - History-safe account and category management with clear inactive states and
   no destructive delete affordance.
 - Preview-first CSV import that defaults possible duplicates to unselected and

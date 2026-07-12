@@ -6,6 +6,8 @@ import type { Locale, Translator } from './core'
 export type I18nContextValue = {
   locale: Locale
   setLocale: (locale: Locale) => void
+  privacyMode: boolean
+  setPrivacyMode: (enabled: boolean) => void
   t: Translator
   formatMoney: (minor: number, currency?: string) => string
   formatMonth: (month: string) => string

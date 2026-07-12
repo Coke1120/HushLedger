@@ -37,7 +37,7 @@ export function SettingsPage({
   canManageReferences,
   onReferenceRefresh,
 }: SettingsPageProps) {
-  const { locale, setLocale, t } = useI18n()
+  const { locale, privacyMode, setLocale, setPrivacyMode, t } = useI18n()
   const { mode, status, setMode, checkForUpdate, installUpdate } = useAppUpdate()
   const [saved, setSaved] = useState(false)
 
@@ -103,6 +103,19 @@ export function SettingsPage({
             })}
           </div>
         </fieldset>
+
+        <label className={`privacy-mode-option${privacyMode ? ' is-selected' : ''}`}>
+          <input
+            type="checkbox"
+            checked={privacyMode}
+            onChange={(event) => setPrivacyMode(event.target.checked)}
+          />
+          <span className="privacy-mode-copy">
+            <strong>{t('screenPrivacy')}</strong>
+            <small>{t('screenPrivacyHelp')}</small>
+          </span>
+          <span className="privacy-mode-switch" aria-hidden="true"><span /></span>
+        </label>
 
         <div className="settings-privacy-note">
           <LockKeyhole aria-hidden="true" />

@@ -221,6 +221,17 @@
   border-color: var(--focus);
 }
 
+.privacy-toggle.is-active {
+  color: #ffffff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.privacy-toggle.is-active:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--brand-strong);
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -420,7 +431,7 @@ textarea:focus-visible {
 
 .transactions-heading {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   align-items: center;
   min-height: 94px;
@@ -460,10 +471,13 @@ textarea:focus-visible {
 
 .transaction-toolbar {
   display: flex;
+  width: 100%;
   min-width: 0;
+  flex-wrap: wrap;
   gap: 14px;
   align-items: center;
-  justify-self: end;
+  justify-content: flex-end;
+  justify-self: stretch;
 }
 
 .view-transactions .transactions-heading {
@@ -485,9 +499,11 @@ textarea:focus-visible {
 
 .search-field {
   display: flex;
+  min-width: 220px;
+  flex: 1 1 260px;
   gap: 9px;
   align-items: center;
-  width: min(340px, 30vw);
+  width: auto;
   min-height: 44px;
   padding: 0 12px;
   color: var(--muted);
@@ -1562,6 +1578,93 @@ textarea:focus-visible {
   stroke-width: 2.6;
 }
 
+.privacy-mode-option {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-height: 76px;
+  padding: 14px;
+  margin-top: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.privacy-mode-option:hover,
+.privacy-mode-option.is-selected {
+  background: var(--income-soft);
+  border-color: var(--brand);
+}
+
+.privacy-mode-option.is-selected {
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+.privacy-mode-option > input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.privacy-mode-option:has(input:focus-visible) {
+  outline: 3px solid rgb(47 126 112 / 28%);
+  outline-offset: 2px;
+}
+
+.privacy-mode-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.privacy-mode-copy strong {
+  color: var(--brand-strong);
+  font-size: 15px;
+}
+
+.privacy-mode-copy small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.privacy-mode-switch {
+  display: flex;
+  align-items: center;
+  width: 46px;
+  min-width: 46px;
+  height: 26px;
+  padding: 3px;
+  margin-left: auto;
+  background: var(--line-strong);
+  border-radius: 999px;
+  transition: background-color 160ms ease;
+}
+
+.privacy-mode-switch > span {
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgb(24 49 44 / 18%);
+  transition: transform 160ms ease;
+}
+
+.privacy-mode-option.is-selected .privacy-mode-switch {
+  background: var(--brand);
+}
+
+.privacy-mode-option.is-selected .privacy-mode-switch > span {
+  transform: translateX(20px);
+}
+
 .settings-privacy-note {
   display: flex;
   gap: 9px;
@@ -1908,6 +2011,26 @@ textarea:focus-visible {
 .bank-import-form textarea {
   min-height: 150px;
   resize: vertical;
+}
+
+.ai-statement-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.ai-statement-privacy-cover {
+  position: absolute;
+  z-index: 1;
+  inset: 1px;
+  display: grid;
+  padding: 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  place-items: center;
 }
 
 .ai-byte-count {
@@ -2579,7 +2702,7 @@ textarea:focus-visible {
   }
 
   .header-actions {
-    gap: 0;
+    gap: 6px;
   }
 
   .add-button {
