@@ -40,10 +40,16 @@ export function RecurringRuleDialog({
 }: RecurringRuleDialogProps) {
   const { formatDate, formatMoney, locale, localizeEntityName, t } = useI18n()
   const editing = Boolean(rule)
+  const selectableAccounts = useMemo(
+    () => accounts.filter((account) => account.isActive || account.id === rule?.accountId),
+    [accounts, rule?.accountId],
+  )
   const [type, setType] = useState<TransactionType>(rule?.type ?? 'expense')
-  const [accountId, setAccountId] = useState(rule?.accountId ?? accounts[0]?.id ?? 0)
+  const [accountId, setAccountId] = useState(rule?.accountId ?? selectableAccounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState(
-    rule?.categoryId ?? categories.find((category) => category.type === 'expense')?.id ?? 0,
+    rule?.categoryId
+      ?? categories.find((category) => category.isActive && category.type === 'expense')?.id
+      ?? 0,
   )
   const [frequency, setFrequency] = useState<RecurrenceFrequency>(rule?.frequency ?? 'monthly')
   const [scheduleDate, setScheduleDate] = useState(rule?.scheduleStartsOn ?? currentHongKongDate().date)
@@ -55,7 +61,14 @@ export function RecurringRuleDialog({
   const draftIdRef = useRef(crypto.randomUUID())
   const savingRef = useRef(saving)
 
-  const matchingCategories = useMemo(() => categories.filter((category) => category.type === type), [categories, type])
+  const matchingCategories = useMemo(
+    () => categories.filter(
+      (category) =>
+        category.type === type
+        && (category.isActive || category.id === rule?.categoryId),
+    ),
+    [categories, rule?.categoryId, type],
+  )
   const frequencyLabels: Record<RecurrenceFrequency, string> = {
     daily: t('daily'),
     weekly: t('weekly'),
@@ -107,7 +120,9 @@ export function RecurringRuleDialog({
 
   const selectType = (nextType: TransactionType) => {
     setType(nextType)
-    setCategoryId(categories.find((category) => category.type === nextType)?.id ?? 0)
+    setCategoryId(
+      categories.find((category) => category.isActive && category.type === nextType)?.id ?? 0,
+    )
     setLocalError('')
   }
 
@@ -245,9 +260,13 @@ export function RecurringRuleDialog({
             <label>
               <span>{t('account')}</span>
               <select value={accountId} onChange={(event) => setAccountId(Number(event.target.value))} required>
-                {accounts.map((account) => (
+                {selectableAccounts.map((account) => (
                   <option value={account.id} key={account.id}>
-                    {localizeEntityName(account.name, account.localizationKey)}
+                    {referenceOptionLabel(
+                      localizeEntityName(account.name, account.localizationKey),
+                      account.isActive,
+                      t('inactive'),
+                    )}
                   </option>
                 ))}
               </select>
@@ -257,7 +276,11 @@ export function RecurringRuleDialog({
               <select value={categoryId} onChange={(event) => setCategoryId(Number(event.target.value))} required>
                 {matchingCategories.map((category) => (
                   <option value={category.id} key={category.id}>
-                    {localizeEntityName(category.name, category.localizationKey)}
+                    {referenceOptionLabel(
+                      localizeEntityName(category.name, category.localizationKey),
+                      category.isActive,
+                      t('inactive'),
+                    )}
                   </option>
                 ))}
               </select>
@@ -332,4 +355,8 @@ export function RecurringRuleDialog({
       </div>
     </div>
   )
+}
+
+function referenceOptionLabel(name: string, active: boolean, inactiveLabel: string) {
+  return active ? name : `${name} (${inactiveLabel})`
 }

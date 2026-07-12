@@ -183,7 +183,14 @@ function App({ initialMonth }: { initialMonth: string }) {
           <RecurringRulesPage accounts={data.accounts} categories={data.categories} onMoneyRefresh={data.refresh} />
         </div>
         <div hidden={view !== 'settings'}>
-          <SettingsPage aiSettings={aiSettings} onAiSettingsChange={setAiSettings} />
+          <SettingsPage
+            aiSettings={aiSettings}
+            onAiSettingsChange={setAiSettings}
+            accounts={data.accounts}
+            categories={data.categories}
+            canManageReferences={data.source === 'live' && data.online}
+            onReferenceRefresh={() => data.refresh(false)}
+          />
         </div>
       </main>
 

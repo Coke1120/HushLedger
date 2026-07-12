@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  accountCreateSchema,
+  accountUpdateSchema,
+  categoryCreateSchema,
+  categoryUpdateSchema,
+  referenceIdSchema,
+  referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
   recurringRuleStatusSchema,
@@ -10,6 +16,32 @@ import {
   transactionQuerySchema,
   transactionUpdateSchema,
 } from './schema'
+
+describe('reference data validation', () => {
+  const updatedAt = '2026-07-11T10:30:00.000Z'
+
+  it('accepts strict account and category mutations', () => {
+    assert.deepEqual(accountCreateSchema.parse({ name: 'Savings', type: 'bank' }), {
+      name: 'Savings',
+      type: 'bank',
+    })
+    assert.equal(accountUpdateSchema.safeParse({ name: 'Cash', type: 'cash', updatedAt }).success, true)
+    assert.equal(categoryCreateSchema.safeParse({ name: 'Education', type: 'expense' }).success, true)
+    assert.equal(categoryUpdateSchema.safeParse({ name: 'Books', updatedAt }).success, true)
+    assert.equal(referenceStatusSchema.safeParse({ isActive: false, updatedAt }).success, true)
+    assert.equal(referenceIdSchema.parse('42'), 42)
+  })
+
+  it('rejects empty names, unknown types, and extra fields', () => {
+    assert.equal(accountCreateSchema.safeParse({ name: ' ', type: 'bank' }).success, false)
+    assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan' }).success, false)
+    assert.equal(categoryCreateSchema.safeParse({ name: 'Food', type: 'transfer' }).success, false)
+    assert.equal(
+      categoryUpdateSchema.safeParse({ name: 'Food', type: 'expense', updatedAt }).success,
+      false,
+    )
+  })
+})
 
 const valid = {
   id: '019f5087-229b-7ce3-a76f-95c833dcf251',

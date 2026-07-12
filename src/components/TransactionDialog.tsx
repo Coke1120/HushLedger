@@ -36,11 +36,15 @@ export function TransactionDialog({
   onDelete,
 }: TransactionDialogProps) {
   const { locale, localizeEntityName, t } = useI18n()
+  const selectableAccounts = useMemo(
+    () => accounts.filter((account) => account.isActive || account.id === transaction?.accountId),
+    [accounts, transaction?.accountId],
+  )
   const [type, setType] = useState<TransactionType>(transaction?.type ?? 'expense')
-  const [accountId, setAccountId] = useState(transaction?.accountId ?? accounts[0]?.id ?? 0)
+  const [accountId, setAccountId] = useState(transaction?.accountId ?? selectableAccounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState(
     transaction?.categoryId
-      ?? categories.find((category) => category.type === 'expense')?.id
+      ?? categories.find((category) => category.isActive && category.type === 'expense')?.id
       ?? 0,
   )
   const [date, setDate] = useState(transaction?.occurredOn ?? currentHongKongDate().date)
@@ -52,7 +56,14 @@ export function TransactionDialog({
   const draftIdRef = useRef(transaction?.id ?? crypto.randomUUID())
   const savingRef = useRef(saving)
 
-  const matchingCategories = useMemo(() => categories.filter((category) => category.type === type), [categories, type])
+  const matchingCategories = useMemo(
+    () => categories.filter(
+      (category) =>
+        category.type === type
+        && (category.isActive || category.id === transaction?.categoryId),
+    ),
+    [categories, transaction?.categoryId, type],
+  )
 
   useEffect(() => {
     savingRef.current = saving
@@ -99,7 +110,9 @@ export function TransactionDialog({
 
   const selectType = (nextType: TransactionType) => {
     setType(nextType)
-    setCategoryId(categories.find((category) => category.type === nextType)?.id ?? 0)
+    setCategoryId(
+      categories.find((category) => category.isActive && category.type === nextType)?.id ?? 0,
+    )
     setLocalError('')
   }
 
@@ -213,9 +226,13 @@ export function TransactionDialog({
             <label>
               <span>{t('account')}</span>
               <select value={accountId} onChange={(event) => setAccountId(Number(event.target.value))} required>
-                {accounts.map((account) => (
+                {selectableAccounts.map((account) => (
                   <option value={account.id} key={account.id}>
-                    {localizeEntityName(account.name, account.localizationKey)}
+                    {referenceOptionLabel(
+                      localizeEntityName(account.name, account.localizationKey),
+                      account.isActive,
+                      t('inactive'),
+                    )}
                   </option>
                 ))}
               </select>
@@ -225,7 +242,11 @@ export function TransactionDialog({
               <select value={categoryId} onChange={(event) => setCategoryId(Number(event.target.value))} required>
                 {matchingCategories.map((category) => (
                   <option value={category.id} key={category.id}>
-                    {localizeEntityName(category.name, category.localizationKey)}
+                    {referenceOptionLabel(
+                      localizeEntityName(category.name, category.localizationKey),
+                      category.isActive,
+                      t('inactive'),
+                    )}
                   </option>
                 ))}
               </select>
@@ -285,4 +306,8 @@ export function TransactionDialog({
       </div>
     </div>
   )
+}
+
+function referenceOptionLabel(name: string, active: boolean, inactiveLabel: string) {
+  return active ? name : `${name} (${inactiveLabel})`
 }

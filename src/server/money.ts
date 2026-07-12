@@ -120,7 +120,8 @@ export async function listAccounts(database: D1Database): Promise<Account[]> {
       currency,
       is_active AS isActive,
       sort_order AS sortOrder,
-      localization_key AS localizationKey
+      localization_key AS localizationKey,
+      updated_at AS updatedAt
     FROM accounts
     ORDER BY is_active DESC, sort_order ASC, id ASC
   `).all<AccountRow>()
@@ -138,7 +139,8 @@ export async function listCategories(database: D1Database): Promise<Category[]> 
       color,
       is_active AS isActive,
       sort_order AS sortOrder,
-      localization_key AS localizationKey
+      localization_key AS localizationKey,
+      updated_at AS updatedAt
     FROM categories
     ORDER BY type DESC, is_active DESC, sort_order ASC, id ASC
   `).all<CategoryRow>()
@@ -223,7 +225,17 @@ export async function createTransaction(
       payee,
       note
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE EXISTS (
+      SELECT 1
+      FROM accounts
+      WHERE id = ? AND is_active = 1 AND currency = ?
+    )
+      AND EXISTS (
+        SELECT 1
+        FROM categories
+        WHERE id = ? AND is_active = 1 AND type = ?
+      )
     ON CONFLICT(id) DO NOTHING
   `)
     .bind(
@@ -236,11 +248,21 @@ export async function createTransaction(
       input.occurredOn,
       input.payee,
       input.note,
+      input.accountId,
+      input.currency,
+      input.categoryId,
+      input.type,
     )
     .run()
 
   const transaction = await getTransaction(database, input.id)
-  if (!transaction) throw new Error('Transaction insert did not produce a row')
+  if (!transaction) {
+    const currentReferenceError = await validateReferences(database, input)
+    if (currentReferenceError) {
+      return { kind: 'reference_invalid', code: currentReferenceError }
+    }
+    throw new Error('Transaction insert did not produce a row')
+  }
   if (!matchesInput(transaction, input)) return { kind: 'id_conflict' }
 
   return {
@@ -254,7 +276,14 @@ export async function updateTransaction(
   id: string,
   input: TransactionUpdateInput,
 ): Promise<UpdateTransactionResult> {
-  const referenceError = await validateReferences(database, input)
+  const existing = await getTransaction(database, id)
+  if (!existing) return { kind: 'not_found' }
+  if (existing.updatedAt !== input.updatedAt) return { kind: 'version_conflict' }
+
+  const referenceError = await validateReferences(database, input, {
+    accountId: existing.accountId,
+    categoryId: existing.categoryId,
+  })
   if (referenceError) return { kind: 'reference_invalid', code: referenceError }
 
   const updated = await database.prepare(`
@@ -270,6 +299,20 @@ export async function updateTransaction(
       note = ?,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE id = ? AND updated_at = ?
+      AND EXISTS (
+        SELECT 1
+        FROM accounts
+        WHERE id = ?
+          AND currency = ?
+          AND (is_active = 1 OR id = ?)
+      )
+      AND EXISTS (
+        SELECT 1
+        FROM categories
+        WHERE id = ?
+          AND type = ?
+          AND (is_active = 1 OR id = ?)
+      )
   `)
     .bind(
       input.type,
@@ -282,12 +325,18 @@ export async function updateTransaction(
       input.note,
       id,
       input.updatedAt,
+      input.accountId,
+      input.currency,
+      existing.accountId,
+      input.categoryId,
+      input.type,
+      existing.categoryId,
     )
     .run()
 
   if (Number(updated.meta.changes) === 0) {
-    const existing = await getTransaction(database, id)
-    return existing ? { kind: 'version_conflict' } : { kind: 'not_found' }
+    const current = await getTransaction(database, id)
+    return current ? { kind: 'version_conflict' } : { kind: 'not_found' }
   }
 
   const transaction = await getTransaction(database, id)
@@ -356,6 +405,7 @@ function matchesInput(transaction: TransactionView, input: TransactionInput) {
 async function validateReferences(
   database: D1Database,
   input: Pick<TransactionInput, 'accountId' | 'categoryId' | 'currency' | 'type'>,
+  allowInactive?: { accountId: number; categoryId: number },
 ): Promise<ReferenceErrorCode | null> {
   const [account, category] = await Promise.all([
     database.prepare(`
@@ -374,10 +424,16 @@ async function validateReferences(
       .first<ReferenceRow>(),
   ])
 
-  if (!account || account.isActive !== 1 || account.currency !== input.currency) {
+  if (
+    !account
+    || account.currency !== input.currency
+    || (account.isActive !== 1 && account.id !== allowInactive?.accountId)
+  ) {
     return 'ACCOUNT_INVALID'
   }
-  if (!category || category.isActive !== 1) return 'CATEGORY_INVALID'
+  if (!category || (category.isActive !== 1 && category.id !== allowInactive?.categoryId)) {
+    return 'CATEGORY_INVALID'
+  }
   if (category.type !== input.type) return 'CATEGORY_TYPE_MISMATCH'
   return null
 }

@@ -46,6 +46,8 @@ not operate an independent database server or a multi-user identity system.
 - Correct or delete an existing transaction; reject stale changes made from an
   out-of-date view.
 - Choose an active account and a matching income or expense category.
+- Create, rename, disable, and re-enable accounts and categories in Settings
+  without deleting historical references.
 - Add a custom payee or note.
 - Select a calendar date only; no transaction-time field exists.
 - Receive explicit success, error, demo, and offline feedback.
@@ -88,13 +90,15 @@ editing and deleting a transaction. Edits never replace recurring provenance.
 
 ### Accounts and categories
 
-The current seed supports cash, bank, credit card, wallet, income categories,
-and expense categories. References use foreign keys and `is_active` so history
-survives future soft-disable operations.
-
-The next master-data phase adds create, rename, reorder, and disable UI/API for
-custom bank, cash, payment, wallet, credit-card, income, and expense entries.
-Hard deletion of referenced master data is not allowed.
+The default seed supports cash, bank, credit card, wallet, income categories,
+and expense categories. Settings and the API support custom creation, rename,
+account-type changes, and reversible disable/re-enable operations. Mutations use
+`updated_at` conflict tokens. The last active account or category of a transaction
+type cannot be disabled, nor can a reference used by an active recurring rule.
+Foreign keys and the absence of hard-delete routes preserve transaction history.
+Disabled references are excluded from new transactions and rules, while an
+existing transaction can retain and edit its original archived references.
+Reordering remains future work.
 
 In product wording, a custom `payment` item means a payment-method account such
 as cash, bank, credit card, or wallet. It is not a separate transaction or
@@ -120,7 +124,15 @@ account type in the current data model.
 ```text
 GET    /api/health
 GET    /api/accounts
+POST   /api/accounts
+GET    /api/accounts/:id
+PUT    /api/accounts/:id
+PATCH  /api/accounts/:id
 GET    /api/categories
+POST   /api/categories
+GET    /api/categories/:id
+PUT    /api/categories/:id
+PATCH  /api/categories/:id
 GET    /api/transactions?month=YYYY-MM&type=...&search=...  (latest 200)
 POST   /api/transactions
 GET    /api/transactions/:id
@@ -169,6 +181,8 @@ portable transaction view, not a full D1 backup or restore format.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
 - A Settings page with immediate language switching and local-only preference
   persistence.
+- History-safe account and category management with clear inactive states and
+  no destructive delete affordance.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
   targets, sufficient contrast, and field-linked errors.
 - No fake navigation, decorative charts, remote fonts, marketing hero, or
@@ -179,28 +193,32 @@ portable transaction view, not a full D1 backup or restore format.
 ### Complete core
 
 - D1 schema, seed, constraints, indexes, and date-only migration.
-- Accounts, categories, transactions, summary, and recurring-rule APIs.
+- Account/category create, rename, disable/re-enable, transaction, summary, and
+  recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   filtered transaction CSV export, recurring-rule management, and language
   settings.
+- OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
+  provider settings, strict reviewable output, and no AI-initiated D1 writes.
 - Daily 00:05 HKT Cron plus manual due generation.
 - Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
   preview, fresh migration, and upgrade migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
-### Next: custom master data and deterministic import
+### Next: deterministic import and portability
 
-1. Create/edit/disable/reorder accounts and categories.
+1. Add optional account/category reordering.
 2. Add import batches, review state, duplicate fingerprints, and atomic commit
    without AI.
 3. Add deterministic CSV import and full-ledger JSON portability/restore.
 
-### Then: user-configured AI bank-text parser
+### Implemented: user-configured AI bank-text parser
 
-Support an OpenAI-compatible base URL, API key, and model configured only on the
-Worker. A user may paste online-banking text, inspect and edit parsed drafts,
-then explicitly confirm an import. AI never writes directly to D1 and never
-supplies authoritative integer amounts or database IDs. See
+The app accepts an OpenAI-compatible base URL, API key, and model held only in
+the current browser tab and sent to the Worker for each parse request. A user may
+paste online-banking text, inspect and edit parsed drafts, then explicitly confirm
+them. AI never writes directly to D1 and never supplies authoritative integer
+amounts or database IDs. See
 [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md).
 
 ### Later reliability work

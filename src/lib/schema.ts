@@ -3,6 +3,8 @@ import { isValidCalendarDate, monthRangeDates } from './date'
 
 export const transactionTypeSchema = z.enum(['expense', 'income'])
 export type TransactionType = z.infer<typeof transactionTypeSchema>
+export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
+export type AccountType = z.infer<typeof accountTypeSchema>
 export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly'])
 
 const calendarDateSchema = z
@@ -51,6 +53,36 @@ export const transactionQuerySchema = z
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
+
+const referenceNameSchema = z.string().trim().min(1).max(80)
+const updatedReferenceSchema = z.object({
+  updatedAt: z.string().datetime({ offset: true }),
+})
+
+export const referenceIdSchema = z.coerce.number().int().positive()
+export const accountCreateSchema = z
+  .object({ name: referenceNameSchema, type: accountTypeSchema })
+  .strict()
+export const accountUpdateSchema = accountCreateSchema
+  .extend(updatedReferenceSchema.shape)
+  .strict()
+export const categoryCreateSchema = z
+  .object({ name: referenceNameSchema, type: transactionTypeSchema })
+  .strict()
+export const categoryUpdateSchema = z
+  .object({ name: referenceNameSchema })
+  .extend(updatedReferenceSchema.shape)
+  .strict()
+export const referenceStatusSchema = z
+  .object({ isActive: z.boolean() })
+  .extend(updatedReferenceSchema.shape)
+  .strict()
+
+export type AccountCreateInput = z.infer<typeof accountCreateSchema>
+export type AccountUpdateInput = z.infer<typeof accountUpdateSchema>
+export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>
+export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>
+export type ReferenceStatusInput = z.infer<typeof referenceStatusSchema>
 
 export const accountLocalizationKeys = [
   'account.cash',
@@ -149,11 +181,12 @@ export type Summary = {
 export type Account = {
   id: number
   name: string
-  type: 'cash' | 'bank' | 'credit_card' | 'wallet'
+  type: AccountType
   currency: 'HKD'
   isActive: boolean
   sortOrder: number
   localizationKey: AccountLocalizationKey | null
+  updatedAt: string
 }
 
 export type Category = {
@@ -165,6 +198,7 @@ export type Category = {
   isActive: boolean
   sortOrder: number
   localizationKey: CategoryLocalizationKey | null
+  updatedAt: string
 }
 
 export type Lookup = {

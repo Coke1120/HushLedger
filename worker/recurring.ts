@@ -237,7 +237,17 @@ export async function createRecurringRule(
         payee,
         note
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1
+        FROM accounts
+        WHERE id = ? AND is_active = 1 AND currency = ?
+      )
+        AND EXISTS (
+          SELECT 1
+          FROM categories
+          WHERE id = ? AND is_active = 1 AND type = ?
+        )
       ON CONFLICT(id) DO NOTHING
     `)
     .bind(
@@ -255,11 +265,25 @@ export async function createRecurringRule(
       input.isActive ? 1 : 0,
       input.payee,
       input.note,
+      input.accountId,
+      input.currency,
+      input.categoryId,
+      input.type,
     )
     .run()
 
   const rule = await findRule(database, input.id, true)
-  if (!rule) throw new Error('Recurring rule insert did not produce a row')
+  if (!rule) {
+    const currentReferenceError = await validateReferences(
+      database,
+      input.accountId,
+      input.categoryId,
+      input.currency,
+      input.type,
+    )
+    if (currentReferenceError) return { kind: 'reference_invalid', code: currentReferenceError }
+    throw new Error('Recurring rule insert did not produce a row')
+  }
   if (rule.deletedAt || !matchesCreateInput(rule, input)) return { kind: 'id_conflict' }
 
   return {
@@ -320,6 +344,16 @@ export async function updateRecurringRule(
         cursor_version = cursor_version + 1,
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE id = ? AND revision = ? AND deleted_at IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM accounts
+          WHERE id = ? AND is_active = 1 AND currency = ?
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM categories
+          WHERE id = ? AND is_active = 1 AND type = ?
+        )
     `)
     .bind(
       input.name,
@@ -337,10 +371,28 @@ export async function updateRecurringRule(
       input.note,
       id,
       input.revision,
+      input.accountId,
+      input.currency,
+      input.categoryId,
+      input.type,
     )
     .run()
 
-  if (Number(result.meta.changes) === 0) return { kind: 'version_conflict' }
+  if (Number(result.meta.changes) === 0) {
+    const latest = await findRule(database, id, true)
+    if (!latest || latest.deletedAt) return { kind: 'not_found' }
+    if (latest.revision !== input.revision) return { kind: 'version_conflict' }
+    const currentReferenceError = await validateReferences(
+      database,
+      input.accountId,
+      input.categoryId,
+      input.currency,
+      input.type,
+    )
+    return currentReferenceError
+      ? { kind: 'reference_invalid', code: currentReferenceError }
+      : { kind: 'version_conflict' }
+  }
   const updated = await findRule(database, id, false)
   if (!updated) throw new Error('Recurring rule update did not produce a row')
   return { kind: 'updated', rule: toRuleView(updated) }
@@ -355,6 +407,17 @@ export async function setRecurringRuleStatus(
   const current = await findRule(database, id, true)
   if (!current || current.deletedAt) return { kind: 'not_found' }
   if (current.revision !== input.revision) return { kind: 'version_conflict' }
+
+  if (input.isActive) {
+    const referenceError = await validateReferences(
+      database,
+      current.accountId,
+      current.categoryId,
+      current.currency,
+      current.type,
+    )
+    if (referenceError) return { kind: 'reference_invalid', code: referenceError }
+  }
 
   let nextOccurrenceOn = current.nextOccurrenceOn
   if (input.isActive && current.isActive !== 1) {
@@ -378,11 +441,50 @@ export async function setRecurringRuleStatus(
         cursor_version = cursor_version + 1,
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE id = ? AND revision = ? AND deleted_at IS NULL
+        AND (? = 0 OR (
+          EXISTS (
+            SELECT 1
+            FROM accounts
+            WHERE id = ? AND is_active = 1 AND currency = ?
+          )
+          AND EXISTS (
+            SELECT 1
+            FROM categories
+            WHERE id = ? AND is_active = 1 AND type = ?
+          )
+        ))
     `)
-    .bind(input.isActive ? 1 : 0, nextOccurrenceOn, id, input.revision)
+    .bind(
+      input.isActive ? 1 : 0,
+      nextOccurrenceOn,
+      id,
+      input.revision,
+      input.isActive ? 1 : 0,
+      current.accountId,
+      current.currency,
+      current.categoryId,
+      current.type,
+    )
     .run()
 
-  if (Number(result.meta.changes) === 0) return { kind: 'version_conflict' }
+  if (Number(result.meta.changes) === 0) {
+    const latest = await findRule(database, id, true)
+    if (!latest || latest.deletedAt) return { kind: 'not_found' }
+    if (latest.revision !== input.revision) return { kind: 'version_conflict' }
+    if (input.isActive) {
+      const currentReferenceError = await validateReferences(
+        database,
+        current.accountId,
+        current.categoryId,
+        current.currency,
+        current.type,
+      )
+      if (currentReferenceError) {
+        return { kind: 'reference_invalid', code: currentReferenceError }
+      }
+    }
+    return { kind: 'version_conflict' }
+  }
   const updated = await findRule(database, id, false)
   if (!updated) throw new Error('Recurring status update did not produce a row')
   return { kind: 'updated', rule: toRuleView(updated) }

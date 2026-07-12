@@ -3,23 +3,23 @@ import type { MessageKey, Translator } from '../i18n'
 import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from './schema'
 
 export const demoAccounts: Account[] = [
-  { id: 1, name: '現金', type: 'cash', currency: 'HKD', isActive: true, sortOrder: 10, localizationKey: 'account.cash' },
-  { id: 2, name: '銀行戶口', type: 'bank', currency: 'HKD', isActive: true, sortOrder: 20, localizationKey: 'account.bank' },
-  { id: 3, name: '信用卡', type: 'credit_card', currency: 'HKD', isActive: true, sortOrder: 30, localizationKey: 'account.credit_card' },
-  { id: 4, name: '八達通', type: 'wallet', currency: 'HKD', isActive: true, sortOrder: 40, localizationKey: 'account.wallet' },
+  { id: 1, name: '現金', type: 'cash', currency: 'HKD', isActive: true, sortOrder: 10, localizationKey: 'account.cash', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 2, name: '銀行戶口', type: 'bank', currency: 'HKD', isActive: true, sortOrder: 20, localizationKey: 'account.bank', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 3, name: '信用卡', type: 'credit_card', currency: 'HKD', isActive: true, sortOrder: 30, localizationKey: 'account.credit_card', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 4, name: '八達通', type: 'wallet', currency: 'HKD', isActive: true, sortOrder: 40, localizationKey: 'account.wallet', updatedAt: '2026-07-11T10:30:00.000Z' },
 ]
 
 export const demoCategories: Category[] = [
-  { id: 1, name: '薪金', type: 'income', icon: 'banknote', color: '#147a5a', isActive: true, sortOrder: 10, localizationKey: 'category.salary' },
-  { id: 2, name: '其他收入', type: 'income', icon: 'circle-dollar-sign', color: '#2f7e70', isActive: true, sortOrder: 20, localizationKey: 'category.other_income' },
-  { id: 3, name: '飲食', type: 'expense', icon: 'utensils', color: '#b14b46', isActive: true, sortOrder: 10, localizationKey: 'category.food' },
-  { id: 4, name: '交通', type: 'expense', icon: 'train', color: '#4b6f87', isActive: true, sortOrder: 20, localizationKey: 'category.transport' },
-  { id: 5, name: '購物', type: 'expense', icon: 'shopping-bag', color: '#8c5b72', isActive: true, sortOrder: 30, localizationKey: 'category.shopping' },
-  { id: 6, name: '住屋', type: 'expense', icon: 'house', color: '#8a6b42', isActive: true, sortOrder: 40, localizationKey: 'category.housing' },
-  { id: 7, name: '帳單', type: 'expense', icon: 'receipt-text', color: '#73658c', isActive: true, sortOrder: 50, localizationKey: 'category.bills' },
-  { id: 8, name: '娛樂', type: 'expense', icon: 'gamepad-2', color: '#9a6a38', isActive: true, sortOrder: 60, localizationKey: 'category.entertainment' },
-  { id: 9, name: '醫療', type: 'expense', icon: 'heart-pulse', color: '#9f5050', isActive: true, sortOrder: 70, localizationKey: 'category.healthcare' },
-  { id: 10, name: '其他支出', type: 'expense', icon: 'circle-ellipsis', color: '#64766f', isActive: true, sortOrder: 80, localizationKey: 'category.other_expense' },
+  { id: 1, name: '薪金', type: 'income', icon: 'banknote', color: '#147a5a', isActive: true, sortOrder: 10, localizationKey: 'category.salary', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 2, name: '其他收入', type: 'income', icon: 'circle-dollar-sign', color: '#2f7e70', isActive: true, sortOrder: 20, localizationKey: 'category.other_income', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 3, name: '飲食', type: 'expense', icon: 'utensils', color: '#b14b46', isActive: true, sortOrder: 10, localizationKey: 'category.food', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 4, name: '交通', type: 'expense', icon: 'train', color: '#4b6f87', isActive: true, sortOrder: 20, localizationKey: 'category.transport', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 5, name: '購物', type: 'expense', icon: 'shopping-bag', color: '#8c5b72', isActive: true, sortOrder: 30, localizationKey: 'category.shopping', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 6, name: '住屋', type: 'expense', icon: 'house', color: '#8a6b42', isActive: true, sortOrder: 40, localizationKey: 'category.housing', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 7, name: '帳單', type: 'expense', icon: 'receipt-text', color: '#73658c', isActive: true, sortOrder: 50, localizationKey: 'category.bills', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 8, name: '娛樂', type: 'expense', icon: 'gamepad-2', color: '#9a6a38', isActive: true, sortOrder: 60, localizationKey: 'category.entertainment', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 9, name: '醫療', type: 'expense', icon: 'heart-pulse', color: '#9f5050', isActive: true, sortOrder: 70, localizationKey: 'category.healthcare', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 10, name: '其他支出', type: 'expense', icon: 'circle-ellipsis', color: '#64766f', isActive: true, sortOrder: 80, localizationKey: 'category.other_expense', updatedAt: '2026-07-11T10:30:00.000Z' },
 ]
 
 const createdAt = '2026-07-11T10:30:00.000Z'

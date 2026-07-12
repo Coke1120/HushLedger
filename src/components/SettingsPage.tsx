@@ -2,7 +2,9 @@ import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-
 import { useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
+import type { Account, Category } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
+import { ReferenceDataSettings } from './ReferenceDataSettings'
 import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
 
 const updateStatusKeys: Readonly<Partial<Record<AppUpdateStatus, MessageKey>>> = {
@@ -21,9 +23,20 @@ const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/Coke1120'
 type SettingsPageProps = {
   aiSettings: AiProviderSettings
   onAiSettingsChange: (settings: AiProviderSettings) => void
+  accounts: Account[]
+  categories: Category[]
+  canManageReferences: boolean
+  onReferenceRefresh: () => Promise<boolean>
 }
 
-export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPageProps) {
+export function SettingsPage({
+  aiSettings,
+  onAiSettingsChange,
+  accounts,
+  categories,
+  canManageReferences,
+  onReferenceRefresh,
+}: SettingsPageProps) {
   const { locale, setLocale, t } = useI18n()
   const { mode, status, setMode, checkForUpdate, installUpdate } = useAppUpdate()
   const [saved, setSaved] = useState(false)
@@ -47,6 +60,13 @@ export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPagePro
           <p>{t('settingsDescription')}</p>
         </div>
       </div>
+
+      <ReferenceDataSettings
+        accounts={accounts}
+        categories={categories}
+        enabled={canManageReferences}
+        onRefresh={onReferenceRefresh}
+      />
 
       <div className="settings-panel">
         <div className="settings-panel-heading">

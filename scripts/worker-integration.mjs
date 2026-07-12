@@ -450,6 +450,8 @@ async function verifyWorkerApi() {
   assert.equal(accountsResult.response.status, 200)
   assert.equal(categoriesResult.response.status, 200)
   assert.match(accountsResult.response.headers.get('cache-control') ?? '', /no-store/)
+  assert(accountsResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
+  assert(categoriesResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
 
   const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
   assert.equal(duplicateMonth.response.status, 400)
@@ -539,10 +541,182 @@ async function verifyWorkerApi() {
       '其他支出': 'category.other_expense',
     },
   )
-  const account = accountsResult.payload.data.find((item) => item.isActive)
-  const expenseCategory = categoriesResult.payload.data.find((item) => item.isActive && item.type === 'expense')
-  assert(account)
-  assert(expenseCategory)
+
+  const crossOriginReference = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: { name: 'Hostile account', type: 'bank' },
+    origin: 'https://attacker.invalid',
+  })
+  assert.equal(crossOriginReference.response.status, 403)
+  assert.equal(crossOriginReference.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const createdAccount = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: { name: 'Integration savings', type: 'bank' },
+  })
+  assert.equal(createdAccount.response.status, 201)
+  assert.equal(createdAccount.payload.data.localizationKey, null)
+  assert.equal(createdAccount.payload.data.isActive, true)
+
+  const duplicateAccount = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: { name: 'integration SAVINGS', type: 'cash' },
+  })
+  assert.equal(duplicateAccount.response.status, 409)
+  assert.equal(duplicateAccount.payload.error.code, 'REFERENCE_NAME_CONFLICT')
+
+  const renamedAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: 'Integration wallet',
+      type: 'wallet',
+      updatedAt: createdAccount.payload.data.updatedAt,
+    },
+  })
+  assert.equal(renamedAccount.response.status, 200)
+  assert.equal(renamedAccount.payload.data.name, 'Integration wallet')
+  assert.equal(renamedAccount.payload.data.type, 'wallet')
+  assert.notEqual(renamedAccount.payload.data.updatedAt, createdAccount.payload.data.updatedAt)
+
+  const staleAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: 'Stale account edit',
+      type: 'cash',
+      updatedAt: createdAccount.payload.data.updatedAt,
+    },
+  })
+  assert.equal(staleAccount.response.status, 409)
+  assert.equal(staleAccount.payload.error.code, 'REFERENCE_VERSION_CONFLICT')
+
+  const disabledAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: renamedAccount.payload.data.updatedAt },
+  })
+  assert.equal(disabledAccount.response.status, 200)
+  assert.equal(disabledAccount.payload.data.isActive, false)
+  const enabledAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PATCH',
+    body: { isActive: true, updatedAt: disabledAccount.payload.data.updatedAt },
+  })
+  assert.equal(enabledAccount.response.status, 200)
+  assert.equal(enabledAccount.payload.data.isActive, true)
+
+  const temporarilyDisabledAccounts = []
+  for (const builtInAccount of accountsResult.payload.data) {
+    const disabled = await api(baseUrl, `/api/accounts/${builtInAccount.id}`, {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: builtInAccount.updatedAt },
+    })
+    assert.equal(disabled.response.status, 200)
+    temporarilyDisabledAccounts.push(disabled.payload.data)
+  }
+  const lastAccountDisable = await api(baseUrl, `/api/accounts/${enabledAccount.payload.data.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: enabledAccount.payload.data.updatedAt },
+  })
+  assert.equal(lastAccountDisable.response.status, 409)
+  assert.equal(lastAccountDisable.payload.error.code, 'REFERENCE_LAST_ACTIVE')
+  for (const disabledAccountItem of temporarilyDisabledAccounts) {
+    const reenabled = await api(baseUrl, `/api/accounts/${disabledAccountItem.id}`, {
+      method: 'PATCH',
+      body: { isActive: true, updatedAt: disabledAccountItem.updatedAt },
+    })
+    assert.equal(reenabled.response.status, 200)
+  }
+
+  const createdCategory = await api(baseUrl, '/api/categories', {
+    method: 'POST',
+    body: { name: 'Integration flexible', type: 'expense' },
+  })
+  assert.equal(createdCategory.response.status, 201)
+  assert.equal(createdCategory.payload.data.icon, 'circle-ellipsis')
+  assert.equal(createdCategory.payload.data.localizationKey, null)
+
+  const duplicateCategory = await api(baseUrl, '/api/categories', {
+    method: 'POST',
+    body: { name: 'integration FLEXIBLE', type: 'expense' },
+  })
+  assert.equal(duplicateCategory.response.status, 409)
+  assert.equal(duplicateCategory.payload.error.code, 'REFERENCE_NAME_CONFLICT')
+
+  const sameNameDifferentType = await api(baseUrl, '/api/categories', {
+    method: 'POST',
+    body: { name: 'Integration flexible', type: 'income' },
+  })
+  assert.equal(sameNameDifferentType.response.status, 201)
+  assert.equal(sameNameDifferentType.payload.data.type, 'income')
+
+  const temporarilyDisabledIncomeCategories = []
+  for (const builtInCategory of categoriesResult.payload.data.filter(({ type }) => type === 'income')) {
+    const disabled = await api(baseUrl, `/api/categories/${builtInCategory.id}`, {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: builtInCategory.updatedAt },
+    })
+    assert.equal(disabled.response.status, 200)
+    temporarilyDisabledIncomeCategories.push(disabled.payload.data)
+  }
+  const lastIncomeCategoryDisable = await api(
+    baseUrl,
+    `/api/categories/${sameNameDifferentType.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: sameNameDifferentType.payload.data.updatedAt },
+    },
+  )
+  assert.equal(lastIncomeCategoryDisable.response.status, 409)
+  assert.equal(lastIncomeCategoryDisable.payload.error.code, 'REFERENCE_LAST_ACTIVE')
+  for (const disabledCategoryItem of temporarilyDisabledIncomeCategories) {
+    const reenabled = await api(baseUrl, `/api/categories/${disabledCategoryItem.id}`, {
+      method: 'PATCH',
+      body: { isActive: true, updatedAt: disabledCategoryItem.updatedAt },
+    })
+    assert.equal(reenabled.response.status, 200)
+  }
+
+  const renamedCategory = await api(baseUrl, `/api/categories/${createdCategory.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: 'Integration essentials',
+      updatedAt: createdCategory.payload.data.updatedAt,
+    },
+  })
+  assert.equal(renamedCategory.response.status, 200)
+  assert.equal(renamedCategory.payload.data.name, 'Integration essentials')
+  assert.notEqual(renamedCategory.payload.data.updatedAt, createdCategory.payload.data.updatedAt)
+
+  const staleCategory = await api(baseUrl, `/api/categories/${createdCategory.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: 'Stale category edit',
+      updatedAt: createdCategory.payload.data.updatedAt,
+    },
+  })
+  assert.equal(staleCategory.response.status, 409)
+  assert.equal(staleCategory.payload.error.code, 'REFERENCE_VERSION_CONFLICT')
+
+  const disabledCategory = await api(baseUrl, `/api/categories/${createdCategory.payload.data.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: renamedCategory.payload.data.updatedAt },
+  })
+  assert.equal(disabledCategory.response.status, 200)
+  assert.equal(disabledCategory.payload.data.isActive, false)
+  const enabledCategory = await api(baseUrl, `/api/categories/${createdCategory.payload.data.id}`, {
+    method: 'PATCH',
+    body: { isActive: true, updatedAt: disabledCategory.payload.data.updatedAt },
+  })
+  assert.equal(enabledCategory.response.status, 200)
+  assert.equal(enabledCategory.payload.data.isActive, true)
+
+  const referenceDelete = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'DELETE',
+    body: {},
+  })
+  assert.equal(referenceDelete.response.status, 404)
+  assert.equal(referenceDelete.payload.error.code, 'NOT_FOUND')
+
+  let account = enabledAccount.payload.data
+  let expenseCategory = enabledCategory.payload.data
 
   const cappedExportRows = await api(baseUrl, `/api/transactions?month=${month}&search=export%20bulk`)
   assert.equal(cappedExportRows.response.status, 200)
@@ -622,6 +796,93 @@ async function verifyWorkerApi() {
   assert.equal(updatedTransaction.payload.data.amountMinor, 456)
   assert.equal(updatedTransaction.payload.data.payee, 'edited integration test')
 
+  const pausedRuleId = '20000000-0000-4000-8000-000000000008'
+  const pausedRule = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      id: pausedRuleId,
+      name: 'Archived reference check',
+      type: 'expense',
+      amountMinor: 100,
+      currency: 'HKD',
+      accountId: account.id,
+      categoryId: expenseCategory.id,
+      frequency: 'monthly',
+      scheduleStartsOn: today,
+      isActive: false,
+      payee: '',
+      note: '',
+    },
+  })
+  assert.equal(pausedRule.response.status, 201)
+  assert.equal(pausedRule.payload.data.isActive, false)
+
+  const archivedAccount = await api(baseUrl, `/api/accounts/${account.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: account.updatedAt },
+  })
+  assert.equal(archivedAccount.response.status, 200)
+  const archivedCategory = await api(baseUrl, `/api/categories/${expenseCategory.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: expenseCategory.updatedAt },
+  })
+  assert.equal(archivedCategory.response.status, 200)
+
+  const updatedArchivedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
+    method: 'PUT',
+    body: {
+      ...transactionFields,
+      amountMinor: 456,
+      payee: 'edited integration test',
+      note: 'archived references remain editable',
+      updatedAt: updatedTransaction.payload.data.updatedAt,
+    },
+  })
+  assert.equal(updatedArchivedTransaction.response.status, 200)
+  assert.equal(updatedArchivedTransaction.payload.data.note, 'archived references remain editable')
+
+  const rejectedInactiveReference = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: {
+      ...transactionBody,
+      id: '10000000-0000-4000-8000-000000000004',
+    },
+  })
+  assert.equal(rejectedInactiveReference.response.status, 400)
+  assert.equal(rejectedInactiveReference.payload.error.code, 'ACCOUNT_INVALID')
+
+  const rejectedAccountResume = await api(baseUrl, `/api/recurring-rules/${pausedRuleId}/status`, {
+    method: 'PATCH',
+    body: { isActive: true, revision: pausedRule.payload.data.revision },
+  })
+  assert.equal(rejectedAccountResume.response.status, 400)
+  assert.equal(rejectedAccountResume.payload.error.code, 'ACCOUNT_INVALID')
+
+  const reenabledAccount = await api(baseUrl, `/api/accounts/${account.id}`, {
+    method: 'PATCH',
+    body: { isActive: true, updatedAt: archivedAccount.payload.data.updatedAt },
+  })
+  assert.equal(reenabledAccount.response.status, 200)
+  const rejectedCategoryResume = await api(baseUrl, `/api/recurring-rules/${pausedRuleId}/status`, {
+    method: 'PATCH',
+    body: { isActive: true, revision: pausedRule.payload.data.revision },
+  })
+  assert.equal(rejectedCategoryResume.response.status, 400)
+  assert.equal(rejectedCategoryResume.payload.error.code, 'CATEGORY_INVALID')
+  const reenabledCategory = await api(baseUrl, `/api/categories/${expenseCategory.id}`, {
+    method: 'PATCH',
+    body: { isActive: true, updatedAt: archivedCategory.payload.data.updatedAt },
+  })
+  assert.equal(reenabledCategory.response.status, 200)
+  account = reenabledAccount.payload.data
+  expenseCategory = reenabledCategory.payload.data
+
+  const removedPausedRule = await api(baseUrl, `/api/recurring-rules/${pausedRuleId}`, {
+    method: 'DELETE',
+    body: { revision: pausedRule.payload.data.revision },
+  })
+  assert.equal(removedPausedRule.response.status, 200)
+
   const filteredCsvExport = await api(
     baseUrl,
     `/api/exports/transactions?month=${month}&type=expense&search=edited%20integration%20test`,
@@ -639,7 +900,7 @@ async function verifyWorkerApi() {
 
   const deletedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
     method: 'DELETE',
-    body: { updatedAt: updatedTransaction.payload.data.updatedAt },
+    body: { updatedAt: updatedArchivedTransaction.payload.data.updatedAt },
   })
   assert.equal(deletedTransaction.response.status, 200)
   assert.equal(deletedTransaction.payload.data.deleted, true)
@@ -684,6 +945,20 @@ async function verifyWorkerApi() {
     assert.equal(created.payload.data.nextOccurrenceOn, today)
     createdRules.push(created.payload.data)
   }
+
+  const guardedAccountDisable = await api(baseUrl, `/api/accounts/${account.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: account.updatedAt },
+  })
+  assert.equal(guardedAccountDisable.response.status, 409)
+  assert.equal(guardedAccountDisable.payload.error.code, 'REFERENCE_ACTIVE_RULES')
+
+  const guardedCategoryDisable = await api(baseUrl, `/api/categories/${expenseCategory.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: expenseCategory.updatedAt },
+  })
+  assert.equal(guardedCategoryDisable.response.status, 409)
+  assert.equal(guardedCategoryDisable.payload.error.code, 'REFERENCE_ACTIVE_RULES')
 
   const invalidAccount = await api(baseUrl, '/api/recurring-rules', {
     method: 'POST',
@@ -814,6 +1089,9 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
+    referenceLifecycles: 2,
+    referenceSafetyGuards: 4,
+    referenceConflictChecks: 4,
   }
 }
 

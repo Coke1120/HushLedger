@@ -1,5 +1,6 @@
 import type { ZodIssue } from 'zod'
 import type { ReferenceErrorCode, UpdateRuleResult } from './recurring'
+import type { ReferenceMutationResult } from './referenceData'
 
 export const MAX_JSON_BODY_BYTES = 16 * 1024
 
@@ -219,6 +220,28 @@ export function jsonRecurringMutationResult(result: UpdateRuleResult) {
   }
   if (result.kind === 'reference_invalid') return jsonReferenceError(result.code)
   return jsonSuccess(result.rule)
+}
+
+export function jsonReferenceMutationResult<T>(result: ReferenceMutationResult<T>, created = false) {
+  if (result.kind === 'created' || result.kind === 'updated') {
+    return jsonSuccess(result.item, created ? 201 : 200)
+  }
+  if (result.kind === 'not_found') {
+    return jsonError(404, 'REFERENCE_NOT_FOUND', '找不到指定的帳戶或分類')
+  }
+  if (result.kind === 'version_conflict') {
+    return jsonError(409, 'REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
+  }
+  if (result.kind === 'name_conflict') {
+    return jsonError(409, 'REFERENCE_NAME_CONFLICT', '同類型已有相同名稱')
+  }
+  if (result.kind === 'last_active') {
+    return jsonError(409, 'REFERENCE_LAST_ACTIVE', '必須保留至少一個可用項目')
+  }
+  if (result.kind === 'active_rules') {
+    return jsonError(409, 'REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
+  }
+  return jsonError(500, 'INTERNAL_ERROR', '伺服器暫時無法處理請求')
 }
 
 export function apiRoute<Args extends unknown[]>(

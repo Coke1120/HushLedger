@@ -39,6 +39,9 @@ knowledge and explains every command and dashboard click.
   user-entered spreadsheet formulas neutralized.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
+- Create and rename accounts and categories from Settings, and disable or
+  re-enable them without deleting transaction history. Active recurring rules
+  and the last usable account/category are protected from accidental disabling.
 - Custom payees and notes.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
   paused, resumed, and deleted.
@@ -52,11 +55,12 @@ knowledge and explains every command and dashboard click.
 - A settings page for switching immediately among Traditional Chinese, English,
   Japanese, and French. The preference is stored only in the current browser.
 
-Accounts and categories currently come from D1 seed data, including cash, bank,
-credit card, digital wallet, income, and expense categories. Full management of
-custom banks, payment accounts, income categories, and expense categories is
-planned for the next phase. The existing schema already supports soft-disabling
-references while preserving transaction history. See [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
+HushLedger starts with cash, bank, credit-card, wallet, income, and expense
+defaults. Settings can add custom accounts and categories, rename them, change a
+custom or built-in account type, and disable or re-enable entries. Disabled
+entries disappear from new transaction choices but remain attached to history;
+the app intentionally offers no destructive account/category delete action. See
+[PROJECT_BRIEF.md](PROJECT_BRIEF.md).
 
 In HushLedger, a payment method is an account such as cash, a bank account, a
 credit card, or a digital wallet. It is not an additional transaction type.
@@ -73,6 +77,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   transaction times.
 - Transaction edits preserve recurring-rule provenance and use `updated_at` as an
   optimistic concurrency token; stale updates and deletes are rejected.
+- Disabled accounts and categories are unavailable to new entries. An existing
+  transaction may keep and edit against its archived references until the user
+  explicitly reassigns them to active ones.
 - A recurring rule occurrence date is an immutable idempotency key. Editing a rule
   affects only future occurrences that have not been generated. Pausing or deleting
   a rule never deletes historical transactions.
@@ -250,9 +257,10 @@ ESLint, Oxlint, the Next.js and OpenNext production builds, and a workerd
 integration gate against isolated temporary D1 databases. The gate rebuilds fresh
 and upgraded migration paths and verifies the
 App Router shell, privacy-safe PWA assets, security headers, API contracts,
-configured Cron schedule, recurring-rule CRUD, race-safe idempotency, and history
-preservation. It proves that a filtered CSV export is not truncated by the
-interactive 200-row limit. It also starts local Next.js with a fake
+configured Cron schedule, reference-data lifecycle and safety guards,
+recurring-rule CRUD, race-safe idempotency, and history preservation. It proves
+that a filtered CSV export is not truncated by the interactive 200-row limit. It
+also starts local Next.js with a fake
 OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, and proves that the parse creates no D1 transaction.
 
@@ -291,7 +299,15 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 ```text
 GET    /api/health
 GET    /api/accounts
+POST   /api/accounts
+GET    /api/accounts/:id
+PUT    /api/accounts/:id
+PATCH  /api/accounts/:id
 GET    /api/categories
+POST   /api/categories
+GET    /api/categories/:id
+PUT    /api/categories/:id
+PATCH  /api/categories/:id
 GET    /api/transactions?month=YYYY-MM&type=expense|income&search=...
 POST   /api/transactions
 GET    /api/transactions/:id
@@ -308,6 +324,12 @@ PATCH  /api/recurring-rules/:id/status
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
 ```
+
+Account/category `PATCH` changes `isActive`; `PUT` renames an entry and may also
+change an account type. Both use `updatedAt` for optimistic concurrency. There is
+no account/category `DELETE`: disabling preserves historical foreign-key links,
+and the server rejects disabling the last active choice or a choice used by an
+active recurring rule.
 
 Transactions are ordered from newest to oldest by transaction date. A response
 contains at most 200 transactions. When that limit is reached, the UI explicitly

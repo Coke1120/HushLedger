@@ -2,6 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import {
+  accountCreateSchema,
+  accountUpdateSchema,
+  categoryCreateSchema,
+  categoryUpdateSchema,
+  referenceIdSchema,
+  referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
   recurringRuleStatusSchema,
@@ -11,6 +17,8 @@ import {
   transactionInputSchema,
   transactionUpdateSchema,
   type RecurringGenerationResult,
+  type Account,
+  type Category,
 } from '../lib/schema'
 import {
   actionError,
@@ -28,6 +36,15 @@ import {
   type UpdateTransactionResult,
 } from '../server/money'
 import {
+  createAccountReference,
+  createCategoryReference,
+  setAccountReferenceStatus,
+  setCategoryReferenceStatus,
+  updateAccountReference,
+  updateCategoryReference,
+  type ReferenceMutationResult,
+} from '../server/referenceData'
+import {
   createRecurringRule,
   deleteRecurringRule,
   runDueRecurringRules,
@@ -41,6 +58,98 @@ import { emptyActionSchema, recurringRuleIdSchema } from '../server/validation'
 
 type DeletedRule = { id: string; deleted: true; revision: number }
 type DeletedTransaction = { id: string; deleted: true }
+
+export async function createAccountAction(input: unknown): Promise<ActionResult<Account>> {
+  const denied = await accessDenied<Account>()
+  if (denied) return denied
+
+  const parsed = accountCreateSchema.safeParse(input)
+  if (!parsed.success) return validationError('帳戶資料不正確', parsed.error.issues)
+
+  return runAction('create_account', async () => referenceMutationResult(
+    await createAccountReference(await getDatabase(), parsed.data),
+  ))
+}
+
+export async function updateAccountAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<Account>> {
+  const denied = await accessDenied<Account>()
+  if (denied) return denied
+
+  const id = referenceIdSchema.safeParse(idInput)
+  if (!id.success) return invalidReferenceId(id.error.issues)
+  const parsed = accountUpdateSchema.safeParse(input)
+  if (!parsed.success) return validationError('帳戶資料不正確', parsed.error.issues)
+
+  return runAction('update_account', async () => referenceMutationResult(
+    await updateAccountReference(await getDatabase(), id.data, parsed.data),
+  ))
+}
+
+export async function setAccountStatusAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<Account>> {
+  const denied = await accessDenied<Account>()
+  if (denied) return denied
+
+  const id = referenceIdSchema.safeParse(idInput)
+  if (!id.success) return invalidReferenceId(id.error.issues)
+  const parsed = referenceStatusSchema.safeParse(input)
+  if (!parsed.success) return validationError('帳戶狀態不正確', parsed.error.issues)
+
+  return runAction('set_account_status', async () => referenceMutationResult(
+    await setAccountReferenceStatus(await getDatabase(), id.data, parsed.data),
+  ))
+}
+
+export async function createCategoryAction(input: unknown): Promise<ActionResult<Category>> {
+  const denied = await accessDenied<Category>()
+  if (denied) return denied
+
+  const parsed = categoryCreateSchema.safeParse(input)
+  if (!parsed.success) return validationError('分類資料不正確', parsed.error.issues)
+
+  return runAction('create_category', async () => referenceMutationResult(
+    await createCategoryReference(await getDatabase(), parsed.data),
+  ))
+}
+
+export async function updateCategoryAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<Category>> {
+  const denied = await accessDenied<Category>()
+  if (denied) return denied
+
+  const id = referenceIdSchema.safeParse(idInput)
+  if (!id.success) return invalidReferenceId(id.error.issues)
+  const parsed = categoryUpdateSchema.safeParse(input)
+  if (!parsed.success) return validationError('分類資料不正確', parsed.error.issues)
+
+  return runAction('update_category', async () => referenceMutationResult(
+    await updateCategoryReference(await getDatabase(), id.data, parsed.data),
+  ))
+}
+
+export async function setCategoryStatusAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<Category>> {
+  const denied = await accessDenied<Category>()
+  if (denied) return denied
+
+  const id = referenceIdSchema.safeParse(idInput)
+  if (!id.success) return invalidReferenceId(id.error.issues)
+  const parsed = referenceStatusSchema.safeParse(input)
+  if (!parsed.success) return validationError('分類狀態不正確', parsed.error.issues)
+
+  return runAction('set_category_status', async () => referenceMutationResult(
+    await setCategoryReferenceStatus(await getDatabase(), id.data, parsed.data),
+  ))
+}
 
 export async function createTransactionAction(
   input: unknown,
@@ -253,6 +362,36 @@ function invalidTransactionId<T>(issues: Parameters<typeof sanitizeValidationIss
     '交易 ID 不正確',
     sanitizeValidationIssues(issues),
   )
+}
+
+function invalidReferenceId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]) {
+  return actionError<T>(
+    'INVALID_REFERENCE_ID',
+    '帳戶或分類 ID 不正確',
+    sanitizeValidationIssues(issues),
+  )
+}
+
+function referenceMutationResult<T>(result: ReferenceMutationResult<T>): ActionResult<T> {
+  if (result.kind === 'created' || result.kind === 'updated') {
+    return revalidatedSuccess(result.item)
+  }
+  if (result.kind === 'not_found') {
+    return actionError('REFERENCE_NOT_FOUND', '找不到指定的帳戶或分類')
+  }
+  if (result.kind === 'version_conflict') {
+    return actionError('REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
+  }
+  if (result.kind === 'name_conflict') {
+    return actionError('REFERENCE_NAME_CONFLICT', '同類型已有相同名稱')
+  }
+  if (result.kind === 'last_active') {
+    return actionError('REFERENCE_LAST_ACTIVE', '必須保留至少一個可用項目')
+  }
+  if (result.kind === 'active_rules') {
+    return actionError('REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
+  }
+  return actionError('INTERNAL_ERROR', '伺服器暫時無法處理請求')
 }
 
 function referenceError<T>(code: ReferenceErrorCode): ActionResult<T> {
