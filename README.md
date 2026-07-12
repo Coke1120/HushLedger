@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/Coke1120/HushLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/Coke1120/HushLedger/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-17483c.svg)](LICENSE)
-[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20D1-f38020.svg)](docs/CLOUDFLARE_SETUP.md)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20D1-f38020.svg)](docs/EASY_DEPLOY.md)
 
 [![HushLedger ledger-and-flow brand artwork](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/brand/hushledger-social-preview.png)](https://github.com/Coke1120/HushLedger/blob/main/design/brand/hushledger-social-preview.png)
 
@@ -13,6 +13,10 @@ Traditional Chinese, English, Japanese, and French. Built as a React PWA backed 
 Cloudflare Workers and D1, it focuses on fast transaction entry, clear monthly
 summaries, and dependable daily, weekly, and monthly recurring transactions.
 Production deployments must be protected by Cloudflare Access.
+
+**New to deployment?** Follow the
+[beginner-friendly Cloudflare guide](docs/EASY_DEPLOY.md). It requires no Git
+knowledge and explains every command and dashboard click.
 
 [![HushLedger desktop dashboard](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/qa/desktop-1440-live.png)](https://github.com/Coke1120/HushLedger/blob/main/design/qa/desktop-1440-live.png)
 
@@ -204,8 +208,11 @@ These application checks do not replace Cloudflare Access.
 
 ## Private Cloudflare deployment
 
-[docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md) provides the complete setup,
-including:
+Start with [the beginner-friendly deployment guide](docs/EASY_DEPLOY.md) if you
+want a safe, copy-and-paste walkthrough with no Git experience required.
+
+[The advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md) provides the complete
+setup, including:
 
 - Wrangler login, D1 creation, and Worker bindings.
 - Local and remote migrations.

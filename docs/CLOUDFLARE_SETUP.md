@@ -4,6 +4,10 @@ This guide creates a private HushLedger deployment with Cloudflare Workers,
 D1, Cron Triggers, and Cloudflare Access. The repository never needs your
 Cloudflare API token or Access credentials.
 
+If you are new to terminals or Cloudflare, use the
+[beginner-friendly deployment guide](EASY_DEPLOY.md) first. This page is the
+advanced reference for verification, backups, recovery, and future AI secrets.
+
 Official references:
 
 - [Wrangler](https://developers.cloudflare.com/workers/wrangler/)
