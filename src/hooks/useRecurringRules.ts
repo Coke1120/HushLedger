@@ -123,7 +123,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
   const refresh = useCallback(async (allowDemoFallback = true) => {
     const sequence = ++requestSequence.current
     setError(null)
-    if (allowDemoFallback) setSource('loading')
 
     if (!navigator.onLine) {
       setOnline(false)

@@ -57,7 +57,6 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
     async (allowDemoFallback = true) => {
       const sequence = ++requestSequence.current
       setSaveError(null)
-      if (allowDemoFallback) setSource('loading')
 
       if (!navigator.onLine) {
         setOnline(false)
