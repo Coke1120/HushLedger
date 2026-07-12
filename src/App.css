@@ -1629,9 +1629,14 @@ textarea:focus-visible {
   text-decoration: none;
 }
 
-.ai-import-button {
+.ai-import-button,
+.export-button {
   flex: none;
   white-space: nowrap;
+}
+
+.export-button {
+  text-decoration: none;
 }
 
 .ai-settings-heading {
@@ -2530,6 +2535,7 @@ textarea:focus-visible {
 
 @media (max-width: 767px) {
   .view-transactions .ai-import-button,
+  .view-transactions .export-button,
   .ai-settings-actions .button,
   .settings-update-actions .button,
   .settings-support-link,

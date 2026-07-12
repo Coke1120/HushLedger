@@ -221,6 +221,28 @@ async function verifyUpgradeMigration() {
   assert.deepEqual(statements[3].results, [])
 }
 
+async function seedCsvExportRows() {
+  const today = hktCalendarDate()
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    freshState,
+    '--command',
+    `WITH RECURSIVE sequence(value) AS (
+       SELECT 1
+       UNION ALL
+       SELECT value + 1 FROM sequence WHERE value < 205
+     )
+     INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
+     SELECT printf('30000000-0000-4000-8000-%012d', value),'expense',100 + value,'HKD',1,3,'${today}','export bulk',''
+     FROM sequence;`,
+    '--yes',
+  ])
+}
+
 function startWorker(port, inspectorPort) {
   const child = spawn(
     wrangler,
@@ -319,8 +341,11 @@ async function api(baseUrl, path, { method = 'GET', body, origin = baseUrl } = {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   const contentType = response.headers.get('content-type') ?? ''
+  const bytes = contentType.includes('application/json')
+    ? undefined
+    : new Uint8Array(await response.clone().arrayBuffer())
   const payload = contentType.includes('application/json') ? await response.json() : await response.text()
-  return { response, payload }
+  return { response, payload, bytes }
 }
 
 function rawHttpGet(baseUrl, headers) {
@@ -519,6 +544,23 @@ async function verifyWorkerApi() {
   assert(account)
   assert(expenseCategory)
 
+  const cappedExportRows = await api(baseUrl, `/api/transactions?month=${month}&search=export%20bulk`)
+  assert.equal(cappedExportRows.response.status, 200)
+  assert.equal(cappedExportRows.payload.data.length, 200)
+
+  const uncappedCsvExport = await api(baseUrl, `/api/exports/transactions?month=${month}&search=export%20bulk`)
+  assert.equal(uncappedCsvExport.response.status, 200)
+  assert.match(uncappedCsvExport.response.headers.get('content-type') ?? '', /^text\/csv;\s*charset=utf-8/i)
+  assert.match(uncappedCsvExport.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(
+    uncappedCsvExport.response.headers.get('content-disposition'),
+    `attachment; filename="hushledger-transactions-${month}.csv"`,
+  )
+  assert.deepEqual([...uncappedCsvExport.bytes.slice(0, 3)], [0xef, 0xbb, 0xbf])
+  assert(uncappedCsvExport.payload.startsWith('Date,Type,Amount,Currency'))
+  const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
+  assert.equal(uncappedCsvRows, 205)
+
   const transaction = {
     id: '10000000-0000-4000-8000-000000000001',
     type: 'expense',
@@ -579,6 +621,14 @@ async function verifyWorkerApi() {
   assert.equal(updatedTransaction.response.status, 200)
   assert.equal(updatedTransaction.payload.data.amountMinor, 456)
   assert.equal(updatedTransaction.payload.data.payee, 'edited integration test')
+
+  const filteredCsvExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&type=expense&search=edited%20integration%20test`,
+  )
+  assert.equal(filteredCsvExport.response.status, 200)
+  assert.match(filteredCsvExport.payload, /2026-\d{2}-\d{2},expense,-4\.56,HKD/)
+  assert.match(filteredCsvExport.payload, /"edited integration test"/)
 
   const staleTransactionDelete = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
     method: 'DELETE',
@@ -759,7 +809,12 @@ async function verifyWorkerApi() {
   const afterRepeatedCron = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterRepeatedCron.payload.data.filter((item) => item.recurringRuleId === ruleIds.cron).length, 1)
 
-  return { createdRules: createdRules.length, firstRunCreated: firstRun.payload.data.created, cronCreated: 1 }
+  return {
+    createdRules: createdRules.length,
+    firstRunCreated: firstRun.payload.data.created,
+    cronCreated: 1,
+    uncappedCsvRows,
+  }
 }
 
 async function verifyNextAiDrafts() {
@@ -859,6 +914,7 @@ async function stopProvider() {
 try {
   if (!skipBuild) await runCommand(openNext, ['build'], 'opennextjs-cloudflare')
   await runWrangler(['d1', 'migrations', 'apply', 'hushledger', '--local', '--persist-to', freshState])
+  await seedCsvExportRows()
   await verifyUpgradeMigration()
   const apiEvidence = await verifyWorkerApi()
   await stopWorker()

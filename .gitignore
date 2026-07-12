@@ -23,8 +23,8 @@ next-env.d.ts
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-exports/
-backups/
+/exports/
+/backups/
 output/playwright/
 
 # Editor directories and files

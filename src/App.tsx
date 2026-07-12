@@ -156,6 +156,8 @@ function App({ initialMonth }: { initialMonth: string }) {
               <TransactionToolbar
                 search={search}
                 filter={filter}
+                month={month}
+                canExport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
                 onFilterChange={setFilter}
                 onImport={openImport}

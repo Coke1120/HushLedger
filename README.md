@@ -34,6 +34,9 @@ knowledge and explains every command and dashboard click.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Search and income/expense filtering across the 200 most recent transactions in
   each month, with an explicit notice when the result limit is reached.
+- Export every transaction matching the current month and filters as an
+  Excel-friendly UTF-8 CSV, without the 200-row display limit and with
+  user-entered spreadsheet formulas neutralized.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Custom payees and notes.
@@ -248,9 +251,10 @@ integration gate against isolated temporary D1 databases. The gate rebuilds fres
 and upgraded migration paths and verifies the
 App Router shell, privacy-safe PWA assets, security headers, API contracts,
 configured Cron schedule, recurring-rule CRUD, race-safe idempotency, and history
-preservation. It also starts local Next.js with a fake OpenAI-compatible provider,
-verifies model discovery and a successful strict draft parse, and proves that the
-parse creates no D1 transaction.
+preservation. It proves that a filtered CSV export is not truncated by the
+interactive 200-row limit. It also starts local Next.js with a fake
+OpenAI-compatible provider, verifies model discovery and a successful strict
+draft parse, and proves that the parse creates no D1 transaction.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -293,6 +297,7 @@ POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
+GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&search=...
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -308,6 +313,13 @@ Transactions are ordered from newest to oldest by transaction date. A response
 contains at most 200 transactions. When that limit is reached, the UI explicitly
 states that it is showing the 200 most recent transactions instead of describing
 the truncated result as complete.
+
+The transaction export route returns a downloadable UTF-8 CSV rather than the
+JSON success envelope. It applies the same month, type, and search filters but is
+not restricted to 200 rows. This convenience export is not a complete database
+backup: use the encrypted D1 export and restore process in the
+[advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
+for disaster recovery.
 
 The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
 mutation routes remain available and require a same-origin request, a JSON content

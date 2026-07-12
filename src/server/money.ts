@@ -150,6 +150,21 @@ export async function listTransactions(
   database: D1Database,
   query: TransactionQuery,
 ): Promise<TransactionView[]> {
+  return selectTransactions(database, query, true)
+}
+
+export async function listTransactionsForExport(
+  database: D1Database,
+  query: TransactionQuery,
+): Promise<TransactionView[]> {
+  return selectTransactions(database, query, false)
+}
+
+async function selectTransactions(
+  database: D1Database,
+  query: TransactionQuery,
+  limited: boolean,
+): Promise<TransactionView[]> {
   const { start, end } = monthRangeDates(query.month)
   const filters = ['t.occurred_on >= ?', 't.occurred_on < ?']
   const values: string[] = [start, end]
@@ -174,7 +189,7 @@ export async function listTransactions(
     ${transactionSelect}
     WHERE ${filters.join(' AND ')}
     ORDER BY t.occurred_on DESC, t.created_at DESC, t.id DESC
-    LIMIT 200
+    ${limited ? 'LIMIT 200' : ''}
   `)
     .bind(...values)
     .all<TransactionRow>()

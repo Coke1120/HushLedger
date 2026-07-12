@@ -35,6 +35,8 @@ not operate an independent database server or a multi-user identity system.
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
 - Filter income and expense.
+- Export all transactions matching the selected month and filters as CSV without
+  the interactive 200-row limit; keep disaster-recovery backups separate.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 
@@ -124,6 +126,7 @@ POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
+GET    /api/exports/transactions?month=YYYY-MM&type=...&search=...  (uncapped CSV)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -139,6 +142,11 @@ Responses use one success/error envelope. API input is strict Zod-validated;
 the server independently validates amount, currency, account state, category
 state, category type, content type, body size, and same-origin mutation.
 Database and stack errors are never returned to the client.
+
+The transaction export is the one successful non-JSON response: an attachment
+with UTF-8 BOM, exact signed decimal amounts, CRLF records, and formula-safe
+user text. It shares the list filters but not the 200-row display limit. It is a
+portable transaction view, not a full D1 backup or restore format.
 
 ## Reliability and privacy
 
@@ -173,7 +181,8 @@ Database and stack errors are never returned to the client.
 - D1 schema, seed, constraints, indexes, and date-only migration.
 - Accounts, categories, transactions, summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  recurring-rule management, and language settings.
+  filtered transaction CSV export, recurring-rule management, and language
+  settings.
 - Daily 00:05 HKT Cron plus manual due generation.
 - Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
   preview, fresh migration, and upgrade migration validation.
@@ -184,7 +193,7 @@ Database and stack errors are never returned to the client.
 1. Create/edit/disable/reorder accounts and categories.
 2. Add import batches, review state, duplicate fingerprints, and atomic commit
    without AI.
-3. Add CSV and JSON import/export.
+3. Add deterministic CSV import and full-ledger JSON portability/restore.
 
 ### Then: user-configured AI bank-text parser
 
