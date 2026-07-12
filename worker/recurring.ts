@@ -214,7 +214,7 @@ export async function createRecurringRule(
 
   const anchorDay = recurrenceAnchorDay(input.scheduleStartsOn)
   const nextOccurrenceOn = firstOccurrenceOnOrAfter(
-    input.scheduleStartsOn,
+    input.firstOccurrenceOn ?? input.scheduleStartsOn,
     today,
     input.frequency,
     anchorDay,

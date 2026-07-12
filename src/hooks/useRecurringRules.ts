@@ -78,10 +78,11 @@ function localizeDemoRule(rule: RecurringRule, t: Translator): RecurringRule {
 
 function toRule(input: RecurringRuleCreateInput): RecurringRule {
   const timestamp = new Date().toISOString()
+  const { firstOccurrenceOn, ...ruleInput } = input
   return {
-    ...input,
+    ...ruleInput,
     scheduleStartsOn: input.scheduleStartsOn,
-    nextOccurrenceOn: input.scheduleStartsOn,
+    nextOccurrenceOn: firstOccurrenceOn ?? input.scheduleStartsOn,
     lastOccurrenceOn: null,
     anchorDay: Number(input.scheduleStartsOn.slice(-2)),
     generatedCount: 0,
@@ -294,6 +295,10 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
   }, [mutate])
 
   const visibleRules = useMemo(() => rules.map((rule) => localizeDemoRule(rule, t)), [rules, t])
+  const clearActionMessage = useCallback(() => {
+    setActionMessage(null)
+    setError(null)
+  }, [])
 
   return {
     rules: visibleRules,
@@ -309,9 +314,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     setRuleActive,
     deleteRule,
     runDue,
-    clearActionMessage: () => {
-      setActionMessage(null)
-      setError(null)
-    },
+    clearActionMessage,
   }
 }

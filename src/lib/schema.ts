@@ -159,7 +159,16 @@ const recurringRuleFieldsSchema = z.object({
 
 export const recurringRuleCreateSchema = recurringRuleFieldsSchema.extend({
   id: z.string().uuid('週期交易 ID 必須是 UUID'),
-}).strict()
+  firstOccurrenceOn: calendarDateSchema.optional(),
+}).strict().superRefine((value, context) => {
+  if (value.firstOccurrenceOn && value.firstOccurrenceOn < value.scheduleStartsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['firstOccurrenceOn'],
+      message: '首次產生日期不得早於週期起始日',
+    })
+  }
+})
 
 export const recurringRuleUpdateSchema = recurringRuleFieldsSchema.extend({
   revision: z.number().int().positive(),
@@ -173,7 +182,7 @@ export type RecurrenceFrequency = z.infer<typeof recurrenceFrequencySchema>
 export type RecurringRuleCreateInput = z.infer<typeof recurringRuleCreateSchema>
 export type RecurringRuleUpdateInput = z.infer<typeof recurringRuleUpdateSchema>
 
-export type RecurringRule = RecurringRuleCreateInput & {
+export type RecurringRule = Omit<RecurringRuleCreateInput, 'firstOccurrenceOn'> & {
   nextOccurrenceOn: string
   lastOccurrenceOn: string | null
   anchorDay: number

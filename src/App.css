@@ -3713,6 +3713,11 @@ textarea:focus-visible {
     background: var(--surface);
   }
 
+  .transaction-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
   .recurring-page {
     gap: 14px;
   }

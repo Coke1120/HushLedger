@@ -52,6 +52,9 @@ knowledge and explains every command and dashboard click.
   session changed it first.
 - Duplicate an existing transaction into a reviewable draft with a fresh UUID;
   editable details and date are copied, while recurring/import provenance is not.
+- Turn an existing manual transaction into a prefilled monthly recurring-rule
+  draft; the first generation date advances to the next occurrence and nothing
+  is scheduled until the reviewed rule is created.
 - Create and rename accounts and categories from Settings, and disable or
   re-enable them without deleting transaction history. Arrow controls reorder
   accounts within the same status and categories within the same type/status.

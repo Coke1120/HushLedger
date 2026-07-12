@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, CopyPlus, LoaderCircle, Trash2, X } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, CopyPlus, LoaderCircle, Repeat2, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useI18n } from '../i18n'
 import { api } from '../lib/api'
@@ -27,6 +27,7 @@ type TransactionDialogProps = {
   onSubmit: (input: TransactionInput) => Promise<boolean>
   onDelete: (transaction: Transaction) => Promise<boolean>
   onDuplicate: (transaction: Transaction) => void
+  onMakeRecurring: (transaction: Transaction) => void
 }
 
 export function TransactionDialog({
@@ -41,6 +42,7 @@ export function TransactionDialog({
   onSubmit,
   onDelete,
   onDuplicate,
+  onMakeRecurring,
 }: TransactionDialogProps) {
   const { locale, localizeEntityName, privacyMode, t } = useI18n()
   const initialTransaction = transaction ?? draft
@@ -80,11 +82,13 @@ export function TransactionDialog({
     [categories, transaction?.categoryId, type],
   )
   const suggestedPayees = useMemo(() => payeeOptions(suggestions, type), [suggestions, type])
-  const canDuplicate = Boolean(
+  const hasActiveReferences = Boolean(
     transaction
     && accounts.some((account) => account.id === transaction.accountId && account.isActive)
     && categories.some((category) => category.id === transaction.categoryId && category.isActive),
   )
+  const canDuplicate = hasActiveReferences
+  const canMakeRecurring = hasActiveReferences && !transaction?.recurringRuleId
 
   const applyPayeeMemory = useCallback((
     nextPayee: string,
@@ -259,8 +263,11 @@ export function TransactionDialog({
 
         <form onSubmit={handleSubmit} noValidate>
           {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
-          {transaction && !canDuplicate ? (
+          {transaction && !hasActiveReferences ? (
             <p className="duplicate-form-note">{t('duplicateUnavailableHelp')}</p>
+          ) : null}
+          {transaction?.recurringRuleId ? (
+            <p className="duplicate-form-note">{t('recurringSourceAlreadyScheduledHelp')}</p>
           ) : null}
 
           <div className="type-switch" role="group" aria-label={t('transactionType')}>
@@ -395,7 +402,7 @@ export function TransactionDialog({
 
           {!online ? <p className="offline-form-note">{t('offlineTransactionForm')}</p> : null}
 
-          <div className="dialog-actions">
+          <div className="dialog-actions transaction-dialog-actions">
             {transaction ? (
               <button
                 className="button button-danger"
@@ -416,6 +423,17 @@ export function TransactionDialog({
               >
                 <CopyPlus aria-hidden="true" />
                 {t('duplicate')}
+              </button>
+            ) : null}
+            {transaction ? (
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled={saving || !online || !canMakeRecurring}
+                onClick={() => onMakeRecurring(transaction)}
+              >
+                <Repeat2 aria-hidden="true" />
+                {t('makeRecurring')}
               </button>
             ) : null}
             <button className="button button-primary save-button" type="submit" disabled={saving || !online}>

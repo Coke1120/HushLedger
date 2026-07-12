@@ -2,7 +2,7 @@ import { ArrowDownRight, ArrowUpRight, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useI18n } from '../i18n'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
-import { parseAmount } from '../lib/money'
+import { formatAmountInput, parseAmount } from '../lib/money'
 import {
   recurringRuleCreateSchema,
   recurringRuleUpdateSchema,
@@ -17,6 +17,7 @@ import {
 
 type RecurringRuleDialogProps = {
   rule: RecurringRule | null
+  draft: RecurringRuleCreateInput | null
   accounts: Account[]
   categories: Category[]
   saving: boolean
@@ -29,6 +30,7 @@ type RecurringRuleDialogProps = {
 
 export function RecurringRuleDialog({
   rule,
+  draft,
   accounts,
   categories,
   saving,
@@ -47,34 +49,37 @@ export function RecurringRuleDialog({
     t,
   } = useI18n()
   const editing = Boolean(rule)
+  const initialRule = rule ?? draft
   const selectableAccounts = useMemo(
-    () => accounts.filter((account) => account.isActive || account.id === rule?.accountId),
-    [accounts, rule?.accountId],
+    () => accounts.filter((account) => account.isActive || account.id === initialRule?.accountId),
+    [accounts, initialRule?.accountId],
   )
-  const [type, setType] = useState<TransactionType>(rule?.type ?? 'expense')
-  const [accountId, setAccountId] = useState(rule?.accountId ?? selectableAccounts[0]?.id ?? 0)
+  const [type, setType] = useState<TransactionType>(initialRule?.type ?? 'expense')
+  const [accountId, setAccountId] = useState(initialRule?.accountId ?? selectableAccounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState(
-    rule?.categoryId
+    initialRule?.categoryId
       ?? categories.find((category) => category.isActive && category.type === 'expense')?.id
       ?? 0,
   )
-  const [frequency, setFrequency] = useState<RecurrenceFrequency>(rule?.frequency ?? 'monthly')
-  const [scheduleDate, setScheduleDate] = useState(rule?.scheduleStartsOn ?? currentHongKongDate().date)
-  const [isActive, setIsActive] = useState(rule?.isActive ?? true)
+  const [frequency, setFrequency] = useState<RecurrenceFrequency>(initialRule?.frequency ?? 'monthly')
+  const [scheduleDate, setScheduleDate] = useState(
+    draft?.firstOccurrenceOn ?? initialRule?.scheduleStartsOn ?? currentHongKongDate().date,
+  )
+  const [isActive, setIsActive] = useState(initialRule?.isActive ?? true)
   const [localError, setLocalError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
-  const draftIdRef = useRef(crypto.randomUUID())
+  const draftIdRef = useRef(draft?.id ?? crypto.randomUUID())
   const savingRef = useRef(saving)
 
   const matchingCategories = useMemo(
     () => categories.filter(
       (category) =>
         category.type === type
-        && (category.isActive || category.id === rule?.categoryId),
+        && (category.isActive || category.id === initialRule?.categoryId),
     ),
-    [categories, rule?.categoryId, type],
+    [categories, initialRule?.categoryId, type],
   )
   const frequencyLabels: Record<RecurrenceFrequency, string> = {
     daily: t('daily'),
@@ -161,14 +166,18 @@ export function RecurringRuleDialog({
           ? categoryId
           : (matchingCategories[0]?.id ?? 0),
         frequency,
-        scheduleStartsOn: scheduleDate,
+        scheduleStartsOn: draft?.scheduleStartsOn ?? scheduleDate,
         isActive,
         payee: String(data.get('payee') ?? ''),
         note: String(data.get('note') ?? ''),
       }
     const parsed = rule
       ? recurringRuleUpdateSchema.safeParse({ ...fields, revision: rule.revision })
-      : recurringRuleCreateSchema.safeParse({ id: draftIdRef.current, ...fields })
+      : recurringRuleCreateSchema.safeParse({
+          id: draftIdRef.current,
+          ...fields,
+          ...(draft ? { firstOccurrenceOn: scheduleDate } : {}),
+        })
     if (!parsed.success) {
       setLocalError(t('invalidForm'))
       return
@@ -183,6 +192,7 @@ export function RecurringRuleDialog({
   const error = localError || serverError
   const describedBy = [
     'recurring-future-note',
+    draft ? 'recurring-draft-note' : '',
     frequency === 'monthly' ? 'recurring-monthly-note' : '',
     error ? 'recurring-form-error' : '',
   ]
@@ -212,13 +222,18 @@ export function RecurringRuleDialog({
         </header>
 
         <form onSubmit={handleSubmit} noValidate>
+          {draft ? (
+            <p className="duplicate-form-note" id="recurring-draft-note">
+              {t('recurringDraftReviewHelp')}
+            </p>
+          ) : null}
           <label>
             <span>{t('name')}</span>
             <input
               ref={nameRef}
               name="name"
               maxLength={80}
-              defaultValue={rule?.name ?? ''}
+              defaultValue={initialRule?.name ?? ''}
               placeholder={t('recurringNameExample')}
               required
             />
@@ -254,7 +269,7 @@ export function RecurringRuleDialog({
                 name="amount"
                 inputMode="decimal"
                 autoComplete="off"
-                defaultValue={rule ? (rule.amountMinor / 100).toFixed(2).replace('.', locale === 'fr' ? ',' : '.') : ''}
+                defaultValue={initialRule ? formatAmountInput(initialRule.amountMinor, locale) : ''}
                 placeholder={locale === 'fr' ? '0,00' : '0.00'}
                 pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
                 aria-invalid={Boolean(error)}
@@ -326,11 +341,11 @@ export function RecurringRuleDialog({
 
           <label>
             <span>{t('payee')}</span>
-            <input name="payee" maxLength={80} defaultValue={rule?.payee ?? ''} placeholder={t('recurringPayeeExample')} />
+            <input name="payee" maxLength={80} defaultValue={initialRule?.payee ?? ''} placeholder={t('recurringPayeeExample')} />
           </label>
           <label>
             <span>{t('noteOptional')}</span>
-            <textarea name="note" maxLength={200} rows={2} defaultValue={rule?.note ?? ''} placeholder={t('notePlaceholder')} />
+            <textarea name="note" maxLength={200} rows={2} defaultValue={initialRule?.note ?? ''} placeholder={t('notePlaceholder')} />
           </label>
 
           <label className="active-toggle">

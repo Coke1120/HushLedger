@@ -19,7 +19,8 @@ import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
-import type { Transaction, TransactionInput } from './lib/schema'
+import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
+import type { RecurringRuleCreateInput, Transaction, TransactionInput } from './lib/schema'
 import { duplicateTransactionDraft } from './lib/transactionDraft'
 
 const initialAiSettings: AiProviderSettings = {
@@ -29,7 +30,7 @@ const initialAiSettings: AiProviderSettings = {
 }
 
 function App({ initialMonth }: { initialMonth: string }) {
-  const { t } = useI18n()
+  const { localizeEntityName, t } = useI18n()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
@@ -39,6 +40,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
+  const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const [ledgerGeneration, setLedgerGeneration] = useState(0)
@@ -82,6 +84,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setEditingTransaction(null)
     setTransactionDraft(null)
   }, [])
+  const closeRecurringDraft = useCallback(() => setRecurringDraft(null), [])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput) => saveMoneyTransaction(input, editingTransaction ?? undefined),
@@ -92,6 +95,18 @@ function App({ initialMonth }: { initialMonth: string }) {
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
+
+  const makeTransactionRecurring = useCallback((transaction: Transaction) => {
+    const draftName = transaction.payee.trim() || localizeEntityName(
+      transaction.categoryName,
+      transaction.categoryLocalizationKey,
+    )
+    clearActionMessage()
+    closeDialog()
+    setImportMode(null)
+    setRecurringDraft(recurringRuleDraftFromTransaction(transaction, draftName))
+    changeView('recurring')
+  }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
   const openImport = useCallback((mode: 'csv' | 'ai') => {
     setView('transactions')
@@ -264,7 +279,9 @@ function App({ initialMonth }: { initialMonth: string }) {
             key={ledgerGeneration}
             accounts={data.accounts}
             categories={data.categories}
+            draft={recurringDraft}
             onMoneyRefresh={data.refresh}
+            onDraftClose={closeRecurringDraft}
           />
         </div>
         <div hidden={view !== 'settings'}>
@@ -295,6 +312,7 @@ function App({ initialMonth }: { initialMonth: string }) {
           onSubmit={saveTransaction}
           onDelete={removeTransaction}
           onDuplicate={duplicateTransaction}
+          onMakeRecurring={makeTransactionRecurring}
         />
       ) : null}
     </div>

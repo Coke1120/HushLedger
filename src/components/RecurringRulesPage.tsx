@@ -29,10 +29,18 @@ import { RecurringRuleDialog } from './RecurringRuleDialog'
 type RecurringRulesPageProps = {
   accounts: Account[]
   categories: Category[]
+  draft: RecurringRuleCreateInput | null
   onMoneyRefresh: () => Promise<boolean>
+  onDraftClose: () => void
 }
 
-export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: RecurringRulesPageProps) {
+export function RecurringRulesPage({
+  accounts,
+  categories,
+  draft,
+  onMoneyRefresh,
+  onDraftClose,
+}: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const recurring = useRecurringRules(onMoneyRefresh)
   const [editorOpen, setEditorOpen] = useState(false)
@@ -50,17 +58,20 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
   const closeEditor = useCallback(() => {
     setEditorOpen(false)
     setEditingRule(null)
-  }, [])
+    onDraftClose()
+  }, [onDraftClose])
   const closeDelete = useCallback(() => setDeletingRule(null), [])
 
   const openCreate = () => {
     recurring.clearActionMessage()
+    onDraftClose()
     setEditingRule(null)
     setEditorOpen(true)
   }
 
   const openEdit = (rule: RecurringRule) => {
     recurring.clearActionMessage()
+    onDraftClose()
     setEditingRule(rule)
     setEditorOpen(true)
   }
@@ -287,9 +298,11 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
         )}
       </div>
 
-      {editorOpen ? (
+      {editorOpen || draft ? (
         <RecurringRuleDialog
-          rule={editingRule}
+          key={draft?.id ?? editingRule?.id ?? 'new'}
+          rule={draft ? null : editingRule}
+          draft={draft}
           accounts={accounts}
           categories={categories}
           saving={recurring.mutatingId === (editingRule?.id ?? 'new')}

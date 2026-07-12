@@ -151,6 +151,10 @@ const validRecurringRule = {
 describe('recurring rule validation', () => {
   it('accepts create, update, and status payloads', () => {
     assert.equal(recurringRuleCreateSchema.safeParse(validRecurringRule).success, true)
+    assert.equal(recurringRuleCreateSchema.safeParse({
+      ...validRecurringRule,
+      firstOccurrenceOn: '2026-09-01',
+    }).success, true)
     const { id, ...update } = validRecurringRule
     assert.match(id, /-/)
     assert.equal(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success, true)
@@ -161,6 +165,7 @@ describe('recurring rule validation', () => {
   for (const [label, patch] of [
     ['unsupported frequency', { frequency: 'yearly' }],
     ['invalid start date', { scheduleStartsOn: '2026-02-30' }],
+    ['first occurrence before the anchor date', { firstOccurrenceOn: '2026-07-31' }],
     ['empty rule name', { name: '   ' }],
     ['fractional amount', { amountMinor: 1.5 }],
     ['unknown field', { privateInstruction: 'nope' }],
