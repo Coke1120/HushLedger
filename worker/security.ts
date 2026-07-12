@@ -1,4 +1,5 @@
 const PRIVATE_CACHE_CONTROL = 'private, no-store'
+const SERVICE_WORKER_CSP = "default-src 'none'; connect-src 'self'; script-src 'self'"
 
 export function createNonce() {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
@@ -55,7 +56,11 @@ export function withSecurityHeaders(
     headers.set('Cache-Control', PRIVATE_CACHE_CONTROL)
   } else if (url.pathname === '/sw.js') {
     headers.set('Cache-Control', 'no-cache, no-store, must-revalidate')
+    headers.set('Content-Security-Policy', SERVICE_WORKER_CSP)
     headers.set('Service-Worker-Allowed', '/')
+  } else if (url.pathname === '/sw-runtime.js') {
+    headers.set('Cache-Control', 'no-cache')
+    headers.set('Content-Security-Policy', SERVICE_WORKER_CSP)
   }
 
   return secured

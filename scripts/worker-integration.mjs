@@ -390,9 +390,15 @@ async function verifyNextShell(baseUrl) {
   assert.match(serviceWorker.headers.get('cache-control') ?? '', /no-cache.*no-store/)
   assert.match(serviceWorker.headers.get('service-worker-allowed') ?? '', /^\/$/)
   const serviceWorkerSource = await serviceWorker.text()
-  assert.match(serviceWorkerSource, /\/offline/)
-  assert.match(serviceWorkerSource, /_next\/static/)
-  assert.match(serviceWorkerSource, /caches\.delete/)
+  assert.match(serviceWorkerSource, /__HUSHLEDGER_RELEASE_ID__/)
+  assert.match(serviceWorkerSource, /importScripts\('\/sw-runtime\.js'\)/)
+
+  const serviceWorkerRuntime = await fetch(`${baseUrl}/sw-runtime.js`)
+  assert.equal(serviceWorkerRuntime.status, 200)
+  const serviceWorkerRuntimeSource = await serviceWorkerRuntime.text()
+  assert.match(serviceWorkerRuntimeSource, /\/offline/)
+  assert.match(serviceWorkerRuntimeSource, /_next\/static/)
+  assert.match(serviceWorkerRuntimeSource, /caches\.delete/)
 
   const offline = await fetch(`${baseUrl}/offline`)
   assert.equal(offline.status, 200)

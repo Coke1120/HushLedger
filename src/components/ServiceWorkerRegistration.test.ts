@@ -4,16 +4,18 @@ import { resolve } from 'node:path'
 import { before, describe, it } from 'node:test'
 
 type ServiceWorkerPolicy = {
+  currentCacheNames: string[]
   isObsoleteCache: (name: string) => boolean
   offlineStaticAssetPaths: (html: string) => string[]
   shouldCacheStaticRequest: (request: { method: string; url: string }, origin: string) => boolean
+  shouldSkipWaitingMessage: (data: unknown) => boolean
   shouldUseOfflineFallback: (request: { method: string; mode: string }) => boolean
 }
 
 let policy: ServiceWorkerPolicy
 
 before(async () => {
-  await import(pathToFileURL(resolve('public/sw.js')).href)
+  await import(pathToFileURL(resolve('public/sw-runtime.js')).href)
   policy = (globalThis as typeof globalThis & {
     __HUSHLEDGER_SW_POLICY__: ServiceWorkerPolicy
   }).__HUSHLEDGER_SW_POLICY__
@@ -47,7 +49,13 @@ describe('service worker privacy policy', () => {
   it('cleans old Workbox and versioned HushLedger caches only', () => {
     assert.equal(policy.isObsoleteCache('workbox-precache-v2-example'), true)
     assert.equal(policy.isObsoleteCache('hushledger-static-v0'), true)
-    assert.equal(policy.isObsoleteCache('hushledger-static-v1'), false)
+    for (const name of policy.currentCacheNames) assert.equal(policy.isObsoleteCache(name), false)
     assert.equal(policy.isObsoleteCache('unrelated-app'), false)
+  })
+
+  it('activates a waiting update only after the explicit updater message', () => {
+    assert.equal(policy.shouldSkipWaitingMessage({ type: 'SKIP_WAITING' }), true)
+    assert.equal(policy.shouldSkipWaitingMessage({ type: 'skip-waiting' }), false)
+    assert.equal(policy.shouldSkipWaitingMessage(null), false)
   })
 })

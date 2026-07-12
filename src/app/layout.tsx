@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import '../index.css'
 import '../App.css'
-import { ServiceWorkerRegistration } from '../components/ServiceWorkerRegistration'
+import { AppUpdateProvider } from '../components/ServiceWorkerRegistration'
 import { I18nProvider } from '../i18n/I18nProvider'
 
 const description =
@@ -47,8 +47,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="zh-Hant">
       <body>
-        <I18nProvider>{children}</I18nProvider>
-        <ServiceWorkerRegistration />
+        <I18nProvider>
+          <AppUpdateProvider>{children}</AppUpdateProvider>
+        </I18nProvider>
       </body>
     </html>
   )

@@ -10,7 +10,9 @@ commands, and click through Cloudflare's dashboard.
 > **Only using one computer?** You can skip Cloudflare completely. Follow the
 > [README local setup](../README.md#local-development), then use `npm run dev`.
 > Local use needs no domain, Cloudflare login, or API key. `npm run start` is not
-> a supported command because HushLedger needs a local D1 binding.
+> a supported command because HushLedger needs a local D1 binding. To avoid
+> installing Node.js, use the optional
+> [Docker Desktop or Apple Container setup](../README.md#containerized-local-use).
 
 ## What you need
 

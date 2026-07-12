@@ -1,5 +1,8 @@
-const STATIC_CACHE = 'hushledger-static-v1'
-const OFFLINE_CACHE = 'hushledger-offline-v1'
+const RELEASE_ID = typeof globalThis.__HUSHLEDGER_RELEASE_ID__ === 'string'
+  ? globalThis.__HUSHLEDGER_RELEASE_ID__
+  : 'development'
+const STATIC_CACHE = `hushledger-static-${RELEASE_ID}`
+const OFFLINE_CACHE = `hushledger-offline-${RELEASE_ID}`
 const OFFLINE_URL = '/offline'
 const PUBLIC_ASSETS = new Set([
   '/apple-touch-icon.png',
@@ -36,6 +39,10 @@ function offlineStaticAssetPaths(html) {
   return [...paths]
 }
 
+function shouldSkipWaitingMessage(data) {
+  return data?.type === 'SKIP_WAITING'
+}
+
 async function precacheOfflineShell() {
   const [offlineCache, staticCache] = await Promise.all([
     caches.open(OFFLINE_CACHE),
@@ -59,17 +66,20 @@ const isServiceWorker =
 
 if (!isServiceWorker) {
   globalThis.__HUSHLEDGER_SW_POLICY__ = {
+    currentCacheNames: [STATIC_CACHE, OFFLINE_CACHE],
     isObsoleteCache,
     offlineStaticAssetPaths,
     shouldCacheStaticRequest,
+    shouldSkipWaitingMessage,
     shouldUseOfflineFallback,
   }
 } else {
   self.addEventListener('install', (event) => {
-    event.waitUntil((async () => {
-      await precacheOfflineShell()
-      await self.skipWaiting()
-    })())
+    event.waitUntil(precacheOfflineShell())
+  })
+
+  self.addEventListener('message', (event) => {
+    if (shouldSkipWaitingMessage(event.data)) event.waitUntil(self.skipWaiting())
   })
 
   self.addEventListener('activate', (event) => {

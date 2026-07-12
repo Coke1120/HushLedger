@@ -52,6 +52,12 @@ protected by the same-origin mutation guard. Production keeps
 `global_fetch_strictly_public` enabled so Worker subrequests use the public
 Internet route rather than a private zone origin.
 
+The optional OCI image is also a local-only environment. Publish its port only
+to `127.0.0.1`, never to all host interfaces, and protect the persistent `/data`
+volume as financial data. The container does not add authentication or turn the
+local D1 emulator into a supported public deployment; use Cloudflare Access and
+Cloudflare D1 for multi-device access.
+
 Pasted bank text is disclosed to the configured provider after the user selects
 Analyze. It is kept in UI memory, is not logged or stored in D1, and model output
 is treated as untrusted. Strict server validation and deterministic minor-unit

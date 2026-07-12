@@ -1,0 +1,15 @@
+.git
+.github
+.next
+.open-next
+.wrangler
+.omx
+node_modules
+.env*
+*.log
+*.sqlite*
+backups
+design
+docs
+exports
+output

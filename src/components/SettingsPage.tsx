@@ -1,8 +1,21 @@
-import { Check, Languages, LockKeyhole } from 'lucide-react'
+import { Check, Coffee, Languages, LockKeyhole, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
-import { languageOptions, useI18n, type Locale } from '../i18n'
+import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
+import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
+
+const updateStatusKeys: Readonly<Partial<Record<AppUpdateStatus, MessageKey>>> = {
+  checking: 'checkingForUpdates',
+  current: 'updateCurrent',
+  available: 'updateAvailable',
+  installing: 'updateInstalling',
+  'restart-required': 'updateRestartRequired',
+  unsupported: 'updateUnsupported',
+  error: 'updateFailed',
+}
+
+const DONATION_URL = 'https://buymeacoffee.com/Coke1120'
 
 type SettingsPageProps = {
   aiSettings: AiProviderSettings
@@ -11,12 +24,16 @@ type SettingsPageProps = {
 
 export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPageProps) {
   const { locale, setLocale, t } = useI18n()
+  const { mode, status, setMode, checkForUpdate, installUpdate } = useAppUpdate()
   const [saved, setSaved] = useState(false)
 
   const chooseLanguage = (nextLocale: Locale) => {
     setLocale(nextLocale)
     setSaved(true)
   }
+
+  const updateStatusKey = updateStatusKeys[status]
+  const updateStatus = updateStatusKey ? t(updateStatusKey) : ''
 
   return (
     <section className="settings-page" aria-labelledby="settings-page-title">
@@ -74,6 +91,80 @@ export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPagePro
         <p className="settings-save-status" aria-live="polite" aria-atomic="true">
           {saved ? t('languageSaved') : ''}
         </p>
+      </div>
+
+      <div className="settings-panel">
+        <div className="settings-panel-heading">
+          <div>
+            <h3>{t('appUpdatesTitle')}</h3>
+            <p>{t('appUpdatesHelp')}</p>
+          </div>
+        </div>
+
+        <div className="settings-update-form">
+          <label>
+            <span>{t('updatePreference')}</span>
+            <select
+              value={mode}
+              onChange={(event) => {
+                setMode(event.target.value === 'automatic' ? 'automatic' : 'manual')
+              }}
+              disabled={status === 'installing'}
+            >
+              <option value="manual">{t('updateManual')}</option>
+              <option value="automatic">{t('updateAutomatic')}</option>
+            </select>
+            <small>
+              {mode === 'automatic' ? t('updateAutomaticHelp') : t('updateManualHelp')}
+            </small>
+          </label>
+
+          <div className="settings-update-actions">
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => void checkForUpdate()}
+              disabled={
+                status === 'idle'
+                || status === 'checking'
+                || status === 'installing'
+                || status === 'restart-required'
+                || status === 'unsupported'
+              }
+            >
+              <RefreshCw aria-hidden="true" />
+              {status === 'checking' ? t('checkingForUpdates') : t('checkForUpdates')}
+            </button>
+            {(status === 'available' || status === 'restart-required') && (
+              <button type="button" className="button button-primary" onClick={installUpdate}>
+                {status === 'restart-required' ? t('restartNow') : t('installAndRestart')}
+              </button>
+            )}
+          </div>
+
+          <p className="settings-update-status" aria-live="polite" aria-atomic="true">
+            {updateStatus}
+          </p>
+        </div>
+      </div>
+
+      <div className="settings-panel">
+        <div className="settings-panel-heading">
+          <div>
+            <h3>{t('supportHushLedgerTitle')}</h3>
+            <p>{t('supportHushLedgerHelp')}</p>
+          </div>
+        </div>
+
+        <a
+          className="button button-primary settings-support-link"
+          href={DONATION_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Coffee aria-hidden="true" />
+          {t('buyMeACoffee')}
+        </a>
       </div>
 
       <AiProviderSettingsForm settings={aiSettings} onChange={onAiSettingsChange} />

@@ -39,6 +39,7 @@ knowledge and explains every command and dashboard click.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
+- Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
   Japanese, and French. The preference is stored only in the current browser.
@@ -89,6 +90,7 @@ production authentication boundary.
 | Goal | Command | Database | Cloudflare required? |
 | --- | --- | --- | --- |
 | Use it on this computer | `npm run dev` | Local D1 | No |
+| Use it without installing Node.js | Docker Desktop or Apple Container | Local D1 volume | No |
 | Test the production-style Worker locally | `npm run preview` | Local D1 | No |
 | Use it privately from multiple devices | `npm run deploy` | Cloudflare D1 | Yes: account, domain, and Access |
 
@@ -117,6 +119,12 @@ the Worker, or used to create a user profile.
 Dates, months, amounts, navigation, forms, status messages, and error messages use
 the selected language. User-defined account names, category names, payees, notes,
 and recurring-rule names are always preserved exactly as entered.
+
+App updates are manual by default. Settings can check for a new version and install
+it when you are ready. Automatic mode applies a detected version immediately and
+restarts the app, so unsaved form input can be lost. This preference is stored only
+in browser local storage. The updater refreshes the web app served by the current
+deployment; it does not pull or replace a Docker or Apple Container image.
 
 ## Local development
 
@@ -164,6 +172,60 @@ npm run preview
 ```
 
 Then open `http://localhost:8787`.
+
+## Containerized local use
+
+The optional container image runs the same OpenNext Worker and local D1 runtime
+without installing Node.js on the host. It is for one-computer use only. Both
+Docker Desktop and Apple Container build the same OCI-compatible `Dockerfile`.
+Pending D1 migrations are applied automatically whenever the container starts.
+
+Keep port `8787` bound to `127.0.0.1`. Local mode has no application login, so do
+not expose this container to a LAN or the public internet. Treat its data volume
+as private financial data. Use the Cloudflare deployment path for multi-device
+access.
+
+### Docker Desktop
+
+Build the image, then create the app and its persistent named volume:
+
+```bash
+docker build --tag hushledger:local .
+docker run --name hushledger --detach \
+  --restart unless-stopped \
+  --publish 127.0.0.1:8787:8787 \
+  --volume hushledger-data:/data \
+  hushledger:local
+```
+
+Open `http://127.0.0.1:8787`. Use `docker stop hushledger` and
+`docker start hushledger` without losing data.
+
+### Apple Container
+
+[Apple Container](https://github.com/apple/container) requires Apple silicon and
+macOS 26. Start its service, build the same image, create the volume once, and run
+HushLedger:
+
+```bash
+container system start
+container build --tag hushledger:local --file Dockerfile .
+container volume create hushledger-data
+container run --name hushledger --detach \
+  --publish 127.0.0.1:8787:8787 \
+  --volume hushledger-data:/data \
+  hushledger:local
+```
+
+Open `http://127.0.0.1:8787`. Use `container stop hushledger` and
+`container start hushledger` without losing data. Deleting `hushledger-data`
+permanently deletes the local ledger in either runtime.
+
+Public HTTPS AI providers work from the container. A provider running on the
+host's `localhost` is intentionally not part of this local-container path.
+To upgrade the containerized app, rebuild or pull the new image and replace the
+container while keeping `hushledger-data`; the in-app updater cannot upgrade the
+OCI image itself.
 
 ## Verification
 
@@ -311,6 +373,9 @@ boundary and the still-planned atomic review/commit and duplicate-detection work
 Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before starting, and use only fictional or
 thoroughly anonymized test data.
+
+If HushLedger is useful to you, you can
+[buy me a coffee](https://buymeacoffee.com/Coke1120) to support continued development.
 
 ## License
 

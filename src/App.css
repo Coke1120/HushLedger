@@ -1553,6 +1553,58 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
+.settings-update-form {
+  display: grid;
+  gap: 16px;
+  padding-top: 22px;
+}
+
+.settings-update-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.settings-update-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  outline: none;
+}
+
+.settings-update-form small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+.settings-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-update-status {
+  min-height: 20px;
+  margin: -4px 0 0;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-support-link {
+  width: fit-content;
+  margin-top: 22px;
+  text-decoration: none;
+}
+
 .ai-import-button {
   flex: none;
   white-space: nowrap;
@@ -2455,6 +2507,8 @@ textarea:focus-visible {
 @media (max-width: 767px) {
   .view-transactions .ai-import-button,
   .ai-settings-actions .button,
+  .settings-update-actions .button,
+  .settings-support-link,
   .bank-import-form > .button-primary {
     width: 100%;
   }

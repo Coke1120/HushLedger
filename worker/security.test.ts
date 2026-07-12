@@ -116,4 +116,21 @@ describe('security and cache policy', () => {
     assert.equal(response.headers.get('x-frame-options'), 'DENY')
     assert.ok(response.headers.get('x-robots-tag')?.includes('noindex'))
   })
+
+  it('allows only same-origin scripts and fetches in the service worker', () => {
+    const response = withSecurityHeaders(
+      new Response("importScripts('/sw-runtime.js')", {
+        headers: { 'content-type': 'application/javascript' },
+      }),
+      new Request('https://app.test/sw.js'),
+      contentSecurityPolicy('nonce'),
+    )
+
+    assert.equal(
+      response.headers.get('content-security-policy'),
+      "default-src 'none'; connect-src 'self'; script-src 'self'",
+    )
+    assert.equal(response.headers.get('cache-control'), 'no-cache, no-store, must-revalidate')
+    assert.equal(response.headers.get('service-worker-allowed'), '/')
+  })
 })
