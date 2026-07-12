@@ -25,6 +25,16 @@ describe('localized demo data', () => {
     assert.equal(getDemoTransactions('2026-07', 'all', 'supermarché', translator('fr')).length, 1)
   })
 
+  it('stacks account and category filters without changing the monthly summary', () => {
+    const bankFood = getDemoTransactions('2026-07', 'all', '', undefined, 2, 3)
+    const creditFood = getDemoTransactions('2026-07', 'expense', '', undefined, 3, 3)
+
+    assert.deepEqual(bankFood, [])
+    assert.equal(creditFood.length, 1)
+    assert.equal(creditFood[0]?.accountId, 3)
+    assert.equal(creditFood[0]?.categoryId, 3)
+  })
+
   it('keeps edits and deletions local to the current demo session', () => {
     const original = getDemoTransactions('2026-07', 'all', '')[0]
     assert(original)

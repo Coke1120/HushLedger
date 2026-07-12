@@ -186,13 +186,22 @@ function localizeDemoTransaction(transaction: Transaction, t?: Translator): Tran
   }
 }
 
-function matchesQuery(transaction: Transaction, month: string, type: TransactionType | 'all', search: string) {
+function matchesQuery(
+  transaction: Transaction,
+  month: string,
+  type: TransactionType | 'all',
+  search: string,
+  accountId: number | null,
+  categoryId: number | null,
+) {
   const { start, end } = monthRangeDates(month)
   const needle = search.trim().toLowerCase()
   return (
     transaction.occurredOn >= start &&
     transaction.occurredOn < end &&
     (type === 'all' || transaction.type === type) &&
+    (accountId === null || transaction.accountId === accountId) &&
+    (categoryId === null || transaction.categoryId === categoryId) &&
     (!needle || `${transaction.payee} ${transaction.note}`.toLowerCase().includes(needle))
   )
 }
@@ -202,10 +211,12 @@ export function getDemoTransactions(
   type: TransactionType | 'all',
   search: string,
   t?: Translator,
+  accountId: number | null = null,
+  categoryId: number | null = null,
 ) {
   return demoTransactions
     .map((transaction) => localizeDemoTransaction(transaction, t))
-    .filter((transaction) => matchesQuery(transaction, month, type, search))
+    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId))
 }
 
 export function addDemo(input: TransactionInput) {

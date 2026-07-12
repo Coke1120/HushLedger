@@ -32,8 +32,9 @@ knowledge and explains every command and dashboard click.
 
 - Monthly income, expenses, balance, and recent transactions.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
-- Search and income/expense filtering across the 200 most recent transactions in
-  each month, with an explicit notice when the result limit is reached.
+- Stack search, income/expense, account, and category filters across the 200 most
+  recent matching transactions in each month, with inactive references still
+  available for historical review and an explicit notice at the result limit.
 - Export every transaction matching the current month and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
@@ -379,12 +380,12 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&type=expense|income&search=...
+GET    /api/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&search=...
+GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM

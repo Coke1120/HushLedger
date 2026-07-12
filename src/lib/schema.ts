@@ -47,6 +47,8 @@ export const transactionQuerySchema = z
       }
     }, '月份格式必須為有效的 YYYY-MM'),
     type: transactionTypeSchema.optional(),
+    accountId: z.coerce.number().int().positive().optional(),
+    categoryId: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).max(80).optional(),
   })
   .strict()

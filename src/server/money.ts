@@ -62,6 +62,8 @@ export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRu
 export type TransactionQuery = {
   month: string
   type?: TransactionType
+  accountId?: number
+  categoryId?: number
   search?: string
 }
 
@@ -199,11 +201,21 @@ async function selectTransactions(
 ): Promise<TransactionView[]> {
   const { start, end } = monthRangeDates(query.month)
   const filters = ['t.occurred_on >= ?', 't.occurred_on < ?']
-  const values: string[] = [start, end]
+  const values: Array<string | number> = [start, end]
 
   if (query.type) {
     filters.push('t.type = ?')
     values.push(query.type)
+  }
+
+  if (query.accountId) {
+    filters.push('t.account_id = ?')
+    values.push(query.accountId)
+  }
+
+  if (query.categoryId) {
+    filters.push('t.category_id = ?')
+    values.push(query.categoryId)
   }
 
   if (query.search) {

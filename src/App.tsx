@@ -30,6 +30,8 @@ function App({ initialMonth }: { initialMonth: string }) {
   const { t } = useI18n()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
+  const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
+  const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -43,7 +45,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
-  const data = useMoneyData(month, filter, deferredSearch)
+  const data = useMoneyData(month, filter, deferredSearch, accountFilterId, categoryFilterId)
   const {
     clearActionMessage,
     refresh: refreshMoneyData,
@@ -89,6 +91,20 @@ function App({ initialMonth }: { initialMonth: string }) {
     setImportMode(null)
     requestAnimationFrame(() => button.current?.focus())
   }, [importMode])
+
+  const changeTransactionFilter = useCallback((nextFilter: TransactionFilter) => {
+    setFilter(nextFilter)
+    if (nextFilter === 'all') return
+    setCategoryFilterId((currentCategoryId) => {
+      const category = data.categories.find((item) => item.id === currentCategoryId)
+      return category && category.type !== nextFilter ? null : currentCategoryId
+    })
+  }, [data.categories])
+
+  const clearReferenceFilters = useCallback(() => {
+    setAccountFilterId(null)
+    setCategoryFilterId(null)
+  }, [])
 
   const handleLedgerRestored = useCallback(async () => {
     const refreshed = await refreshMoneyData(false)
@@ -168,10 +184,17 @@ function App({ initialMonth }: { initialMonth: string }) {
                 search={search}
                 filter={filter}
                 month={month}
+                accounts={data.accounts}
+                categories={data.categories}
+                accountFilterId={accountFilterId}
+                categoryFilterId={categoryFilterId}
                 canExport={data.source === 'live' && data.online}
                 canImport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
-                onFilterChange={setFilter}
+                onFilterChange={changeTransactionFilter}
+                onAccountFilterChange={setAccountFilterId}
+                onCategoryFilterChange={setCategoryFilterId}
+                onClearReferenceFilters={clearReferenceFilters}
                 onCsvImport={() => openImport('csv')}
                 onAiImport={() => openImport('ai')}
                 csvImportOpen={importMode === 'csv'}

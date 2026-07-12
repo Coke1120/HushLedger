@@ -473,6 +473,17 @@ async function verifyWorkerApi() {
   assert.equal(duplicateMonth.response.status, 400)
   assert.equal(duplicateMonth.payload.error.code, 'INVALID_QUERY')
 
+  const invalidAccountFilter = await api(baseUrl, `/api/transactions?month=${month}&accountId=0`)
+  assert.equal(invalidAccountFilter.response.status, 400)
+  assert.equal(invalidAccountFilter.payload.error.code, 'INVALID_QUERY')
+
+  const duplicateAccountFilter = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&accountId=1&accountId=1`,
+  )
+  assert.equal(duplicateAccountFilter.response.status, 400)
+  assert.equal(duplicateAccountFilter.payload.error.code, 'INVALID_QUERY')
+
   const wrongMediaType = await fetch(`${baseUrl}/api/transactions`, {
     method: 'POST',
     headers: { 'content-type': 'text/plain', origin: baseUrl },
@@ -830,6 +841,23 @@ async function verifyWorkerApi() {
   assert.equal(cappedExportRows.response.status, 200)
   assert.equal(cappedExportRows.payload.data.length, 200)
 
+  const stackedFilterRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&type=expense&accountId=1&categoryId=3&search=export%20bulk`,
+  )
+  assert.equal(stackedFilterRows.response.status, 200)
+  assert.equal(stackedFilterRows.payload.data.length, 200)
+  assert(stackedFilterRows.payload.data.every(({ accountId, categoryId }) => (
+    accountId === 1 && categoryId === 3
+  )))
+
+  const mismatchedAccountRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&accountId=2&search=export%20bulk`,
+  )
+  assert.equal(mismatchedAccountRows.response.status, 200)
+  assert.deepEqual(mismatchedAccountRows.payload.data, [])
+
   const uncappedCsvExport = await api(baseUrl, `/api/exports/transactions?month=${month}&search=export%20bulk`)
   assert.equal(uncappedCsvExport.response.status, 200)
   assert.match(uncappedCsvExport.response.headers.get('content-type') ?? '', /^text\/csv;\s*charset=utf-8/i)
@@ -843,6 +871,13 @@ async function verifyWorkerApi() {
   assert.match(uncappedCsvExport.payload.split('\r\n', 1)[0], /Transaction ID$/)
   const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
   assert.equal(uncappedCsvRows, 205)
+
+  const referenceFilteredCsvExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&accountId=1&categoryId=3&search=export%20bulk`,
+  )
+  assert.equal(referenceFilteredCsvExport.response.status, 200)
+  assert.equal(referenceFilteredCsvExport.payload.trimEnd().split('\r\n').length - 1, 205)
 
   const transaction = {
     id: '10000000-0000-4000-8000-000000000001',
@@ -1428,6 +1463,8 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
+    transactionFilterGuards: 2,
+    transactionFilterQueries: 3,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,

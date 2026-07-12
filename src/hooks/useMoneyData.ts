@@ -31,18 +31,28 @@ function demoSnapshot(
   month: string,
   type: TransactionType | 'all',
   search: string,
+  accountId: number | null,
+  categoryId: number | null,
 ): Snapshot {
   return {
-    transactions: getDemoTransactions(month, type, search),
+    transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId),
     summary: demoSummary(month),
     accounts: demoAccounts,
     categories: demoCategories,
   }
 }
 
-export function useMoneyData(month: string, type: TransactionType | 'all', search: string) {
+export function useMoneyData(
+  month: string,
+  type: TransactionType | 'all',
+  search: string,
+  accountId: number | null,
+  categoryId: number | null,
+) {
   const { t } = useI18n()
-  const [snapshot, setSnapshot] = useState<Snapshot>(() => demoSnapshot(month, type, search))
+  const [snapshot, setSnapshot] = useState<Snapshot>(() => (
+    demoSnapshot(month, type, search, accountId, categoryId)
+  ))
   const [source, setSource] = useState<DataSource>('loading')
   const [online, setOnline] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -54,6 +64,8 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
   const fetchSnapshot = useCallback(async (): Promise<Snapshot> => {
     const query = new URLSearchParams({ month })
     if (type !== 'all') query.set('type', type)
+    if (accountId !== null) query.set('accountId', String(accountId))
+    if (categoryId !== null) query.set('categoryId', String(categoryId))
     if (search.trim()) query.set('search', search.trim())
 
     const [transactions, summary, accounts, categories] = await Promise.all([
@@ -63,7 +75,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
       api<Category[]>('/api/categories'),
     ])
     return { transactions, summary, accounts, categories }
-  }, [month, search, type])
+  }, [accountId, categoryId, month, search, type])
 
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
@@ -73,7 +85,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
       if (!navigator.onLine) {
         setOnline(false)
         if (allowDemoFallback) {
-          setSnapshot(demoSnapshot(month, type, search))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId))
           setSource('demo')
         }
         return false
@@ -89,7 +101,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
       } catch {
         if (sequence !== requestSequence.current) return false
         if (allowDemoFallback) {
-          setSnapshot(demoSnapshot(month, type, search))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId))
           setSource('demo')
         } else {
           setSource('error')
@@ -97,7 +109,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
         return false
       }
     },
-    [fetchSnapshot, month, search, type],
+    [accountId, categoryId, fetchSnapshot, month, search, type],
   )
 
   useEffect(() => {
@@ -112,7 +124,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
     }
     const handleOffline = () => {
       setOnline(false)
-      setSnapshot(demoSnapshot(month, type, search))
+      setSnapshot(demoSnapshot(month, type, search, accountId, categoryId))
       setSource('demo')
     }
     window.addEventListener('online', handleOnline)
@@ -121,7 +133,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [month, refresh, search, type])
+  }, [accountId, categoryId, month, refresh, search, type])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {
@@ -140,7 +152,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
         if (source === 'demo') {
           if (original) updateDemo(input)
           else addDemo(input)
-          setSnapshot(demoSnapshot(month, type, search))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId))
           setActionMessage(message(original ? 'demoTransactionChanged' : 'demoTransactionSaved'))
           return true
         }
@@ -170,7 +182,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
         setSaving(false)
       }
     },
-    [month, refresh, search, source, type],
+    [accountId, categoryId, month, refresh, search, source, type],
   )
 
   const removeTransaction = useCallback(
@@ -189,7 +201,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
 
         if (source === 'demo') {
           deleteDemo(transaction.id)
-          setSnapshot(demoSnapshot(month, type, search))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId))
           setActionMessage(message('demoTransactionChanged'))
           return true
         }
@@ -206,15 +218,18 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
         setSaving(false)
       }
     },
-    [month, refresh, search, source, type],
+    [accountId, categoryId, month, refresh, search, source, type],
   )
 
   const visibleSnapshot = useMemo(
     () =>
       source === 'demo'
-        ? { ...snapshot, transactions: getDemoTransactions(month, type, search, t) }
+        ? {
+            ...snapshot,
+            transactions: getDemoTransactions(month, type, search, t, accountId, categoryId),
+          }
         : snapshot,
-    [month, search, snapshot, source, t, type],
+    [accountId, categoryId, month, search, snapshot, source, t, type],
   )
 
   const clearActionMessage = useCallback(() => setActionMessage(null), [])
