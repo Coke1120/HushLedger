@@ -156,6 +156,7 @@ describe('AI provider adapter', () => {
     assert.equal(drafts[0]?.accountId, 2)
     assert.equal(drafts[0]?.categoryId, 3)
     assert.equal(drafts[0]?.sourceText, '11/07/2026 Example merchant 123.45 DR')
+    assert.match(drafts[0]?.importKey ?? '', /^ai:statement:row:[0-9a-f]{64}$/)
     assert.equal(capturedBody.includes(provider.apiKey), false)
     assert.equal(capturedBody.includes('accountId'), false)
     const body = JSON.parse(capturedBody) as {
@@ -166,6 +167,49 @@ describe('AI provider adapter', () => {
     assert.equal(body.max_completion_tokens, 4_096)
     assert.equal(body.max_tokens, undefined)
     assert.equal(body.response_format?.json_schema?.strict, true)
+  })
+
+  it('keeps source keys stable while separating multiple drafts from one line', async () => {
+    const rows = [
+      {
+        sourceLine: 1,
+        occurredOn: '2026-07-11',
+        direction: 'expense',
+        amountText: '10.00',
+        currency: 'HKD',
+        description: 'First item',
+        suggestedCategoryName: '餐飲',
+        confidence: 0.9,
+        flags: [],
+      },
+      {
+        sourceLine: 1,
+        occurredOn: '2026-07-11',
+        direction: 'expense',
+        amountText: '20.00',
+        currency: 'HKD',
+        description: 'Second item',
+        suggestedCategoryName: '餐飲',
+        confidence: 0.9,
+        flags: [],
+      },
+    ] as const
+    const input = {
+      provider,
+      accountId: 2,
+      dateOrder: 'DMY' as const,
+      statementText: '11/07/2026 Combined purchase 30.00 DR',
+      categories,
+    }
+    const options = { ...policy, fetcher: async () => completion({ rows }) }
+
+    const first = await parseBankStatement(input, options)
+    const repeated = await parseBankStatement(input, options)
+
+    assert.equal(first[0]?.importKey, repeated[0]?.importKey)
+    assert.equal(first[1]?.importKey, repeated[1]?.importKey)
+    assert.notEqual(first[0]?.importKey, first[1]?.importKey)
+    assert.notEqual(first[0]?.id, repeated[0]?.id)
   })
 
   it('rejects malformed or authority-bearing model output', async () => {

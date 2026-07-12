@@ -2048,6 +2048,11 @@ textarea:focus-visible {
   border-radius: 12px;
 }
 
+.ai-draft-row.is-selected {
+  border-color: #8db9aa;
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
 .ai-draft-source {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2056,6 +2061,26 @@ textarea:focus-visible {
   padding-bottom: 11px;
   color: var(--muted);
   font-size: 11px;
+}
+
+.ai-draft-selection,
+.ai-draft-selection label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-draft-selection label {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.ai-draft-selection input {
+  width: 17px;
+  min-width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--brand);
 }
 
 .ai-draft-source q {
@@ -2104,6 +2129,24 @@ textarea:focus-visible {
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
+}
+
+.ai-import-summary {
+  margin-top: 16px;
+}
+
+.ai-import-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 16px;
+}
+
+.ai-import-actions > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .csv-import-form {
@@ -2259,7 +2302,8 @@ textarea:focus-visible {
 .csv-import-status.is-id_conflict,
 .csv-import-status.is-account_invalid,
 .csv-import-status.is-category_invalid,
-.csv-import-status.is-category_mismatch {
+.csv-import-status.is-category_mismatch,
+.csv-import-status.is-needs_review {
   color: var(--error);
   background: var(--expense-soft);
   border-color: #e9c5bd;
@@ -3051,6 +3095,7 @@ textarea:focus-visible {
 
   .ai-configure-notice,
   .ai-draft-review-heading,
+  .ai-import-actions,
   .csv-import-actions {
     align-items: stretch;
     flex-direction: column;
@@ -3068,6 +3113,11 @@ textarea:focus-visible {
   .ai-draft-source {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
+  }
+
+  .ai-draft-selection {
+    flex-wrap: wrap;
+    justify-content: space-between;
   }
 
   .ai-draft-source q {
@@ -3101,6 +3151,10 @@ textarea:focus-visible {
   }
 
   .csv-import-actions .button {
+    width: 100%;
+  }
+
+  .ai-import-actions .button {
     width: 100%;
   }
 

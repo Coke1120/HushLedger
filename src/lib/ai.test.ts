@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   MAX_AI_DRAFT_ROWS,
+  aiImportRequestSchema,
   aiModelOutputSchema,
   aiParseRequestSchema,
   aiProviderSettingsSchema,
@@ -80,6 +81,7 @@ describe('AI import schemas', () => {
   it('keeps normalized drafts strict', () => {
     const draft = {
       id: '019f5087-229b-7ce3-a76f-95c833dcf251',
+      importKey: `ai:statement:row:${'a'.repeat(64)}`,
       sourceLine: 1,
       sourceText: 'Example merchant 123.45 DR',
       occurredOn: '2026-07-11',
@@ -95,5 +97,26 @@ describe('AI import schemas', () => {
     }
     assert.equal(bankImportDraftSchema.safeParse(draft).success, true)
     assert.equal(bankImportDraftSchema.safeParse({ ...draft, apiKey: 'secret' }).success, false)
+    assert.equal(aiImportRequestSchema.safeParse({
+      mode: 'preview',
+      rows: [{
+        id: draft.id,
+        importKey: draft.importKey,
+        sourceRow: draft.sourceLine,
+        include: false,
+        type: draft.type,
+        amountMinor: draft.amountMinor,
+        currency: draft.currency,
+        accountId: draft.accountId,
+        categoryId: draft.categoryId,
+        occurredOn: draft.occurredOn,
+        payee: draft.payee,
+        note: '',
+      }],
+    }).success, true)
+    assert.equal(aiImportRequestSchema.safeParse({
+      mode: 'preview',
+      rows: [{ ...draft, sourceRow: 1, include: false, note: '', importKey: `csv:hushledger:row:${'a'.repeat(64)}` }],
+    }).success, false)
   })
 })

@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { isValidCalendarDate } from './date'
 import { transactionTypeSchema } from './schema'
+import {
+  MAX_TRANSACTION_IMPORT_ROWS,
+  transactionImportKeySchema,
+  transactionImportRowSchema,
+} from './transactionImport'
 
 export const MAX_AI_STATEMENT_BYTES = 64 * 1024
 export const MAX_AI_PARSE_REQUEST_BYTES = 512 * 1024
@@ -8,6 +13,7 @@ export const MAX_AI_MODELS_REQUEST_BYTES = 8 * 1024
 export const MAX_AI_MODELS_RESPONSE_BYTES = 64 * 1024
 export const MAX_AI_COMPLETION_RESPONSE_BYTES = 256 * 1024
 export const MAX_AI_DRAFT_ROWS = 200
+export const MAX_AI_IMPORT_REQUEST_BYTES = 256 * 1024
 
 const boundedText = (maximum: number) => z.string().trim().min(1).max(maximum)
 const apiKeySchema = boundedText(2_048).regex(
@@ -77,6 +83,9 @@ export const aiModelOutputSchema = z
 export const bankImportDraftSchema = z
   .object({
     id: z.string().uuid(),
+    importKey: transactionImportKeySchema.refine(
+      (value) => /^ai:statement:row:[0-9a-f]{64}$/.test(value),
+    ),
     sourceLine: z.number().int().positive(),
     sourceText: z.string().max(240),
     occurredOn: z.string().refine(isValidCalendarDate),
@@ -93,6 +102,21 @@ export const bankImportDraftSchema = z
   .strict()
 
 export const bankImportDraftsSchema = z.array(bankImportDraftSchema).max(MAX_AI_DRAFT_ROWS)
+
+const aiImportKeySchema = transactionImportKeySchema.refine(
+  (value) => /^ai:statement:row:[0-9a-f]{64}$/.test(value),
+)
+
+export const aiImportRowSchema = transactionImportRowSchema
+  .extend({ importKey: aiImportKeySchema })
+  .strict()
+
+export const aiImportRequestSchema = z
+  .object({
+    mode: z.enum(['preview', 'commit']),
+    rows: z.array(aiImportRowSchema).min(1).max(MAX_TRANSACTION_IMPORT_ROWS),
+  })
+  .strict()
 
 export type AiProviderConnection = z.infer<typeof aiProviderConnectionSchema>
 export type AiProviderSettings = z.infer<typeof aiProviderSettingsSchema>

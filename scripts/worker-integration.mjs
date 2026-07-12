@@ -883,6 +883,31 @@ async function verifyWorkerApi() {
   )
   assert.equal(importedPossibleDuplicate.response.status, 200)
 
+  const collisionKey = `csv:hushledger:row:${'a'.repeat(64)}`
+  const collisionIds = [
+    '41000000-0000-4000-8000-000000000004',
+    '41000000-0000-4000-8000-000000000005',
+  ]
+  const collisionRows = collisionIds.map((id, index) => ({
+    ...transactionBody,
+    id,
+    amountMinor: 1_200 + index,
+    payee: `CSV atomic collision ${index + 1}`,
+    sourceRow: 6 + index,
+    importKey: collisionKey,
+    include: true,
+  }))
+  const csvCollisionCommit = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'commit', rows: collisionRows },
+  })
+  assert.equal(csvCollisionCommit.response.status, 409, JSON.stringify(csvCollisionCommit.payload))
+  assert.equal(csvCollisionCommit.payload.error.code, 'CSV_IMPORT_STALE')
+  for (const id of collisionIds) {
+    const rolledBackTransaction = await api(baseUrl, `/api/transactions/${id}`)
+    assert.equal(rolledBackTransaction.response.status, 404)
+  }
+
   const fetchedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
   assert.equal(fetchedTransaction.response.status, 200)
   assert.equal(fetchedTransaction.payload.data.id, transactionBody.id)
@@ -1208,6 +1233,7 @@ async function verifyWorkerApi() {
     csvImportPreviewStatuses: 4,
     csvImportWrites: 2,
     csvImportTombstones: 1,
+    csvAtomicRollbacks: 1,
   }
 }
 
@@ -1260,6 +1286,7 @@ async function verifyNextAiDrafts() {
   assert.equal(parsed.payload.data.drafts[0].amountMinor, 1_234)
   assert.equal(parsed.payload.data.drafts[0].categoryId, category.id)
   assert.equal(parsed.payload.data.drafts[0].payee, 'Integration merchant')
+  assert.match(parsed.payload.data.drafts[0].importKey, /^ai:statement:row:[0-9a-f]{64}$/)
 
   const afterTransactions = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterTransactions.response.status, 200)
@@ -1267,7 +1294,90 @@ async function verifyNextAiDrafts() {
     afterTransactions.payload.data.map(({ id }) => id),
     beforeTransactions.payload.data.map(({ id }) => id),
   )
-  return { nextAiDrafts: 1, nextAiD1Writes: 0 }
+
+  const draft = parsed.payload.data.drafts[0]
+  const aiImportRows = [{
+    id: draft.id,
+    importKey: draft.importKey,
+    sourceRow: draft.sourceLine,
+    include: true,
+    type: draft.type,
+    amountMinor: draft.amountMinor,
+    currency: draft.currency,
+    accountId: draft.accountId,
+    categoryId: draft.categoryId,
+    occurredOn: draft.occurredOn,
+    payee: draft.payee,
+    note: '',
+  }]
+  const crossOriginPreview = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: { mode: 'preview', rows: aiImportRows },
+  })
+  assert.equal(crossOriginPreview.response.status, 403)
+  assert.equal(crossOriginPreview.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const preview = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    body: { mode: 'preview', rows: aiImportRows },
+  })
+  assert.equal(preview.response.status, 200, JSON.stringify(preview.payload))
+  assert.equal(preview.payload.data.rows[0].status, 'new')
+
+  const committed = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    body: { mode: 'commit', rows: aiImportRows },
+  })
+  assert.equal(committed.response.status, 201, JSON.stringify(committed.payload))
+  assert.equal(committed.payload.data.imported, 1)
+
+  const importedTransaction = await api(baseUrl, `/api/transactions/${draft.id}`)
+  assert.equal(importedTransaction.response.status, 200)
+  assert.equal(importedTransaction.payload.data.payee, 'Integration merchant')
+
+  const repeatedParse = await api(baseUrl, '/api/imports/parse', {
+    method: 'POST',
+    body: {
+      provider: { ...provider, model: 'fictional-model' },
+      accountId: account.id,
+      currency: 'HKD',
+      dateOrder: 'YMD',
+      statementText: `${today} Integration merchant 12.34 DR`,
+    },
+  })
+  assert.equal(repeatedParse.response.status, 200)
+  assert.equal(repeatedParse.payload.data.drafts[0].importKey, draft.importKey)
+  assert.notEqual(repeatedParse.payload.data.drafts[0].id, draft.id)
+
+  const repeatedDraft = repeatedParse.payload.data.drafts[0]
+  const repeatedPreview = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    body: {
+      mode: 'preview',
+      rows: [{
+        ...aiImportRows[0],
+        id: repeatedDraft.id,
+        importKey: repeatedDraft.importKey,
+      }],
+    },
+  })
+  assert.equal(repeatedPreview.response.status, 200)
+  assert.equal(repeatedPreview.payload.data.rows[0].status, 'already_imported')
+
+  const deleted = await api(baseUrl, `/api/transactions/${draft.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: importedTransaction.payload.data.updatedAt },
+  })
+  assert.equal(deleted.response.status, 200)
+  const tombstonePreview = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    body: { mode: 'preview', rows: aiImportRows },
+  })
+  assert.equal(tombstonePreview.response.status, 200)
+  assert.equal(tombstonePreview.payload.data.rows[0].status, 'already_imported')
+
+  return { nextAiDrafts: 1, nextAiD1Writes: 1, nextAiTombstones: 1 }
 }
 
 async function stopWorker() {

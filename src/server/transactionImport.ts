@@ -1,11 +1,11 @@
 import 'server-only'
 
 import type {
-  CsvImportCommitResult,
-  CsvImportPreviewResult,
-  CsvImportRow,
-  CsvImportRowStatus,
-} from '../lib/csvImport'
+  TransactionImportCommitResult,
+  TransactionImportPreviewResult,
+  TransactionImportRow,
+  TransactionImportRowStatus,
+} from '../lib/transactionImport'
 
 type ClassificationRow = {
   importKeyExists: number
@@ -19,11 +19,11 @@ type ClassificationRow = {
   categoryActive: number
 }
 
-export type CsvImportCommitOutcome =
-  | { kind: 'committed'; result: CsvImportCommitResult }
-  | { kind: 'blocked'; preview: CsvImportPreviewResult }
+export type TransactionImportCommitOutcome =
+  | { kind: 'committed'; result: TransactionImportCommitResult }
+  | { kind: 'blocked'; preview: TransactionImportPreviewResult }
 
-const classificationSql = `
+const importClassificationSql = `
   WITH candidate(
     import_key,
     id,
@@ -96,17 +96,17 @@ const classificationSql = `
   FROM candidate
 `
 
-export async function previewCsvImport(
+export async function previewTransactionImport(
   database: D1Database,
-  rows: readonly CsvImportRow[],
-): Promise<CsvImportPreviewResult> {
-  const statement = database.prepare(classificationSql)
+  rows: readonly TransactionImportRow[],
+): Promise<TransactionImportPreviewResult> {
+  const statement = database.prepare(importClassificationSql)
   const results = await database.batch(
     rows.map((row) => bindRow(statement, row)),
   )
   const previewRows = results.map((result, index) => {
     const classification = result.results[0] as ClassificationRow | undefined
-    if (!classification) throw new Error('CSV import classification returned no row')
+    if (!classification) throw new Error('Transaction import classification returned no row')
     return {
       sourceRow: rows[index].sourceRow,
       importKey: rows[index].importKey,
@@ -117,11 +117,11 @@ export async function previewCsvImport(
   return summarize(previewRows)
 }
 
-export async function commitCsvImport(
+export async function commitTransactionImport(
   database: D1Database,
-  rows: readonly CsvImportRow[],
-): Promise<CsvImportCommitOutcome> {
-  const preview = await previewCsvImport(database, rows)
+  rows: readonly TransactionImportRow[],
+): Promise<TransactionImportCommitOutcome> {
+  const preview = await previewTransactionImport(database, rows)
   const statusByKey = new Map(preview.rows.map((row) => [row.importKey, row.status]))
   const includedBlocker = rows.some((row) => row.include && isBlocked(statusByKey.get(row.importKey)))
   if (includedBlocker) return { kind: 'blocked', preview }
@@ -150,53 +150,38 @@ export async function commitCsvImport(
       payee,
       note
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
-    WHERE EXISTS (
-      SELECT 1 FROM accounts
-      WHERE id = ? AND currency = ? AND is_active = 1
-    )
-      AND EXISTS (
-        SELECT 1 FROM categories
-        WHERE id = ? AND type = ? AND is_active = 1
-      )
-    ON CONFLICT(id) DO NOTHING
+    SELECT
+      ?,
+      ?,
+      CASE
+        WHEN EXISTS (
+          SELECT 1 FROM accounts
+          WHERE id = ? AND currency = ? AND is_active = 1
+        )
+          AND EXISTS (
+            SELECT 1 FROM categories
+            WHERE id = ? AND type = ? AND is_active = 1
+          )
+        THEN ?
+        ELSE 0
+      END,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?,
+      ?
   `)
   const insertImportKey = database.prepare(`
-    INSERT INTO transaction_import_keys(import_key, transaction_id)
-    SELECT ?, ?
-    WHERE EXISTS (
-      SELECT 1 FROM transactions
-      WHERE id = ?
-        AND type = ?
-        AND amount_minor = ?
-        AND currency = ?
-        AND account_id = ?
-        AND category_id = ?
-        AND occurred_on = ?
-        AND payee = ?
-        AND note = ?
-    )
+    INSERT INTO transaction_import_keys(import_key, transaction_id) VALUES (?, ?)
   `)
   const statements = eligible.flatMap((row) => [
     insertTransaction.bind(
       row.id,
       row.type,
-      row.amountMinor,
-      row.currency,
-      row.accountId,
-      row.categoryId,
-      row.occurredOn,
-      row.payee,
-      row.note,
       row.accountId,
       row.currency,
       row.categoryId,
-      row.type,
-    ),
-    insertImportKey.bind(
-      row.importKey,
-      row.id,
-      row.id,
       row.type,
       row.amountMinor,
       row.currency,
@@ -206,6 +191,7 @@ export async function commitCsvImport(
       row.payee,
       row.note,
     ),
+    insertImportKey.bind(row.importKey, row.id),
   ])
   const results = await database.batch(statements)
   const imported = eligible.reduce(
@@ -223,7 +209,14 @@ export async function commitCsvImport(
   }
 }
 
-function bindRow(statement: D1PreparedStatement, row: CsvImportRow) {
+export function isTransactionImportConflict(error: unknown) {
+  return error instanceof Error &&
+    /transaction_import_keys|(?:UNIQUE|CHECK|FOREIGN KEY) constraint|SQLITE_CONSTRAINT/i.test(
+      error.message,
+    )
+}
+
+function bindRow(statement: D1PreparedStatement, row: TransactionImportRow) {
   return statement.bind(
     row.importKey,
     row.id,
@@ -238,7 +231,7 @@ function bindRow(statement: D1PreparedStatement, row: CsvImportRow) {
   )
 }
 
-function classify(row: ClassificationRow): CsvImportRowStatus {
+function classify(row: ClassificationRow): TransactionImportRowStatus {
   if (row.importKeyExists) return 'already_imported'
   if (row.idExists) return row.idMatches ? 'existing_transaction' : 'id_conflict'
   if (!row.accountExists || !row.accountActive) return 'account_invalid'
@@ -248,14 +241,16 @@ function classify(row: ClassificationRow): CsvImportRowStatus {
   return 'new'
 }
 
-function isBlocked(status: CsvImportRowStatus | undefined) {
+function isBlocked(status: TransactionImportRowStatus | undefined) {
   return status === 'id_conflict' ||
     status === 'account_invalid' ||
     status === 'category_invalid' ||
     status === 'category_mismatch'
 }
 
-function summarize(rows: CsvImportPreviewResult['rows']): CsvImportPreviewResult {
+function summarize(
+  rows: TransactionImportPreviewResult['rows'],
+): TransactionImportPreviewResult {
   return {
     rows,
     ready: rows.filter((row) => row.status === 'new').length,

@@ -271,7 +271,9 @@ recurring-rule CRUD, race-safe idempotency, and history preservation. It proves
 that a filtered CSV export is not truncated by the interactive 200-row limit. It
 also starts local Next.js with a fake
 OpenAI-compatible provider, verifies model discovery and a successful strict
-draft parse, and proves that the parse creates no D1 transaction.
+draft parse, proves that parsing creates no D1 transaction, then verifies an
+explicit preview/commit, stable re-analysis identity, and a deleted-import
+tombstone.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -289,6 +291,7 @@ npm run types:worker
 | `0004_transaction_date_only.sql` | Converts legacy transaction timestamps to calendar dates and removes the time field. |
 | `0005_recurring_rules.sql` | Adds recurring rules, the generation cursor, and transaction provenance. |
 | `0006_reference_localization_keys.sql` | Adds stable localization keys for built-in accounts and categories while preserving custom names verbatim. |
+| `0007_transaction_import_keys.sql` | Adds source-key tombstones for duplicate-safe CSV and reviewed AI imports; keys deliberately survive transaction deletion. |
 
 Apply migrations locally:
 
@@ -332,6 +335,9 @@ PUT    /api/recurring-rules/:id
 PATCH  /api/recurring-rules/:id/status
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
+POST   /api/ai/models
+POST   /api/imports/parse  (create untrusted AI drafts; never writes D1)
+POST   /api/imports/ai  (preview or commit reviewed AI drafts, maximum 200 rows)
 POST   /api/imports/csv  (preview or commit a HushLedger CSV, maximum 200 rows)
 ```
 
@@ -359,8 +365,8 @@ for disaster recovery.
 The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
 mutation routes remain available and require a same-origin request, a JSON content
 type, a body no larger than 16 KiB, and a payload accepted by the strict schema.
-The CSV import route has a separate 256 KiB validated request ceiling for up to
-200 parsed rows. These checks complement the custom Worker's cryptographic
+The CSV and reviewed-AI import routes each have a separate 256 KiB validated
+request ceiling for up to 200 parsed rows. These checks complement the custom Worker's cryptographic
 Cloudflare Access JWT validation.
 
 ## Private Cloudflare deployment
@@ -398,24 +404,30 @@ editable drafts through a user-provided OpenAI-compatible provider:
    models” tests `GET {baseUrl}/models`; manual model entry remains available.
 2. Open Transactions, select **AI drafts**, choose the target account and date
    order, then paste at most 64 KiB of text.
-3. Review every returned field. This release deliberately stops at editable
-   drafts: parsing never writes a transaction or raw statement to D1.
+3. Review every returned field. Parsing never writes a transaction or raw
+   statement to D1.
+4. HushLedger checks the edited rows against the live ledger. New rows are
+   selected by default; possible duplicates require an explicit selection.
+   Select **Save selected transactions** to commit the reviewed set atomically.
 
 The provider must support Chat Completions and strict `json_schema` structured
 output. Browser code calls only same-origin HushLedger routes; the server appends
 fixed `/models` and `/chat/completions` paths and forwards the provider request.
 Enter only a provider URL you trust; local public hostnames are not DNS-pinned.
-The key, provider settings, pasted text, and drafts remain in current-tab memory
-and disappear on reload. They are not stored in local/session storage, cookies,
-D1, service-worker caches, or logs. The pasted text is sent to the provider only
-after you select **Analyze**.
+The key, provider settings, pasted text, and unsaved drafts remain in current-tab
+memory and disappear on reload. They are not stored in local/session storage,
+cookies, D1, service-worker caches, or logs. The pasted text is sent to the
+provider only after you select **Analyze**. Saving sends only the validated,
+edited transaction fields to HushLedger; D1 retains a one-way source key and
+transaction ID so re-analysis, including after deletion, does not silently
+restore the same source row.
 
 OpenAI references: [API key safety](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safet),
 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
 and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
 
-See [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md) for the implemented security
-boundary and the still-planned atomic review/commit and duplicate-detection work.
+See [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md) for the implemented security,
+duplicate-review, idempotency, and atomic-commit boundary.
 
 ## Privacy and security
 

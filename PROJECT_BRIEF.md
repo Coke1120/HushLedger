@@ -142,6 +142,9 @@ PUT    /api/transactions/:id
 DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=...&search=...  (uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
+POST   /api/ai/models
+POST   /api/imports/parse  (draft only; zero D1 writes)
+POST   /api/imports/ai  (preview or commit reviewed drafts, 200 rows maximum)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -208,7 +211,8 @@ restore format.
   filtered transaction CSV export, deterministic preview-first CSV import,
   recurring-rule management, and language settings.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
-  provider settings, strict reviewable output, and no AI-initiated D1 writes.
+  provider settings, strict reviewable output, live duplicate preview, and only
+  user-confirmed atomic D1 writes.
 - Daily 00:05 HKT Cron plus manual due generation.
 - Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
   preview, fresh migration, and upgrade migration validation.
@@ -226,8 +230,10 @@ restore format.
 The app accepts an OpenAI-compatible base URL, API key, and model held only in
 the current browser tab and sent to the Worker for each parse request. A user may
 paste online-banking text, inspect and edit parsed drafts, then explicitly confirm
-them. AI never writes directly to D1 and never supplies authoritative integer
-amounts or database IDs. See
+them. New rows are selected by default, possible duplicates require an explicit
+choice, and stable source tombstones prevent silent re-import after deletion. AI
+never writes directly to D1 and never supplies authoritative integer amounts or
+database IDs. See
 [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md).
 
 ### Later reliability work

@@ -191,6 +191,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 panelRef={importPanelRef}
                 onClose={closeImport}
                 onConfigure={() => changeView('settings')}
+                onImported={() => data.refresh(false)}
               />
             ) : null}
             <TransactionList transactions={transactions} loading={loading} onEdit={openTransaction} />

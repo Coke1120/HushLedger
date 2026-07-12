@@ -316,13 +316,15 @@ export async function parseBankStatement(
   return normalizeDrafts(output.data, input)
 }
 
-function normalizeDrafts(
+async function normalizeDrafts(
   output: AiModelOutput,
   input: ParseBankStatementInput,
-): BankImportDraft[] {
+): Promise<BankImportDraft[]> {
   const lines = input.statementText.split(/\r?\n/)
+  const occurrences = new Map<string, number>()
+  const drafts: BankImportDraft[] = []
 
-  return output.rows.map((row) => {
+  for (const row of output.rows) {
     const sourceText = lines[row.sourceLine - 1]
     if (sourceText === undefined) throw new AiProviderError('RESPONSE_INVALID')
 
@@ -342,8 +344,13 @@ function normalizeDrafts(
     const flags = [...new Set(row.flags)]
     if (!category && !flags.includes('UNCERTAIN_CATEGORY')) flags.push('UNCERTAIN_CATEGORY')
 
-    return {
+    const identity = JSON.stringify([input.accountId, row.sourceLine, sourceText])
+    const occurrence = (occurrences.get(identity) ?? 0) + 1
+    occurrences.set(identity, occurrence)
+
+    drafts.push({
       id: crypto.randomUUID(),
+      importKey: await statementImportKey(identity, occurrence),
       sourceLine: row.sourceLine,
       sourceText: sourceText.trim().slice(0, 240),
       occurredOn: row.occurredOn,
@@ -356,8 +363,22 @@ function normalizeDrafts(
       payee: row.description,
       confidence: row.confidence,
       flags,
-    }
-  })
+    })
+  }
+
+  return drafts
+}
+
+async function statementImportKey(identity: string, occurrence: number) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${identity}\u001f${occurrence}`),
+  )
+  const hex = Array.from(
+    new Uint8Array(digest),
+    (byte) => byte.toString(16).padStart(2, '0'),
+  ).join('')
+  return `ai:statement:row:${hex}`
 }
 
 function bankStatementSystemPrompt(

@@ -3,16 +3,29 @@ import { isValidCalendarDate } from './date'
 import { parseAmount } from './money'
 import {
   transactionIdSchema,
-  transactionInputSchema,
   transactionTypeSchema,
   type Account,
   type Category,
   type TransactionInput,
   type TransactionType,
 } from './schema'
+import {
+  MAX_TRANSACTION_IMPORT_ROWS,
+  transactionImportCommitResultSchema,
+  transactionImportKeySchema,
+  transactionImportPreviewResultSchema,
+  transactionImportPreviewRowSchema,
+  transactionImportRowSchema,
+  transactionImportRowStatusSchema,
+  type TransactionImportCommitResult,
+  type TransactionImportPreviewResult,
+  type TransactionImportPreviewRow,
+  type TransactionImportRow,
+  type TransactionImportRowStatus,
+} from './transactionImport'
 
 export const MAX_CSV_IMPORT_BYTES = 512 * 1024
-export const MAX_CSV_IMPORT_ROWS = 200
+export const MAX_CSV_IMPORT_ROWS = MAX_TRANSACTION_IMPORT_ROWS
 export const MAX_CSV_IMPORT_REQUEST_BYTES = 256 * 1024
 
 export const CSV_IMPORT_HEADERS = [
@@ -31,17 +44,14 @@ export const CSV_IMPORT_HEADERS = [
 
 const requiredHeaders = CSV_IMPORT_HEADERS.slice(0, 8)
 const allowedHeaders = new Set<string>(CSV_IMPORT_HEADERS)
-const importKeySchema = z
-  .string()
-  .min(20)
-  .max(160)
-  .regex(/^csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})$/)
+const csvImportKeySchema = transactionImportKeySchema.refine(
+  (value) => /^csv:hushledger:(?:id:[0-9a-f-]{36}|row:[0-9a-f]{64})$/.test(value),
+)
 
-export const csvImportRowSchema = transactionInputSchema
+export const csvImportRowSchema = transactionImportRowSchema
   .extend({
     sourceRow: z.number().int().min(2).max(MAX_CSV_IMPORT_ROWS + 1),
-    importKey: importKeySchema,
-    include: z.boolean(),
+    importKey: csvImportKeySchema,
   })
   .strict()
 
@@ -52,47 +62,16 @@ export const csvImportRequestSchema = z
   })
   .strict()
 
-export const csvImportRowStatusSchema = z.enum([
-  'new',
-  'possible_duplicate',
-  'already_imported',
-  'existing_transaction',
-  'id_conflict',
-  'account_invalid',
-  'category_invalid',
-  'category_mismatch',
-])
+export const csvImportRowStatusSchema = transactionImportRowStatusSchema
+export const csvImportPreviewRowSchema = transactionImportPreviewRowSchema
+export const csvImportPreviewResultSchema = transactionImportPreviewResultSchema
+export const csvImportCommitResultSchema = transactionImportCommitResultSchema
 
-export const csvImportPreviewRowSchema = z
-  .object({
-    sourceRow: z.number().int().positive(),
-    importKey: importKeySchema,
-    status: csvImportRowStatusSchema,
-  })
-  .strict()
-
-export const csvImportPreviewResultSchema = z
-  .object({
-    rows: z.array(csvImportPreviewRowSchema).max(MAX_CSV_IMPORT_ROWS),
-    ready: z.number().int().nonnegative(),
-    possibleDuplicates: z.number().int().nonnegative(),
-    skipped: z.number().int().nonnegative(),
-    blocked: z.number().int().nonnegative(),
-  })
-  .strict()
-
-export const csvImportCommitResultSchema = csvImportPreviewResultSchema
-  .extend({
-    imported: z.number().int().nonnegative(),
-    staleSkipped: z.number().int().nonnegative(),
-  })
-  .strict()
-
-export type CsvImportRow = z.infer<typeof csvImportRowSchema>
-export type CsvImportRowStatus = z.infer<typeof csvImportRowStatusSchema>
-export type CsvImportPreviewRow = z.infer<typeof csvImportPreviewRowSchema>
-export type CsvImportPreviewResult = z.infer<typeof csvImportPreviewResultSchema>
-export type CsvImportCommitResult = z.infer<typeof csvImportCommitResultSchema>
+export type CsvImportRow = TransactionImportRow
+export type CsvImportRowStatus = TransactionImportRowStatus
+export type CsvImportPreviewRow = TransactionImportPreviewRow
+export type CsvImportPreviewResult = TransactionImportPreviewResult
+export type CsvImportCommitResult = TransactionImportCommitResult
 
 export type CsvImportIssueCode =
   | 'empty_file'

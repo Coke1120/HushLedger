@@ -40,6 +40,8 @@ const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   AI_STATEMENT_TOO_LARGE: 'errorAiStatementTooLarge',
   CSV_IMPORT_BLOCKED: 'csvImportFailed',
   CSV_IMPORT_STALE: 'csvImportFailed',
+  AI_IMPORT_BLOCKED: 'errorAiImportFailed',
+  AI_IMPORT_STALE: 'errorAiImportFailed',
   INTERNAL_ERROR: 'errorServer',
 }
 

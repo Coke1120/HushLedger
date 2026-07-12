@@ -2,21 +2,22 @@
 
 ## 目標與交付次序
 
-目前已交付的最小 AI 功能是：使用者把網上銀行的純文字交易紀錄貼進應用程式，
-由 AI 整理為可編輯草稿。現有版本在草稿檢閱停止，**沒有 AI 匯入 D1 的路徑**。
-批次確認、duplicate detection 及 atomic commit 仍要在 Phase 2B 完成後才加入。
+目前已交付完整的人工確認流程：使用者把網上銀行純文字交易紀錄貼進應用程式，
+由 AI 整理為可編輯草稿；HushLedger 再以 live D1 狀態檢查重複項目、帳戶及分類，
+最後只在使用者明確選擇後 atomic commit。解析階段維持 **零 D1 writes**，模型亦
+永遠不能直接呼叫 commit。
 
 建議交付次序：
 
 1. **Phase 2A — 自訂主資料**：新增、改名、停用銀行／現金／電子錢包／信用卡
    帳戶，以及收入／支出分類。既有交易仍保留原 account/category reference。
-2. **Phase 2B — 匯入基礎**：建立 import batch、duplicate detection、review table
-   及不依賴 AI 的 deterministic commit pipeline。
+2. **Phase 2B — 匯入基礎（已交付）**：建立 deterministic duplicate preview、
+   stable source tombstone 及不依賴 AI 的 atomic commit pipeline。
 3. **Phase 2C-preview — AI 解析器（已交付）**：接駁使用者提供的
    OpenAI-compatible endpoint，支援貼上網上銀行純文字並產生不寫入 D1 的
    transaction drafts。
-4. **Phase 2C-commit（未交付）**：把 2B 的 review batch、duplicate detection 及
-   atomic commit 接到已驗證的草稿。
+4. **Phase 2C-commit（已交付）**：把 2B 的 duplicate preview、人工選擇及 atomic
+   commit 接到已驗證及可修改的草稿。
 
 第一版不包括 PDF／截圖 OCR、直接連接銀行、背景自動同步或無人確認的自動
 入帳。信用卡還款及帳戶之間轉帳在 transfer model 完成前只會被標示為「可能
@@ -35,8 +36,8 @@
   config 持久化。
 - UI 在送出前清楚提示：貼上的銀行文字會傳給已設定的 AI provider；取消即不
   傳送。
-- 不儲存原始銀行文字，不記錄 request body、完整 payee、note 或模型原文；
-  import audit 只保留 hash、provider/model identifier、筆數、狀態及時間。
+- 不儲存原始銀行文字，不記錄 request body、完整 payee、note 或模型原文；D1
+  只額外保留不可逆 source key、transaction ID 及匯入時間作 re-import tombstone。
 
 OpenAI 官方建議不要在 browser application 內嵌／部署 API key，並應經自有
 backend 呼叫。HushLedger 的 BYOK 設計不把 key 放進 bundle 或 persistent storage，
@@ -70,23 +71,25 @@ Worker 回傳逐筆草稿；UI 以 table／mobile cards 顯示：
 - 建議分類、信心程度、警告
 - `可能重複`、`日期不明確`、`可能是轉帳／信用卡還款` 等狀態
 
-使用者可批量選分類，亦可逐筆修改、排除或保留。任何 validation error 都在該
-列旁顯示，不以 toast 取代欄位錯誤。
+使用者可逐筆修改、排除或保留。任何 validation error 都在該列旁顯示，不以
+toast 取代欄位錯誤。每次解析後自動 preview；任何欄位修改都令 preview 失效，
+儲存前必須重新檢查。
 
 ### 3. 確認匯入
 
-確認頁先顯示筆數及收入／支出合計。commit request 使用 `batchId` 作 idempotency
-key；Worker 在單一 D1 batch 中重新驗證並寫入，回傳 imported、skipped duplicate
-及 rejected counts。重試相同 batch 不會重複入帳。
+確認區顯示 new、possible duplicate、skipped 及 blocked 筆數。新交易預設選取；
+可能重複預設不選，必須由使用者明確勾選。commit request 帶同已檢閱 rows 及 stable
+source key；Worker 在寫入前重新 preview，並以單一 D1 `batch()` 寫入交易及
+tombstone。任何 statement 失敗會令整批 rollback；重送同一 source key 不會重複
+入帳。
 
 ## Worker API 合約
 
 ```text
 POST /api/ai/models
 POST /api/imports/parse
+POST /api/imports/ai
 ```
-
-`POST /api/imports/commit` 及 `GET /api/imports/:batchId` 仍未交付。
 
 `POST /api/ai/models` 接受 base URL 及 API key，固定呼叫
 `GET {baseUrl}/models`，只回傳最多 200 個經驗證及去重的 model ID。若 provider
@@ -108,8 +111,8 @@ POST /api/imports/parse
 }
 ```
 
-它只回傳目前畫面的 editable drafts，不建立 review batch 或 transaction。模型草稿
-的 canonical schema：
+它只回傳目前畫面的 editable drafts，不建立 transaction。模型草稿的 canonical
+schema：
 
 ```json
 {
@@ -135,10 +138,13 @@ POST /api/imports/parse
 2. Zod parse JSON，拒絕額外欄位。
 3. 依 `currency` minor units deterministic parse `amountText`。
 4. 驗證日期及目標帳戶；分類名稱只作 suggestion，不直接建立分類。
-5. 以原文行號產生 bounded source excerpt；不保存 statement 或 provider 原始回應。
+5. 以 account、原文行號、原文及同列 occurrence 的 SHA-256 產生 stable source key；
+   不保存 statement 或 provider 原始回應。
 
-未來的 `POST /api/imports/commit` 只接受已 parse 的 `batchId` 及經使用者確認的
-normalized rows。每列再做與單筆新增交易相同的 server-side 驗證。
+`POST /api/imports/ai` 只接受已 parse、在 browser 編輯後再經 strict schema 驗證的
+normalized rows，支援 `preview` 及 `commit` mode。每列重新檢查 active account、
+active category/type、transaction ID、exact duplicate 及 source tombstone；最多 200
+列、raw JSON 最多 256 KiB。
 
 ## OpenAI-compatible provider adapter
 
@@ -167,35 +173,25 @@ credentials/query/fragment/IP/private/same-app target，並保留 Cloudflare
 
 ## D1 資料設計
 
-以下是未來 atomic commit 所需設計；目前沒有加入 migration。新增
-`import_batches`：
+Migration `0007_transaction_import_keys.sql` 新增：
 
 ```text
-id, account_id, source_sha256, provider_label, model_label,
-status, draft_count, imported_count, duplicate_count, rejected_count,
-created_at, committed_at
+transaction_import_keys(import_key PRIMARY KEY, transaction_id, imported_at)
 ```
 
-新增 `import_rows` 或等價 staging table，保存 normalized draft 及 review state，
-不保存完整 statement text。`transactions` 增加 nullable `import_batch_id` 及
-`source_fingerprint`。
+此表刻意沒有 transaction foreign key。使用者刪除已匯入交易後，source key 仍是
+tombstone，避免同一銀行原文在下一次 AI 解析時靜默復活。它不保存原文、provider、
+model、payee、note 或 API key，也不需要 staging/retention cleanup。
 
-Staging retention 是資料合約的一部分：取消或成功 commit 時立即刪除對應
-`import_rows`；未完成 batch 及 rows 由每日 cleanup 在建立 24 小時後刪除。
-已完成的 `import_batches` 只保留不含 payee／note／原文的 hash、provider/model、
-counts、status 及 timestamps 90 日，之後刪除；`transactions.import_batch_id` 使用
-nullable `ON DELETE SET NULL`，交易本身仍保留。Cleanup 必須可重試、分批執行，
-並有 clock-boundary 及 interrupted-run tests。
-
-duplicate fingerprint 由 server 以以下 normalized 欄位產生：
+Live duplicate preview 另外比較以下 authoritative transaction 欄位：
 
 ```text
-accountId + occurredOn + amountMinor + direction + normalized payee + bank reference
+accountId + categoryId + occurredOn + amountMinor + direction + currency + payee + note
 ```
 
-若沒有 bank reference，UI 必須以「可能重複」而非「一定重複」表示。Database
-unique constraint 配合 batch idempotency 防止同一次確認重複寫入；跨 batch 的
-相似項目交由使用者決定。
+若只有 exact field match 而沒有相同 source key，UI 以「可能重複」而非「一定
+重複」表示。`import_key` unique constraint 配合 transactional D1 batch 防止相同
+來源重複寫入；跨來源的相似項目交由使用者決定。
 
 ## 測試矩陣與完成定義
 
@@ -208,17 +204,21 @@ CI 只使用 fake provider，不使用真實 API key。至少覆蓋：
 - 中英混合 payee、emoji、超長行、空白、零金額及非 HKD
 - prompt injection、HTML／CSV-like payload、malformed／oversized model output
 - provider timeout、401、429、5xx、refusal、invalid JSON 及 schema mismatch
-- duplicate preview、同 batch 重試、部分排除、全部排除及 atomic commit failure
+- duplicate preview、stable re-analysis、部分排除、全部排除及 atomic commit failure
 - no sensitive logs、no bundled/persisted browser key、Origin／Access boundary、
   512 KiB raw request 及 64 KiB decoded statement cap
 
-目前 Phase 2C-preview 的完成條件：
+完整 Phase 2C 的完成條件：
 
 1. 使用者可以貼上真實格式但匿名化的銀行文字，看到可修改的草稿。
 2. AI failure 不會建立 transaction，亦不會遺失已在畫面中的原文。
 3. 所有 authoritative 金額均由 Worker minor-unit parser 產生。
 4. Parser 永遠零 D1 writes，API key 不會進入 storage、bundle、Git、logs、
    screenshots 或 fixtures。
-
-完整 Phase 2C 仍要額外證明：確認後 totals 與 review 一致、duplicate／idempotency、
-atomic commit failure、keyboard/mobile commit review 及 retention cleanup。
+5. Edited rows 必須重新 preview；new 預設選取，possible duplicate 預設不選。
+6. Commit 前由 Worker 重新驗證 live references 及 duplicate 狀態，所有選取 row 在
+   同一 D1 batch 寫入。
+7. 相同來源重新解析會得到相同 source key；transaction 被刪除後 tombstone 仍阻止
+   靜默 re-import。
+8. Desktop/mobile keyboard review、focus restore、zero console errors 及 zero horizontal
+   overflow 通過 browser smoke test。
