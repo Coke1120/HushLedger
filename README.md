@@ -6,81 +6,96 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-17483c.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers%20%2B%20D1-f38020.svg)](docs/CLOUDFLARE_SETUP.md)
 
-![HushLedger ledger-and-flow brand artwork](design/brand/hushledger-social-preview.png)
+[![HushLedger ledger-and-flow brand artwork](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/brand/hushledger-social-preview.png)](https://github.com/Coke1120/HushLedger/blob/main/design/brand/hushledger-social-preview.png)
 
-HushLedger 是支援繁體中文、English、日本語及 Français 的 single-user、
-online-first 私人收支管理工具。它使用 React PWA、Cloudflare Workers 與 D1，
-專注快速記帳、清楚的月份總覽，以及可靠的每日／每週／每月週期交易。
-Production 必須由 Cloudflare Access 保護。
+HushLedger is a single-user, online-first personal finance tool with interfaces in
+Traditional Chinese, English, Japanese, and French. Built as a React PWA backed by
+Cloudflare Workers and D1, it focuses on fast transaction entry, clear monthly
+summaries, and dependable daily, weekly, and monthly recurring transactions.
+Production deployments must be protected by Cloudflare Access.
 
-Open-source, privacy-first, multilingual personal finance PWA and expense tracker
-with income tracking, recurring transactions, React, TypeScript, Cloudflare Workers,
-and D1.
+[![HushLedger desktop dashboard](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/qa/desktop-1440-live.png)](https://github.com/Coke1120/HushLedger/blob/main/design/qa/desktop-1440-live.png)
 
-![HushLedger desktop dashboard](design/qa/desktop-1440-live.png)
+## Features
 
-## 已支援功能
+- Monthly income, expenses, balance, and recent transactions.
+- HKD amounts stored as integer minor units to avoid floating-point errors.
+- Search and income/expense filtering across the 200 most recent transactions in
+  each month, with an explicit notice when the result limit is reached.
+- Custom payees and notes.
+- Daily, weekly, and monthly recurring transactions that can be created, edited,
+  paused, resumed, and deleted.
+- Due-transaction generation through Cloudflare Cron or a manual action, with no
+  duplicate occurrence for the same rule and date.
+- Stable end-of-month anchors: a January 31 rule runs on the last day of February
+  and returns to March 31 instead of drifting.
+- A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
+- Clear loading, demo, offline, success, and error states.
+- A settings page for switching immediately among Traditional Chinese, English,
+  Japanese, and French. The preference is stored only in the current browser.
 
-- 月份收入、支出、結餘及最近交易。
-- HKD 金額以 integer minor units 儲存，避免浮點數誤差。
-- 每月最近 200 筆交易的搜尋，以及收入／支出篩選；到達上限時 UI 會明確標示。
-- 自訂商戶／對象與備註。
-- 每日、每週及每月週期交易：建立、修改、暫停、恢復及刪除。
-- Cloudflare Cron 或手動產生到期交易；相同規則及日期不會重複建立。
-- 月底錨點不漂移，例如 1 月 31 日會依次落在 2 月最後一日及 3 月 31 日。
-- PWA app shell、手機 bottom sheet、tablet／desktop responsive layout。
-- 明確的 loading、demo、offline、success 及 error 狀態。
-- 設定頁面可即時切換繁體中文、英文、日文及法文；選擇只儲存在目前 browser。
+Accounts and categories currently come from D1 seed data, including cash, bank,
+credit card, digital wallet, income, and expense categories. Full management of
+custom banks, payment accounts, income categories, and expense categories is
+planned for the next phase. The existing schema already supports soft-disabling
+references while preserving transaction history. See [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
 
-目前帳戶及分類由 D1 seed 提供，包括現金、銀行、信用卡、電子錢包、收入及支出
-分類。完整的自訂銀行／付款帳戶／收入及支出分類管理屬下一階段；現有 schema
-已保留 soft-disable 與歷史 reference。詳見 [PROJECT_BRIEF.md](PROJECT_BRIEF.md)。
-這裡的「付款」是付款方式帳戶（現金、銀行、信用卡或電子錢包），不是額外的
-transaction type。
+In HushLedger, a payment method is an account such as cash, a bank account, a
+credit card, or a digital wallet. It is not an additional transaction type.
 
-## 不變的資料規則
+## Data invariants
 
-- 預設貨幣為 HKD。
-- HK$123.45 以 `12345` 儲存在 `amount_minor`。
-- 交易使用 client-generated UUID，安全重試不會建立重複資料。
-- 交易只記錄曆日 `YYYY-MM-DD`，沒有 transaction time field。
-- `created_at`／`updated_at` 是內部 UTC audit timestamps，不是使用者交易時間。
-- 週期規則的 occurrence date 是 immutable idempotency key；修改只影響未產生的
-  未來交易，暫停或刪除規則不會刪除歷史交易。
-- 所有 API input 由 Zod 及 server-side account/category/type 規則再次驗證。
+- The default currency is HKD.
+- HK$123.45 is stored as `12345` in `amount_minor`.
+- Transactions use client-generated UUIDs, so a safe retry does not create a
+  duplicate transaction.
+- A transaction stores only a calendar date in `YYYY-MM-DD` format. There is no
+  transaction time field.
+- `created_at` and `updated_at` are internal UTC audit timestamps, not user-entered
+  transaction times.
+- A recurring rule occurrence date is an immutable idempotency key. Editing a rule
+  affects only future occurrences that have not been generated. Pausing or deleting
+  a rule never deletes historical transactions.
+- Every API input is validated with Zod and checked again against server-side
+  account, category, and transaction-type rules.
 
-## 技術架構
+## Architecture
 
 ```text
 React 19 + Vite 8 + TypeScript PWA
-                  │
-                  ▼
+                  |
+                  v
        Cloudflare Worker + Hono
-                  │
-                  ▼
+                  |
+                  v
              Cloudflare D1
 ```
 
-沒有獨立 database server、Docker database、第三方字型或 application-level login。
-Cloudflare Access 是 production authentication boundary。
+HushLedger does not require a separate database server, a Docker database,
+third-party fonts, or an application-level login. Cloudflare Access is the
+production authentication boundary.
 
-## 語言及設定
+## Languages and settings
 
-HushLedger 內建以下介面語言：
+HushLedger includes the following interface languages:
 
-- 繁體中文（`zh-Hant`）
-- English（`en`）
-- 日本語（`ja`）
-- Français（`fr`）
+- Traditional Chinese (`zh-Hant`)
+- English (`en`)
+- Japanese (`ja`)
+- French (`fr`)
 
-第一次開啟時，app 會從 browser 語言選擇最接近的支援語言；之後可在「設定」
-頁面隨時切換。語言偏好只使用 browser local storage，不會寫入 D1、傳送至
-Worker，或建立額外的使用者 profile。日期、月份、金額、導覽、表單、狀態及
-錯誤訊息會依目前語言顯示；自訂帳戶、分類、商戶、備註及規則名稱則保留原文。
+On first use, the app selects the closest supported language from the browser
+preferences. The language can be changed at any time from Settings. The selected
+locale is stored only in browser local storage; it is not written to D1, sent to
+the Worker, or used to create a user profile.
 
-## 本機開始
+Dates, months, amounts, navigation, forms, status messages, and error messages use
+the selected language. User-defined account names, category names, payees, notes,
+and recurring-rule names are always preserved exactly as entered.
 
-需要 Node.js 22+ 及 npm 10+：
+## Local development
+
+Requirements: Node.js 22+ and npm 10+.
 
 ```bash
 git clone https://github.com/Coke1120/HushLedger.git
@@ -89,31 +104,33 @@ npm ci
 npm run db:local
 ```
 
-分別啟動 Worker 及 Vite：
+Start the Worker and Vite in separate terminals:
 
 ```bash
-# Terminal A：Worker、API、local D1
+# Terminal A: Worker, API, and local D1
 npm run dev:worker
 ```
 
 ```bash
-# Terminal B：Vite；/api proxy 至 127.0.0.1:8787
+# Terminal B: Vite; proxies /api to 127.0.0.1:8787
 npm run dev
 ```
 
-瀏覽 `http://localhost:5173`。只啟動 Vite 時會進入有清楚標示的展示模式；展示
-資料只留在本次頁面。離線時 mutation 會被阻止，不會假裝已同步。
+Open `http://localhost:5173`. If only Vite is running, the app enters a clearly
+labelled demo mode. Demo data remains only in the current page session. Mutations
+are blocked while offline; the app never pretends that an offline change was
+synchronized.
 
-Production-like 單一 Worker 預覽：
+For a production-like preview served by one Worker:
 
 ```bash
 npm run build
 npm run dev:worker
 ```
 
-再瀏覽 `http://localhost:8787`。
+Then open `http://localhost:8787`.
 
-## 驗證
+## Verification
 
 ```bash
 npm run db:local
@@ -121,10 +138,13 @@ npm run verify
 npm audit --omit=dev --audit-level=high
 ```
 
-`npm run verify` 依次執行 Vitest、TypeScript、ESLint、Oxlint、production PWA
-build，以及使用隔離 temporary D1 的 Worker integration gate。Integration gate
-會重做 fresh／upgrade migrations，並驗證 API、Cron、週期 CRUD、race-safe
-idempotency 及歷史保留。Worker binding 改動後可執行：
+`npm run verify` runs Vitest, TypeScript, ESLint, Oxlint, a production PWA build,
+and a Worker integration gate against an isolated temporary D1 database. The
+integration gate rebuilds fresh and upgraded migration paths and verifies the API,
+configured Cron schedule, recurring-rule CRUD, race-safe idempotency, and history
+preservation.
+
+Regenerate Worker binding types after changing bindings:
 
 ```bash
 npm run types:worker
@@ -134,26 +154,27 @@ npm run types:worker
 
 | Migration | Purpose |
 | --- | --- |
-| `0001_schema.sql` | 初始 tables |
-| `0002_seed.sql` | 初始 seed |
-| `0003_phase1_hardening.sql` | constraints、indexes、UUID 交易及完整 seed |
-| `0004_transaction_date_only.sql` | 把舊交易時間轉為曆日並移除 time field |
-| `0005_recurring_rules.sql` | 週期規則、generation cursor 及 transaction provenance |
-| `0006_reference_localization_keys.sql` | 為內建帳戶及分類加入穩定的語言 key；自訂名稱保持原文 |
+| `0001_schema.sql` | Creates the initial tables. |
+| `0002_seed.sql` | Adds the initial seed data. |
+| `0003_phase1_hardening.sql` | Adds constraints, indexes, UUID transactions, and the complete seed set. |
+| `0004_transaction_date_only.sql` | Converts legacy transaction timestamps to calendar dates and removes the time field. |
+| `0005_recurring_rules.sql` | Adds recurring rules, the generation cursor, and transaction provenance. |
+| `0006_reference_localization_keys.sql` | Adds stable localization keys for built-in accounts and categories while preserving custom names verbatim. |
 
-Local：
+Apply migrations locally:
 
 ```bash
 npx wrangler d1 migrations apply hushledger --local
 ```
 
-Remote migrations 會改動正式資料。先確認 Cloudflare account、database 及備份，
-再依 [Cloudflare deployment guide](docs/CLOUDFLARE_SETUP.md) 操作。
+Remote migrations modify production data. Confirm the Cloudflare account,
+database, and backups before following the
+[Cloudflare deployment guide](docs/CLOUDFLARE_SETUP.md).
 
 ## API
 
-成功回應為 `{ "ok": true, "data": ... }`；錯誤回應為
-`{ "ok": false, "error": { "code", "message" } }`。
+Successful responses use `{ "ok": true, "data": ... }`. Error responses use
+`{ "ok": false, "error": { "code", "message" } }`.
 
 ```text
 GET    /api/health
@@ -172,52 +193,59 @@ DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
 ```
 
-交易列表按日期由新至舊，單次最多回傳 200 筆；到達上限時 UI 會顯示
-`顯示最近 200 筆交易`，不會把截斷結果稱為全部。
+Transactions are ordered from newest to oldest by transaction date. A response
+contains at most 200 transactions. When that limit is reached, the UI explicitly
+states that it is showing the 200 most recent transactions instead of describing
+the truncated result as complete.
 
-Mutation routes 要求同源 browser request、JSON content type、body size limit 及
-strict schema。這些 application checks 不取代 Cloudflare Access。
+Mutation routes require a same-origin browser request, a JSON content type, a body
+within the configured size limit, and a payload accepted by the strict schema.
+These application checks do not replace Cloudflare Access.
 
-## Cloudflare 私人部署
+## Private Cloudflare deployment
 
-[docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md) 提供完整操作，包括：
+[docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md) provides the complete setup,
+including:
 
-- Wrangler login 及 D1 建立／binding。
-- Local 與 remote migrations。
-- Worker deploy 及每日 00:05 HKT Cron。
-- Cloudflare Access self-hosted application 及 alternate hostname 防護。
-- 未授權／已授權 browser 驗證。
-- 加密外部備份及 restore drill。
-- 未來 AI provider secrets 的正確位置。
+- Wrangler login, D1 creation, and Worker bindings.
+- Local and remote migrations.
+- Worker deployment and the configured daily Cron schedule.
+- Cloudflare Access protection for the self-hosted application and alternate
+  hostnames.
+- Unauthorized and authorized browser verification.
+- Encrypted external backups and restore drills.
+- The correct location for future AI provider secrets.
 
-在 Access 完整保護 UI、`/api/*`、custom domain、`workers.dev` 與 preview URL 前，
-不要輸入真實財務資料。
+Do not enter real financial data until Cloudflare Access protects the UI,
+`/api/*`, the custom domain, `workers.dev`, and preview URLs.
 
-## AI 銀行紀錄匯入方向
+## Planned AI bank-record import
 
-核心功能穩定後，計畫支援貼上網上銀行純文字，由使用者提供的
-OpenAI-compatible base URL／API key 解析為可修改草稿。AI 不會直接寫入 D1；
-只有使用者逐筆確認後才會經 deterministic minor-unit pipeline 匯入。
+After the core workflow is stable, HushLedger plans to support pasted plain-text
+online banking records. A user-provided OpenAI-compatible base URL and API key will
+parse the text into editable drafts. AI output will never write directly to D1;
+only transactions that the user explicitly reviews and confirms will pass through
+the deterministic minor-unit import pipeline.
 
-完整 provider adapter、安全邊界、duplicate detection 及測試矩陣見
-[AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md)。目前 release **尚未啟用 AI**，
-也不接受 API key 進入 browser。
+See [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md) for the provider adapter,
+security boundary, duplicate-detection approach, and test matrix. The current
+release does **not** enable AI and does not accept an API key in the browser.
 
-## 私隱與安全
+## Privacy and security
 
-- 不提交 `.dev.vars*`、`.env*`、`.wrangler/`、local SQLite、exports、backups、
-  API keys 或真實財務資料。
-- 不在 logs、screenshots、issues 或 PR 記錄完整金額、payee、note、銀行紀錄、
-  account identifiers 或 request body。
-- Worker secrets 使用 `wrangler secret put`；沒有 `VITE_` secret。
-- 發現漏洞請依 [SECURITY.md](SECURITY.md) 私下回報。
+- Never commit `.dev.vars*`, `.env*`, `.wrangler/`, local SQLite files, exports,
+  backups, API keys, or real financial data.
+- Never record complete amounts, payees, notes, bank records, account identifiers,
+  or request bodies in logs, screenshots, issues, or pull requests.
+- Store Worker secrets with `wrangler secret put`. There are no `VITE_` secrets.
+- Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
-## 參與
+## Contributing
 
-Issues 與 pull requests 歡迎。開始前請閱讀 [CONTRIBUTING.md](CONTRIBUTING.md)
-及 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)，並只使用虛構或已徹底匿名化的測試
-資料。
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before starting, and use only fictional or
+thoroughly anonymized test data.
 
 ## License
 
-[MIT](LICENSE) © 2026 Coke1120
+[MIT](LICENSE) (c) 2026 Coke1120
