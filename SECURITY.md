@@ -29,3 +29,31 @@ audience, and lifetime before Next.js handles the request. Operators must also
 keep secrets out of client bundles and the repository, enable strong authentication
 on their Cloudflare account, and maintain encrypted off-platform backups. See
 [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md).
+
+## User-provided AI credentials
+
+The optional AI draft feature accepts an OpenAI-compatible base URL, API key, and
+model in Settings. These values are held only in the current tab's React memory;
+they must never be persisted in local/session storage, cookies, D1, Worker
+globals, logs, URLs, HTML, screenshots, or test fixtures. Reloading or closing the
+tab clears them.
+
+The browser connects only to same-origin HushLedger endpoints. Route Handlers
+validate Access/local authorization and Origin before proxying requests, never
+forward incoming cookies or headers, append only fixed provider paths, disable
+redirects, cap time and response size, and return generic errors without upstream
+bodies. Production accepts public HTTPS providers on port 443 only. Local Next.js
+development additionally permits loopback HTTP providers on a different port;
+the production-style workerd preview keeps public-only outbound routing.
+Enter only provider hostnames you trust. The local Node development server does
+not DNS-pin arbitrary public hostnames, so its hostname checks cannot eliminate a
+DNS-rebinding race; local use is intentionally single-user, loopback-bound, and
+protected by the same-origin mutation guard. Production keeps
+`global_fetch_strictly_public` enabled so Worker subrequests use the public
+Internet route rather than a private zone origin.
+
+Pasted bank text is disclosed to the configured provider after the user selects
+Analyze. It is kept in UI memory, is not logged or stored in D1, and model output
+is treated as untrusted. Strict server validation and deterministic minor-unit
+parsing occur before editable drafts are returned. The current draft feature has
+no D1 write path.

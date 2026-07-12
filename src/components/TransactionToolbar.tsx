@@ -1,4 +1,5 @@
-import { Search } from 'lucide-react'
+import { Search, Sparkles } from 'lucide-react'
+import type { RefObject } from 'react'
 import { useI18n } from '../i18n'
 import type { TransactionType } from '../lib/schema'
 
@@ -9,9 +10,20 @@ type TransactionToolbarProps = {
   filter: TransactionFilter
   onSearchChange: (value: string) => void
   onFilterChange: (value: TransactionFilter) => void
+  onImport: () => void
+  importOpen: boolean
+  importButtonRef: RefObject<HTMLButtonElement | null>
 }
 
-export function TransactionToolbar({ search, filter, onSearchChange, onFilterChange }: TransactionToolbarProps) {
+export function TransactionToolbar({
+  search,
+  filter,
+  onSearchChange,
+  onFilterChange,
+  onImport,
+  importOpen,
+  importButtonRef,
+}: TransactionToolbarProps) {
   const { t } = useI18n()
   const filters: Array<{ value: TransactionFilter; label: string }> = [
     { value: 'all', label: t('all') },
@@ -45,6 +57,18 @@ export function TransactionToolbar({ search, filter, onSearchChange, onFilterCha
           </button>
         ))}
       </div>
+      <button
+        id="ai-import-trigger"
+        className="button button-secondary ai-import-button"
+        type="button"
+        onClick={onImport}
+        aria-expanded={importOpen}
+        aria-controls="bank-import-panel"
+        ref={importButtonRef}
+      >
+        <Sparkles aria-hidden="true" />
+        {t('aiImport')}
+      </button>
     </div>
   )
 }

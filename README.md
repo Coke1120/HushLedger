@@ -92,7 +92,9 @@ production authentication boundary.
 | Test the production-style Worker locally | `npm run preview` | Local D1 | No |
 | Use it privately from multiple devices | `npm run deploy` | Cloudflare D1 | Yes: account, domain, and Access |
 
-The current release does not use an application API key. Local data stays in
+HushLedger itself does not use an application API key. Its optional AI draft
+feature uses a provider key that you enter in Settings; that key stays only in
+the current browser tab's memory and is cleared on reload. Local data stays in
 Wrangler's ignored local state and is separate from any deployed D1 database.
 After you attach its protected custom domain, a Cloudflare deployment becomes
 internet-reachable, but the app must remain private behind Cloudflare Access; it
@@ -143,6 +145,13 @@ Local mode has no application sign-in. The project script binds the server to
 `127.0.0.1` only; protect your operating-system account and disk, and treat
 `.wrangler/` as private financial data even though Git ignores it.
 
+The AI draft feature also works in local mode; Cloudflare deployment is not
+required. Enter the provider base URL, key, and model in Settings. Public HTTPS
+providers work locally. Under `npm run dev`, you may also use a loopback provider
+such as `http://127.0.0.1:<port>/v1`. A deployed Worker—and the production-style
+`npm run preview` runtime—cannot reach a provider running on your computer's
+localhost.
+
 `npm run start` is intentionally not defined. A plain Next.js production server
 does not provide HushLedger's Cloudflare D1 binding. Use `npm run dev` for normal
 local use or `npm run preview` for the production-style OpenNext Worker running
@@ -170,7 +179,9 @@ integration gate against isolated temporary D1 databases. The gate rebuilds fres
 and upgraded migration paths and verifies the
 App Router shell, privacy-safe PWA assets, security headers, API contracts,
 configured Cron schedule, recurring-rule CRUD, race-safe idempotency, and history
-preservation.
+preservation. It also starts local Next.js with a fake OpenAI-compatible provider,
+verifies model discovery and a successful strict draft parse, and proves that the
+parse creates no D1 transaction.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -234,8 +245,9 @@ These checks complement the custom Worker's cryptographic Cloudflare Access JWT 
 ## Private Cloudflare deployment
 
 Deployment is optional. For private use on the same computer, follow
-[Local development](#local-development) and stop before this section. No API key
-or Cloudflare login is needed locally.
+[Local development](#local-development) and stop before this section. No
+HushLedger or Cloudflare API key is needed locally. A separate AI provider key is
+needed only if you choose to use AI drafts.
 
 Start with [the beginner-friendly deployment guide](docs/EASY_DEPLOY.md) if you
 want a safe, copy-and-paste walkthrough with no Git experience required.
@@ -250,23 +262,39 @@ setup, including:
   path, with alternate Worker URLs disabled.
 - Unauthorized and authorized browser verification.
 - Encrypted external backups and restore drills.
-- The correct location for future AI provider secrets.
+- AI provider networking and privacy guidance.
 
 Do not enter real financial data until Cloudflare Access protects the custom
 hostname and every path, including `/api/*`, while `workers.dev` and Preview URLs
 remain disabled.
 
-## Planned AI bank-record import
+## AI bank-record drafts
 
-After the core workflow is stable, HushLedger plans to support pasted plain-text
-online banking records. A user-provided OpenAI-compatible base URL and API key will
-parse the text into editable drafts. AI output will never write directly to D1;
-only transactions that the user explicitly reviews and confirms will pass through
-the deterministic minor-unit import pipeline.
+The Transactions view can turn pasted plain-text online banking records into
+editable drafts through a user-provided OpenAI-compatible provider:
 
-See [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md) for the provider adapter,
-security boundary, duplicate-detection approach, and test matrix. The current
-release does **not** enable AI and does not accept an API key in the browser.
+1. Open Settings and enter the provider base URL, API key, and model ID. “Load
+   models” tests `GET {baseUrl}/models`; manual model entry remains available.
+2. Open Transactions, select **AI drafts**, choose the target account and date
+   order, then paste at most 64 KiB of text.
+3. Review every returned field. This release deliberately stops at editable
+   drafts: parsing never writes a transaction or raw statement to D1.
+
+The provider must support Chat Completions and strict `json_schema` structured
+output. Browser code calls only same-origin HushLedger routes; the server appends
+fixed `/models` and `/chat/completions` paths and forwards the provider request.
+Enter only a provider URL you trust; local public hostnames are not DNS-pinned.
+The key, provider settings, pasted text, and drafts remain in current-tab memory
+and disappear on reload. They are not stored in local/session storage, cookies,
+D1, service-worker caches, or logs. The pasted text is sent to the provider only
+after you select **Analyze**.
+
+OpenAI references: [API key safety](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safet),
+[Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
+and [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
+See [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md) for the implemented security
+boundary and the still-planned atomic review/commit and duplicate-detection work.
 
 ## Privacy and security
 
@@ -274,7 +302,8 @@ release does **not** enable AI and does not accept an API key in the browser.
   backups, API keys, or real financial data.
 - Never record complete amounts, payees, notes, bank records, account identifiers,
   or request bodies in logs, screenshots, issues, or pull requests.
-- Store Worker secrets with `wrangler secret put`. Client bundles never contain secrets.
+- Never persist an AI provider key in browser storage. Reload the tab to clear the
+  in-memory provider settings immediately.
 - Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 ## Contributing

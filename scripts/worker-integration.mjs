@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
-import { request as httpRequest } from 'node:http'
-import { createServer } from 'node:net'
+import { createServer as createHttpServer, request as httpRequest } from 'node:http'
+import { createServer as createNetServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,18 +10,21 @@ import { fileURLToPath } from 'node:url'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const wrangler = join(projectRoot, 'node_modules', '.bin', 'wrangler')
 const openNext = join(projectRoot, 'node_modules', '.bin', 'opennextjs-cloudflare')
+const next = join(projectRoot, 'node_modules', '.bin', 'next')
 const skipBuild = process.argv.includes('--skip-build')
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hushledger-integration-'))
 const freshState = join(temporaryRoot, 'fresh-state')
 const upgradeState = join(temporaryRoot, 'upgrade-state')
 let workerProcess
+let nextProcess
+let providerServer
 
 function hktCalendarDate() {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
 async function availablePort() {
-  const server = createServer()
+  const server = createNetServer()
   await new Promise((resolveReady, reject) => {
     server.once('error', reject)
     server.listen(0, '127.0.0.1', resolveReady)
@@ -31,6 +34,66 @@ async function availablePort() {
   const { port } = address
   await new Promise((resolveClosed, reject) => server.close((error) => (error ? reject(error) : resolveClosed())))
   return port
+}
+
+async function startFakeAiProvider(port, { categoryName, occurredOn }) {
+  providerServer = createHttpServer((request, response) => {
+    const respond = (status, payload) => {
+      response.writeHead(status, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(payload))
+    }
+
+    if (request.headers.authorization !== 'Bearer fictional-api-key-value') {
+      respond(401, { error: 'unauthorized' })
+      return
+    }
+    if (request.method === 'GET' && request.url === '/v1/models') {
+      respond(200, { data: [{ id: 'fictional-model' }] })
+      return
+    }
+    if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
+      respond(404, { error: 'not found' })
+      return
+    }
+
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        assert.equal(body.model, 'fictional-model')
+        assert.equal(body.max_completion_tokens, 4_096)
+        assert.equal(body.max_tokens, undefined)
+        assert.equal(body.response_format?.json_schema?.strict, true)
+        respond(200, {
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                rows: [{
+                  sourceLine: 1,
+                  occurredOn,
+                  direction: 'expense',
+                  amountText: '12.34',
+                  currency: 'HKD',
+                  description: 'Integration merchant',
+                  suggestedCategoryName: categoryName,
+                  confidence: 0.99,
+                  flags: [],
+                }],
+              }),
+              refusal: null,
+            },
+          }],
+        })
+      } catch (error) {
+        respond(500, { error: error instanceof Error ? error.message : 'invalid request' })
+      }
+    })
+  })
+  await new Promise((resolveReady, reject) => {
+    providerServer.once('error', reject)
+    providerServer.listen(port, '127.0.0.1', resolveReady)
+  })
 }
 
 function runWrangler(args) {
@@ -192,6 +255,33 @@ function startWorker(port, inspectorPort) {
   return child
 }
 
+function startNextDev(port) {
+  const child = spawn(
+    next,
+    ['dev', '--hostname', '127.0.0.1', '--port', String(port)],
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        CI: '1',
+        HUSHLEDGER_DEV_PERSIST_PATH: join(freshState, 'v3'),
+        NEXT_TELEMETRY_DISABLED: '1',
+        NO_COLOR: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  let output = ''
+  child.stdout.on('data', (chunk) => {
+    output = `${output}${chunk}`.slice(-20_000)
+  })
+  child.stderr.on('data', (chunk) => {
+    output = `${output}${chunk}`.slice(-20_000)
+  })
+  child.output = () => output
+  return child
+}
+
 async function waitForHealth(baseUrl) {
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
@@ -205,6 +295,21 @@ async function waitForHealth(baseUrl) {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 150))
   }
   throw new Error(`Worker did not become ready\n${workerProcess.output()}`)
+}
+
+async function waitForNextHealth(baseUrl) {
+  const deadline = Date.now() + 20_000
+  while (Date.now() < deadline) {
+    if (nextProcess.exitCode !== null) throw new Error(`Next dev exited before readiness\n${nextProcess.output()}`)
+    try {
+      const response = await fetch(`${baseUrl}/api/health`)
+      if (response.ok) return
+    } catch {
+      // Next.js is still starting.
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 150))
+  }
+  throw new Error(`Next dev did not become ready\n${nextProcess.output()}`)
 }
 
 async function api(baseUrl, path, { method = 'GET', body, origin = baseUrl } = {}) {
@@ -342,6 +447,42 @@ async function verifyWorkerApi() {
   })
   assert.equal(oversized.status, 413)
   assert.equal((await oversized.json()).error.code, 'PAYLOAD_TOO_LARGE')
+
+  const beforeAiDrafts = await api(baseUrl, `/api/transactions?month=${month}`)
+  const crossOriginAi = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: { provider: { baseUrl: 'https://provider.example/v1', apiKey: 'fictional' } },
+  })
+  assert.equal(crossOriginAi.response.status, 403)
+  assert.equal(crossOriginAi.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const invalidAiConfig = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    body: { provider: { baseUrl: 'https://provider.example/v1', apiKey: '' } },
+  })
+  assert.equal(invalidAiConfig.response.status, 400)
+  assert.equal(invalidAiConfig.payload.error.code, 'AI_PROVIDER_CONFIG_INVALID')
+
+  const oversizedStatement = await api(baseUrl, '/api/imports/parse', {
+    method: 'POST',
+    body: {
+      provider: {
+        baseUrl: 'https://provider.example/v1',
+        apiKey: 'fictional',
+        model: 'fictional-model',
+      },
+      accountId: 1,
+      currency: 'HKD',
+      dateOrder: 'DMY',
+      statementText: '銀'.repeat(22_000),
+    },
+  })
+  assert.equal(oversizedStatement.response.status, 413)
+  assert.equal(oversizedStatement.payload.error.code, 'AI_STATEMENT_TOO_LARGE')
+  const afterAiDrafts = await api(baseUrl, `/api/transactions?month=${month}`)
+  assert.equal(afterAiDrafts.payload.data.length, beforeAiDrafts.payload.data.length)
+
   assert.deepEqual(
     Object.fromEntries(accountsResult.payload.data.map(({ name, localizationKey }) => [name, localizationKey])),
     {
@@ -559,6 +700,65 @@ async function verifyWorkerApi() {
   return { createdRules: createdRules.length, firstRunCreated: firstRun.payload.data.created, cronCreated: 1 }
 }
 
+async function verifyNextAiDrafts() {
+  const nextPort = await availablePort()
+  const providerPort = await availablePort()
+  const baseUrl = `http://127.0.0.1:${nextPort}`
+  nextProcess = startNextDev(nextPort)
+  await waitForNextHealth(baseUrl)
+
+  const today = hktCalendarDate()
+  const month = today.slice(0, 7)
+  const [accounts, categories, beforeTransactions] = await Promise.all([
+    api(baseUrl, '/api/accounts'),
+    api(baseUrl, '/api/categories'),
+    api(baseUrl, `/api/transactions?month=${month}`),
+  ])
+  assert.equal(accounts.response.status, 200, JSON.stringify(accounts.payload))
+  assert.equal(categories.response.status, 200, JSON.stringify(categories.payload))
+  assert.equal(beforeTransactions.response.status, 200, JSON.stringify(beforeTransactions.payload))
+  const account = accounts.payload.data.find((item) => item.isActive && item.currency === 'HKD')
+  const category = categories.payload.data.find((item) => item.isActive && item.type === 'expense')
+  assert(account)
+  assert(category)
+
+  await startFakeAiProvider(providerPort, { categoryName: category.name, occurredOn: today })
+  const provider = {
+    baseUrl: `http://127.0.0.1:${providerPort}/v1`,
+    apiKey: 'fictional-api-key-value',
+  }
+  const models = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    body: { provider },
+  })
+  assert.equal(models.response.status, 200, JSON.stringify(models.payload))
+  assert.deepEqual(models.payload.data, ['fictional-model'])
+
+  const parsed = await api(baseUrl, '/api/imports/parse', {
+    method: 'POST',
+    body: {
+      provider: { ...provider, model: 'fictional-model' },
+      accountId: account.id,
+      currency: 'HKD',
+      dateOrder: 'YMD',
+      statementText: `${today} Integration merchant 12.34 DR`,
+    },
+  })
+  assert.equal(parsed.response.status, 200, JSON.stringify(parsed.payload))
+  assert.equal(parsed.payload.data.drafts.length, 1)
+  assert.equal(parsed.payload.data.drafts[0].amountMinor, 1_234)
+  assert.equal(parsed.payload.data.drafts[0].categoryId, category.id)
+  assert.equal(parsed.payload.data.drafts[0].payee, 'Integration merchant')
+
+  const afterTransactions = await api(baseUrl, `/api/transactions?month=${month}`)
+  assert.equal(afterTransactions.response.status, 200)
+  assert.deepEqual(
+    afterTransactions.payload.data.map(({ id }) => id),
+    beforeTransactions.payload.data.map(({ id }) => id),
+  )
+  return { nextAiDrafts: 1, nextAiD1Writes: 0 }
+}
+
 async function stopWorker() {
   if (!workerProcess || workerProcess.exitCode !== null) return
   workerProcess.kill('SIGINT')
@@ -573,11 +773,34 @@ async function stopWorker() {
   ])
 }
 
+async function stopNext() {
+  if (!nextProcess || nextProcess.exitCode !== null) return
+  nextProcess.kill('SIGINT')
+  await Promise.race([
+    new Promise((resolveExit) => nextProcess.once('exit', resolveExit)),
+    new Promise((resolveTimeout) =>
+      setTimeout(() => {
+        if (nextProcess.exitCode === null) nextProcess.kill('SIGKILL')
+        resolveTimeout()
+      }, 3_000),
+    ),
+  ])
+}
+
+async function stopProvider() {
+  if (!providerServer?.listening) return
+  await new Promise((resolveClosed, reject) =>
+    providerServer.close((error) => (error ? reject(error) : resolveClosed())),
+  )
+}
+
 try {
   if (!skipBuild) await runCommand(openNext, ['build'], 'opennextjs-cloudflare')
   await runWrangler(['d1', 'migrations', 'apply', 'hushledger', '--local', '--persist-to', freshState])
   await verifyUpgradeMigration()
   const apiEvidence = await verifyWorkerApi()
+  await stopWorker()
+  const nextAiEvidence = await verifyNextAiDrafts()
   console.log(
     JSON.stringify({
       ok: true,
@@ -585,9 +808,12 @@ try {
       freshMigrations: '0001-0006',
       upgradeMigration: '0004-to-0006-preserved-data-and-custom-names',
       ...apiEvidence,
+      ...nextAiEvidence,
     }),
   )
 } finally {
   await stopWorker()
+  await stopNext()
+  await stopProvider()
   await rm(temporaryRoot, { recursive: true, force: true })
 }

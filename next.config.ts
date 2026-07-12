@@ -1,7 +1,10 @@
 import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare'
 import type { NextConfig } from 'next'
 
-void initOpenNextCloudflareForDev()
+const devPersistPath = process.env.HUSHLEDGER_DEV_PERSIST_PATH
+void initOpenNextCloudflareForDev(
+  devPersistPath ? { persist: { path: devPersistPath } } : undefined,
+)
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,

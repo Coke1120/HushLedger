@@ -51,6 +51,20 @@ describe('API request helpers', () => {
     assert.equal(guardMutationRequest(request), null)
   })
 
+  it('treats local loopback aliases on the same port as one development origin', () => {
+    const accepted = new Request('http://localhost:3117/api/ai/models', {
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:3117' },
+    })
+    const rejected = new Request('http://localhost:3117/api/ai/models', {
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:3118' },
+    })
+
+    assert.equal(guardMutationRequest(accepted), null)
+    assert.equal(guardMutationRequest(rejected)?.status, 403)
+  })
+
   it('rejects oversized declared and streamed JSON bodies', async () => {
     const declared = guardMutationRequest(new Request('https://ledger.example/api/transactions', {
       headers: {
@@ -71,6 +85,20 @@ describe('API request helpers', () => {
       const streamedBody = await streamed.response.json() as { error?: { code?: string } }
       assert.equal(streamedBody.error?.code, 'PAYLOAD_TOO_LARGE')
     }
+  })
+
+  it('supports a route-specific body limit without changing the default', async () => {
+    const customLimit = MAX_JSON_BODY_BYTES + 128
+    const body = JSON.stringify({ value: 'x'.repeat(MAX_JSON_BODY_BYTES) })
+    const request = () => new Request('https://ledger.example/api/imports/parse', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://ledger.example' },
+      body,
+    })
+
+    assert.equal((await readApiJson(request())).ok, false)
+    assert.equal(guardMutationRequest(request(), customLimit), null)
+    assert.equal((await readApiJson(request(), customLimit)).ok, true)
   })
 
   it('distinguishes unsupported media types from invalid JSON', async () => {

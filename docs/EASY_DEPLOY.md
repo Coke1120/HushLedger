@@ -283,11 +283,11 @@ Save these three details somewhere private:
 - The exact email allowed by Cloudflare Access.
 - The location of your extracted `HushLedger-main` folder.
 
-HushLedger does not need an app password, AI key, or banking password. AI bank-
-record import is not enabled in the current release. Never paste banking records,
-API keys, passwords, or Cloudflare tokens into GitHub issues or screenshots.
-Wrangler's browser sign-in authorizes deployment; HushLedger itself does not need
-an API key.
+HushLedger does not need an app password or banking password. Its optional AI
+draft feature uses your own provider key, entered in Settings and held only until
+the tab reloads or closes. Never paste banking records, API keys, passwords, or
+Cloudflare tokens into GitHub issues or screenshots. Wrangler's browser sign-in
+authorizes deployment; HushLedger itself does not need an application API key.
 
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).

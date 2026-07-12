@@ -3,6 +3,7 @@
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
+import { BankImportPanel } from './components/BankImportPanel'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
@@ -15,7 +16,14 @@ import { TransactionToolbar, type TransactionFilter } from './components/Transac
 import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
+import type { AiProviderSettings } from './lib/ai'
 import type { TransactionInput } from './lib/schema'
+
+const initialAiSettings: AiProviderSettings = {
+  baseUrl: 'https://api.openai.com/v1',
+  apiKey: '',
+  model: '',
+}
 
 function App({ initialMonth }: { initialMonth: string }) {
   const { t } = useI18n()
@@ -24,7 +32,11 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [search, setSearch] = useState('')
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const mainRef = useRef<HTMLElement>(null)
+  const importButtonRef = useRef<HTMLButtonElement>(null)
+  const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
   const data = useMoneyData(month, filter, deferredSearch)
@@ -46,6 +58,17 @@ function App({ initialMonth }: { initialMonth: string }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
+  const openImport = useCallback(() => {
+    setView('transactions')
+    setImportOpen(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
+
+  const closeImport = useCallback(() => {
+    setImportOpen(false)
+    requestAnimationFrame(() => importButtonRef.current?.focus())
+  }, [])
+
   useEffect(() => {
     if (initialViewRef.current) {
       initialViewRef.current = false
@@ -53,6 +76,10 @@ function App({ initialMonth }: { initialMonth: string }) {
     }
     mainRef.current?.focus({ preventScroll: true })
   }, [view])
+
+  useEffect(() => {
+    if (view === 'transactions' && importOpen) importPanelRef.current?.focus()
+  }, [importOpen, view])
 
   const viewTitle =
     view === 'overview'
@@ -84,7 +111,7 @@ function App({ initialMonth }: { initialMonth: string }) {
         {view === 'recurring' ? (
           <RecurringRulesPage accounts={data.accounts} categories={data.categories} onMoneyRefresh={data.refresh} />
         ) : view === 'settings' ? (
-          <SettingsPage />
+          <SettingsPage aiSettings={aiSettings} onAiSettingsChange={setAiSettings} />
         ) : (
           <>
             <ConnectionBanner
@@ -119,8 +146,22 @@ function App({ initialMonth }: { initialMonth: string }) {
                   filter={filter}
                   onSearchChange={setSearch}
                   onFilterChange={setFilter}
+                  onImport={openImport}
+                  importOpen={importOpen}
+                  importButtonRef={importButtonRef}
                 />
               </div>
+              {view === 'transactions' && importOpen ? (
+                <BankImportPanel
+                  settings={aiSettings}
+                  accounts={data.accounts}
+                  categories={data.categories}
+                  online={data.online}
+                  panelRef={importPanelRef}
+                  onClose={closeImport}
+                  onConfigure={() => changeView('settings')}
+                />
+              ) : null}
               <TransactionList transactions={transactions} loading={loading} />
             </section>
           </>

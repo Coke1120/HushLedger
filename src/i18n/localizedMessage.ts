@@ -11,6 +11,7 @@ export type LocalizedMessage = {
 
 const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   REQUEST_FAILED: 'errorRequestFailed',
+  ACCESS_FORBIDDEN: 'errorAccessForbidden',
   ORIGIN_FORBIDDEN: 'errorOriginForbidden',
   PAYLOAD_TOO_LARGE: 'errorPayloadTooLarge',
   UNSUPPORTED_MEDIA_TYPE: 'errorUnsupportedMediaType',
@@ -21,6 +22,15 @@ const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   CATEGORY_TYPE_MISMATCH: 'errorCategoryMismatch',
   RULE_NOT_FOUND: 'errorRuleNotFound',
   RULE_VERSION_CONFLICT: 'errorRuleVersionConflict',
+  AI_PROVIDER_CONFIG_INVALID: 'errorAiProviderConfig',
+  AI_PROVIDER_AUTH_FAILED: 'errorAiProviderAuth',
+  AI_PROVIDER_RATE_LIMITED: 'errorAiProviderRateLimit',
+  AI_PROVIDER_TIMEOUT: 'errorAiProviderTimeout',
+  AI_PROVIDER_RESPONSE_TOO_LARGE: 'errorAiProviderResponse',
+  AI_PROVIDER_RESPONSE_INVALID: 'errorAiProviderResponse',
+  AI_PROVIDER_UNAVAILABLE: 'errorAiProviderUnavailable',
+  AI_PARSE_INPUT_INVALID: 'errorAiParseFailed',
+  AI_STATEMENT_TOO_LARGE: 'errorAiStatementTooLarge',
   INTERNAL_ERROR: 'errorServer',
 }
 

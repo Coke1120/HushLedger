@@ -6,14 +6,15 @@ Cloudflare API token or user sign-in credentials.
 
 If you are new to terminals or Cloudflare, use the
 [beginner-friendly deployment guide](EASY_DEPLOY.md) first. This page is the
-advanced reference for verification, backups, recovery, and future AI secrets.
+advanced reference for verification, backups, recovery, and AI privacy boundaries.
 
 ## Local use or private deployment
 
 Cloudflare deployment is optional. For use on one computer, follow the
 [README local setup](../README.md#local-development) and run `npm run dev`. Local
 mode uses a local D1 database and requires no Cloudflare account, domain, Access
-configuration, or API key.
+configuration, or HushLedger API key. An AI provider key is needed only when the
+optional AI draft feature is used.
 
 Deploy when you need HushLedger from other devices or outside that computer. The
 custom domain is internet-reachable, but Cloudflare Access must keep the
@@ -30,6 +31,7 @@ Official references:
 - [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [Disable `workers.dev`](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)
 - [Disable Preview URLs](https://developers.cloudflare.com/workers/versions-and-deployments/preview-urls/)
+- [`global_fetch_strictly_public`](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public)
 - [Cloudflare Access self-hosted applications](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
 - [Validate Cloudflare Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/)
 - [OpenNext for Cloudflare](https://opennext.js.org/cloudflare)
@@ -219,20 +221,30 @@ a separate test database and compare table counts, monthly summaries, and a
 small sample of fictional or redacted records. Never test a restore by
 overwriting the only production database.
 
-## 8. Configure future AI import safely
+## 8. Use AI drafts safely
 
-AI bank-record import is planned but not enabled in the current core release.
-When that phase is implemented, provider credentials must be Worker secrets:
+AI bank-record draft parsing is optional and requires no deployment-time Worker
+secret. Each user enters an OpenAI-compatible base URL, API key, and model in
+Settings. The values stay only in that browser tab's memory and are cleared by a
+reload; they are not written to D1, browser storage, cookies, Worker variables, or
+the repository.
 
-```bash
-npx wrangler secret put AI_API_KEY
-npx wrangler secret put AI_API_BASE_URL
-```
+For a Cloudflare deployment, the provider must use a public HTTPS hostname on
+port 443. A deployed Worker cannot call a model running on the user's localhost
+or LAN. Browser requests remain same-origin to HushLedger; the server proxies only
+fixed `/models` and `/chat/completions` paths, rejects redirects and private
+targets, and preserves `private, no-store` responses. Keep the
+`global_fetch_strictly_public` compatibility flag enabled.
 
-Never place an AI API key in React or Server Component code, client environment
-variables, a GitHub issue, build logs, or `wrangler.jsonc`. See
-[AI_BANK_IMPORT_PLAN.md](../AI_BANK_IMPORT_PLAN.md) for the review-before-write
-security boundary.
+Use only a provider hostname you trust. Local Next.js development does not
+DNS-pin arbitrary public hostnames; the production Worker flag above keeps
+outbound `fetch()` on Cloudflare's public-Internet routing path.
+
+Never place an AI API key in React source, client environment variables,
+`wrangler.jsonc`, a GitHub issue, build logs, screenshots, or test fixtures. The
+key being typed into the runtime password field is intentional BYOK input; it is
+not embedded in the client bundle. See
+[AI_BANK_IMPORT_PLAN.md](../AI_BANK_IMPORT_PLAN.md) for the no-write draft boundary.
 
 ## Deployment checklist
 

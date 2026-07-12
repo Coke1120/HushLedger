@@ -1,8 +1,15 @@
 import { Check, Languages, LockKeyhole } from 'lucide-react'
 import { useState } from 'react'
 import { languageOptions, useI18n, type Locale } from '../i18n'
+import type { AiProviderSettings } from '../lib/ai'
+import { AiProviderSettingsForm } from './AiProviderSettingsForm'
 
-export function SettingsPage() {
+type SettingsPageProps = {
+  aiSettings: AiProviderSettings
+  onAiSettingsChange: (settings: AiProviderSettings) => void
+}
+
+export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPageProps) {
   const { locale, setLocale, t } = useI18n()
   const [saved, setSaved] = useState(false)
 
@@ -68,6 +75,8 @@ export function SettingsPage() {
           {saved ? t('languageSaved') : ''}
         </p>
       </div>
+
+      <AiProviderSettingsForm settings={aiSettings} onChange={onAiSettingsChange} />
     </section>
   )
 }

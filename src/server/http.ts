@@ -4,7 +4,7 @@ import type { ReferenceErrorCode, UpdateRuleResult } from './recurring'
 export const MAX_JSON_BODY_BYTES = 16 * 1024
 
 type SuccessStatus = 200 | 201
-type ErrorStatus = 400 | 403 | 404 | 409 | 413 | 415 | 500
+type ErrorStatus = 400 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 502 | 504
 
 export type ApiSuccessPayload<T> = { ok: true; data: T }
 export type ApiErrorPayload = {
@@ -59,7 +59,12 @@ export function isSameOrigin(request: Request) {
     const forwardedOrigin = request.headers.get('x-hushledger-access-verified') === 'true'
       ? request.headers.get('x-hushledger-request-origin')
       : null
-    return new URL(origin).origin === (forwardedOrigin ?? new URL(request.url).origin)
+    const requestOrigin = new URL(forwardedOrigin ?? request.url)
+    const browserOrigin = new URL(origin)
+    return (
+      browserOrigin.origin === requestOrigin.origin ||
+      isEquivalentLoopbackOrigin(browserOrigin, requestOrigin)
+    )
   } catch {
     return false
   }
@@ -88,12 +93,12 @@ export function queryObject(request: Request) {
   return query
 }
 
-export function guardMutationRequest(request: Request) {
+export function guardMutationRequest(request: Request, limit = MAX_JSON_BODY_BYTES) {
   if (!isSameOrigin(request)) {
     return jsonError(403, 'ORIGIN_FORBIDDEN', '只接受同源寫入請求')
   }
-  if (contentLengthExceeds(request)) {
-    return jsonError(413, 'PAYLOAD_TOO_LARGE', `請求內容不得超過 ${MAX_JSON_BODY_BYTES} bytes`)
+  if (contentLengthExceeds(request, limit)) {
+    return jsonError(413, 'PAYLOAD_TOO_LARGE', `請求內容不得超過 ${limit} bytes`)
   }
   return null
 }
@@ -135,9 +140,9 @@ export async function readJsonBody(request: Request, limit = MAX_JSON_BODY_BYTES
   }
 }
 
-export async function readApiJson(request: Request) {
+export async function readApiJson(request: Request, limit = MAX_JSON_BODY_BYTES) {
   try {
-    return { ok: true as const, data: await readJsonBody(request) }
+    return { ok: true as const, data: await readJsonBody(request, limit) }
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
       return {
@@ -145,7 +150,7 @@ export async function readApiJson(request: Request) {
         response: jsonError(
           413,
           'PAYLOAD_TOO_LARGE',
-          `請求內容不得超過 ${MAX_JSON_BODY_BYTES} bytes`,
+          `請求內容不得超過 ${limit} bytes`,
         ),
       }
     }
@@ -167,6 +172,26 @@ export async function readApiJson(request: Request) {
 
 export function isLocalDevelopmentRequest(request: Request) {
   const hostname = new URL(request.url).hostname
+  return isLoopbackHostname(hostname)
+}
+
+export function isAuthenticatedApiRequest(request: Request) {
+  return (
+    request.headers.get('x-hushledger-access-verified') === 'true' ||
+    isLocalDevelopmentRequest(request)
+  )
+}
+
+function isEquivalentLoopbackOrigin(left: URL, right: URL) {
+  return (
+    left.protocol === right.protocol &&
+    left.port === right.port &&
+    isLoopbackHostname(left.hostname) &&
+    isLoopbackHostname(right.hostname)
+  )
+}
+
+function isLoopbackHostname(hostname: string) {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
