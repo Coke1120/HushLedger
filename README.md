@@ -374,8 +374,9 @@ Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) an
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before starting, and use only fictional or
 thoroughly anonymized test data.
 
-If HushLedger is useful to you, you can
-[buy me a coffee](https://buymeacoffee.com/Coke1120) to support continued development.
+If HushLedger is useful to you, support continued development through
+[GitHub Sponsors](https://github.com/sponsors/Coke1120) or
+[Buy Me a Coffee](https://buymeacoffee.com/Coke1120).
 
 ## License
 

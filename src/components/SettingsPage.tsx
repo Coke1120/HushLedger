@@ -1,4 +1,4 @@
-import { Check, Coffee, Languages, LockKeyhole, RefreshCw } from 'lucide-react'
+import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
@@ -15,7 +15,8 @@ const updateStatusKeys: Readonly<Partial<Record<AppUpdateStatus, MessageKey>>> =
   error: 'updateFailed',
 }
 
-const DONATION_URL = 'https://buymeacoffee.com/Coke1120'
+const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/Coke1120'
+const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/Coke1120'
 
 type SettingsPageProps = {
   aiSettings: AiProviderSettings
@@ -156,15 +157,16 @@ export function SettingsPage({ aiSettings, onAiSettingsChange }: SettingsPagePro
           </div>
         </div>
 
-        <a
-          className="button button-primary settings-support-link"
-          href={DONATION_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Coffee aria-hidden="true" />
-          {t('buyMeACoffee')}
-        </a>
+        <div className="settings-support-actions">
+          <a className="button button-primary settings-support-link" href={GITHUB_SPONSORS_URL}>
+            <Heart aria-hidden="true" />
+            {t('githubSponsors')}
+          </a>
+          <a className="button button-secondary settings-support-link" href={BUY_ME_A_COFFEE_URL}>
+            <Coffee aria-hidden="true" />
+            {t('buyMeACoffee')}
+          </a>
+        </div>
       </div>
 
       <AiProviderSettingsForm settings={aiSettings} onChange={onAiSettingsChange} />

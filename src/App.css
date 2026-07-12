@@ -1585,7 +1585,8 @@ textarea:focus-visible {
   line-height: 1.55;
 }
 
-.settings-update-actions {
+.settings-update-actions,
+.settings-support-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -1599,9 +1600,12 @@ textarea:focus-visible {
   font-weight: 700;
 }
 
+.settings-support-actions {
+  margin-top: 22px;
+}
+
 .settings-support-link {
   width: fit-content;
-  margin-top: 22px;
   text-decoration: none;
 }
 
