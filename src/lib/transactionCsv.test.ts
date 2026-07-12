@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import { transactionsToCsv, type CsvTransaction } from './transactionCsv'
 
 const transaction: CsvTransaction = {
+  id: '10000000-0000-4000-8000-000000000001',
   type: 'expense',
   amountMinor: 12_345,
   currency: 'HKD',
@@ -27,6 +28,7 @@ describe('transaction CSV export', () => {
     assert.match(csv, /2026-07-13,income,0\.05,HKD/)
     assert.match(csv, /"Coffee, ""Central"""/)
     assert.match(csv, /"First line\nSecond line"/)
+    assert.match(csv, /10000000-0000-4000-8000-000000000001/)
     assert(csv.endsWith('\r\n'))
   })
 

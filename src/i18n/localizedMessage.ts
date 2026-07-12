@@ -38,6 +38,8 @@ const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   AI_PROVIDER_UNAVAILABLE: 'errorAiProviderUnavailable',
   AI_PARSE_INPUT_INVALID: 'errorAiParseFailed',
   AI_STATEMENT_TOO_LARGE: 'errorAiStatementTooLarge',
+  CSV_IMPORT_BLOCKED: 'csvImportFailed',
+  CSV_IMPORT_STALE: 'csvImportFailed',
   INTERNAL_ERROR: 'errorServer',
 }
 

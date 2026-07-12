@@ -37,6 +37,8 @@ not operate an independent database server or a multi-user identity system.
 - Filter income and expense.
 - Export all transactions matching the selected month and filters as CSV without
   the interactive 200-row limit; keep disaster-recovery backups separate.
+- Import a HushLedger CSV through local parsing, duplicate preview, explicit row
+  selection, and a transactional commit of at most 200 rows.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 
@@ -139,6 +141,7 @@ GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=...&search=...  (uncapped CSV)
+POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -156,9 +159,13 @@ state, category type, content type, body size, and same-origin mutation.
 Database and stack errors are never returned to the client.
 
 The transaction export is the one successful non-JSON response: an attachment
-with UTF-8 BOM, exact signed decimal amounts, CRLF records, and formula-safe
-user text. It shares the list filters but not the 200-row display limit. It is a
-portable transaction view, not a full D1 backup or restore format.
+with UTF-8 BOM, exact signed decimal amounts, CRLF records, formula-safe user
+text, and a stable transaction UUID. Import parses that contract in the browser,
+resolves account/category names without guessing, previews exact matches and
+conflicts against D1, and writes selected rows in a transactional batch. Import
+keys intentionally survive transaction deletion to prevent an accidental
+re-import. CSV remains a portable transaction view, not a full D1 backup or
+restore format.
 
 ## Reliability and privacy
 
@@ -183,6 +190,8 @@ portable transaction view, not a full D1 backup or restore format.
   persistence.
 - History-safe account and category management with clear inactive states and
   no destructive delete affordance.
+- Preview-first CSV import that defaults possible duplicates to unselected and
+  never sends the source file to an AI provider.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
   targets, sufficient contrast, and field-linked errors.
 - No fake navigation, decorative charts, remote fonts, marketing hero, or
@@ -196,8 +205,8 @@ portable transaction view, not a full D1 backup or restore format.
 - Account/category create, rename, disable/re-enable, transaction, summary, and
   recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  filtered transaction CSV export, recurring-rule management, and language
-  settings.
+  filtered transaction CSV export, deterministic preview-first CSV import,
+  recurring-rule management, and language settings.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, and no AI-initiated D1 writes.
 - Daily 00:05 HKT Cron plus manual due generation.
@@ -205,12 +214,12 @@ portable transaction view, not a full D1 backup or restore format.
   preview, fresh migration, and upgrade migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
-### Next: deterministic import and portability
+### Next: deeper portability and organization
 
 1. Add optional account/category reordering.
-2. Add import batches, review state, duplicate fingerprints, and atomic commit
-   without AI.
-3. Add deterministic CSV import and full-ledger JSON portability/restore.
+2. Add full-ledger JSON portability with an explicit dry-run restore report.
+3. Add generic bank CSV column mapping after the HushLedger round-trip format has
+   accumulated real-world fixtures.
 
 ### Implemented: user-configured AI bank-text parser
 

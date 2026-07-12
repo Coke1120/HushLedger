@@ -37,6 +37,9 @@ knowledge and explains every command and dashboard click.
 - Export every transaction matching the current month and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
+- Re-import HushLedger CSV files through a browser-side preview. New rows are
+  selected automatically, exact matches are flagged, and import tombstones stop
+  the same source row from returning after deletion.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Create and rename accounts and categories from Settings, and disable or
@@ -71,6 +74,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - HK$123.45 is stored as `12345` in `amount_minor`.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
+- CSV exports include the transaction UUID for lossless round trips. Older
+  HushLedger exports without that column receive stable row fingerprints during
+  import; identical rows retain separate occurrence keys.
 - A transaction stores only a calendar date in `YYYY-MM-DD` format. There is no
   transaction time field.
 - `created_at` and `updated_at` are internal UTC audit timestamps, not user-entered
@@ -85,6 +91,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   a rule never deletes historical transactions.
 - Every API input is validated with Zod and checked again against server-side
   account, category, and transaction-type rules.
+- Selected CSV rows are committed with a D1 transactional batch. Possible
+  duplicates require an explicit checkbox; invalid or archived references are
+  never silently substituted.
 
 ## Architecture
 
@@ -323,6 +332,7 @@ PUT    /api/recurring-rules/:id
 PATCH  /api/recurring-rules/:id/status
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
+POST   /api/imports/csv  (preview or commit a HushLedger CSV, maximum 200 rows)
 ```
 
 Account/category `PATCH` changes `isActive`; `PUT` renames an entry and may also
@@ -337,16 +347,21 @@ states that it is showing the 200 most recent transactions instead of describing
 the truncated result as complete.
 
 The transaction export route returns a downloadable UTF-8 CSV rather than the
-JSON success envelope. It applies the same month, type, and search filters but is
-not restricted to 200 rows. This convenience export is not a complete database
-backup: use the encrypted D1 export and restore process in the
+JSON success envelope. It applies the same month, type, and search filters, is
+not restricted to 200 rows, and appends `Transaction ID` for deterministic
+round trips. Import parses the file in the browser, previews server-side
+duplicate/reference checks, and writes only explicitly selected rows. This
+convenience round trip is not a complete database backup: use the encrypted D1
+export and restore process in the
 [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
 for disaster recovery.
 
 The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
 mutation routes remain available and require a same-origin request, a JSON content
 type, a body no larger than 16 KiB, and a payload accepted by the strict schema.
-These checks complement the custom Worker's cryptographic Cloudflare Access JWT validation.
+The CSV import route has a separate 256 KiB validated request ceiling for up to
+200 parsed rows. These checks complement the custom Worker's cryptographic
+Cloudflare Access JWT validation.
 
 ## Private Cloudflare deployment
 

@@ -204,6 +204,7 @@ async function verifyUpgradeMigration() {
     `SELECT id, occurred_on AS occurredOn FROM transactions WHERE id = '${sentinelId}';
      SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
+     SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      PRAGMA foreign_key_check;`,
     '--json',
   ])
@@ -218,7 +219,8 @@ async function verifyUpgradeMigration() {
     { name: 'Integration custom category', localizationKey: null },
     { name: '生活', localizationKey: 'category.living' },
   ])
-  assert.deepEqual(statements[3].results, [])
+  assert.equal(statements[3].results[0].importKeys, 0)
+  assert.deepEqual(statements[4].results, [])
 }
 
 async function seedCsvExportRows() {
@@ -732,6 +734,7 @@ async function verifyWorkerApi() {
   )
   assert.deepEqual([...uncappedCsvExport.bytes.slice(0, 3)], [0xef, 0xbb, 0xbf])
   assert(uncappedCsvExport.payload.startsWith('Date,Type,Amount,Currency'))
+  assert.match(uncappedCsvExport.payload.split('\r\n', 1)[0], /Transaction ID$/)
   const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
   assert.equal(uncappedCsvRows, 205)
 
@@ -769,6 +772,116 @@ async function verifyWorkerApi() {
   })
   assert.equal(createdTransaction.response.status, 201)
   assert.equal(createdTransaction.payload.data.amountMinor, 123)
+
+  const csvImportIds = {
+    fresh: '41000000-0000-4000-8000-000000000001',
+    possibleDuplicate: '41000000-0000-4000-8000-000000000002',
+    invalidAccount: '41000000-0000-4000-8000-000000000003',
+  }
+  const csvImportRows = [
+    {
+      ...transactionBody,
+      id: csvImportIds.fresh,
+      amountMinor: 777,
+      payee: 'CSV import fresh',
+      sourceRow: 2,
+      importKey: `csv:hushledger:id:${csvImportIds.fresh}`,
+      include: true,
+    },
+    {
+      ...transactionBody,
+      amountMinor: 999,
+      sourceRow: 3,
+      importKey: `csv:hushledger:id:${transactionBody.id}`,
+      include: false,
+    },
+    {
+      ...transactionBody,
+      id: csvImportIds.possibleDuplicate,
+      sourceRow: 4,
+      importKey: `csv:hushledger:id:${csvImportIds.possibleDuplicate}`,
+      include: false,
+    },
+    {
+      ...transactionBody,
+      id: csvImportIds.invalidAccount,
+      accountId: 999_999,
+      sourceRow: 5,
+      importKey: `csv:hushledger:id:${csvImportIds.invalidAccount}`,
+      include: false,
+    },
+  ]
+  const crossOriginCsvImport = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: csvImportRows },
+    origin: 'https://attacker.invalid',
+  })
+  assert.equal(crossOriginCsvImport.response.status, 403)
+  assert.equal(crossOriginCsvImport.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const csvPreview = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: csvImportRows },
+  })
+  assert.equal(csvPreview.response.status, 200, JSON.stringify(csvPreview.payload))
+  assert.deepEqual(csvPreview.payload.data.rows.map(({ status }) => status), [
+    'new',
+    'id_conflict',
+    'possible_duplicate',
+    'account_invalid',
+  ])
+  assert.deepEqual(
+    {
+      ready: csvPreview.payload.data.ready,
+      possibleDuplicates: csvPreview.payload.data.possibleDuplicates,
+      skipped: csvPreview.payload.data.skipped,
+      blocked: csvPreview.payload.data.blocked,
+    },
+    { ready: 1, possibleDuplicates: 1, skipped: 0, blocked: 2 },
+  )
+
+  const csvCommit = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'commit', rows: csvImportRows },
+  })
+  assert.equal(csvCommit.response.status, 201, JSON.stringify(csvCommit.payload))
+  assert.equal(csvCommit.payload.data.imported, 1)
+  assert.equal(csvCommit.payload.data.staleSkipped, 0)
+
+  const csvRepreview = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: csvImportRows.map((row) => ({ ...row, include: false })) },
+  })
+  assert.equal(csvRepreview.payload.data.rows[0].status, 'already_imported')
+
+  const importedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`)
+  assert.equal(importedCsvTransaction.response.status, 200)
+  const deletedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`, {
+    method: 'DELETE',
+    body: { updatedAt: importedCsvTransaction.payload.data.updatedAt },
+  })
+  assert.equal(deletedCsvTransaction.response.status, 200)
+  const csvAfterDelete = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: [csvImportRows[0]] },
+  })
+  assert.equal(csvAfterDelete.payload.data.rows[0].status, 'already_imported')
+
+  const duplicateOverrideRows = csvImportRows.map((row, index) => ({
+    ...row,
+    include: index === 2,
+  }))
+  const csvDuplicateCommit = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'commit', rows: duplicateOverrideRows },
+  })
+  assert.equal(csvDuplicateCommit.response.status, 201, JSON.stringify(csvDuplicateCommit.payload))
+  assert.equal(csvDuplicateCommit.payload.data.imported, 1)
+  const importedPossibleDuplicate = await api(
+    baseUrl,
+    `/api/transactions/${csvImportIds.possibleDuplicate}`,
+  )
+  assert.equal(importedPossibleDuplicate.response.status, 200)
 
   const fetchedTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
   assert.equal(fetchedTransaction.response.status, 200)
@@ -1092,6 +1205,9 @@ async function verifyWorkerApi() {
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,
     referenceConflictChecks: 4,
+    csvImportPreviewStatuses: 4,
+    csvImportWrites: 2,
+    csvImportTombstones: 1,
   }
 }
 
@@ -1201,8 +1317,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0006',
-      upgradeMigration: '0004-to-0006-preserved-data-and-custom-names',
+      freshMigrations: '0001-0007',
+      upgradeMigration: '0004-to-0007-preserved-data-and-custom-names',
       ...apiEvidence,
       ...nextAiEvidence,
     }),

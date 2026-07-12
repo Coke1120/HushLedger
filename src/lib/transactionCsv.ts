@@ -3,6 +3,7 @@ import type { Transaction, TransactionType } from './schema'
 
 export type CsvTransaction = Pick<
   Transaction,
+  | 'id'
   | 'accountName'
   | 'amountMinor'
   | 'categoryName'
@@ -27,6 +28,7 @@ const headers = [
   'Note',
   'Recurring Rule',
   'Recurring Due Date',
+  'Transaction ID',
 ]
 
 export function transactionsToCsv(transactions: readonly CsvTransaction[]) {
@@ -41,6 +43,7 @@ export function transactionsToCsv(transactions: readonly CsvTransaction[]) {
     csvText(transaction.note),
     csvText(transaction.recurringRuleName ?? ''),
     transaction.recurrenceDueOn ?? '',
+    transaction.id,
   ].join(','))
 
   return `\uFEFF${[headers.join(','), ...rows].join('\r\n')}\r\n`

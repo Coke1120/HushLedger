@@ -5,6 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'reac
 import { AppHeader } from './components/AppHeader'
 import { BankImportPanel } from './components/BankImportPanel'
 import { ConnectionBanner } from './components/ConnectionBanner'
+import { CsvImportPanel } from './components/CsvImportPanel'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
@@ -33,10 +34,11 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
-  const [importOpen, setImportOpen] = useState(false)
+  const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const mainRef = useRef<HTMLElement>(null)
-  const importButtonRef = useRef<HTMLButtonElement>(null)
+  const csvImportButtonRef = useRef<HTMLButtonElement>(null)
+  const aiImportButtonRef = useRef<HTMLButtonElement>(null)
   const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
@@ -74,16 +76,17 @@ function App({ initialMonth }: { initialMonth: string }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
-  const openImport = useCallback(() => {
+  const openImport = useCallback((mode: 'csv' | 'ai') => {
     setView('transactions')
-    setImportOpen(true)
+    setImportMode(mode)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
   const closeImport = useCallback(() => {
-    setImportOpen(false)
-    requestAnimationFrame(() => importButtonRef.current?.focus())
-  }, [])
+    const button = importMode === 'csv' ? csvImportButtonRef : aiImportButtonRef
+    setImportMode(null)
+    requestAnimationFrame(() => button.current?.focus())
+  }, [importMode])
 
   useEffect(() => {
     if (initialViewRef.current) {
@@ -94,8 +97,8 @@ function App({ initialMonth }: { initialMonth: string }) {
   }, [view])
 
   useEffect(() => {
-    if (view === 'transactions' && importOpen) importPanelRef.current?.focus()
-  }, [importOpen, view])
+    if (view === 'transactions' && importMode) importPanelRef.current?.focus()
+  }, [importMode, view])
 
   const viewTitle =
     view === 'overview'
@@ -158,14 +161,28 @@ function App({ initialMonth }: { initialMonth: string }) {
                 filter={filter}
                 month={month}
                 canExport={data.source === 'live' && data.online}
+                canImport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
                 onFilterChange={setFilter}
-                onImport={openImport}
-                importOpen={importOpen}
-                importButtonRef={importButtonRef}
+                onCsvImport={() => openImport('csv')}
+                onAiImport={() => openImport('ai')}
+                csvImportOpen={importMode === 'csv'}
+                aiImportOpen={importMode === 'ai'}
+                csvImportButtonRef={csvImportButtonRef}
+                aiImportButtonRef={aiImportButtonRef}
               />
             </div>
-            {view === 'transactions' && importOpen ? (
+            {view === 'transactions' && importMode === 'csv' ? (
+              <CsvImportPanel
+                accounts={data.accounts}
+                categories={data.categories}
+                available={data.source === 'live' && data.online}
+                panelRef={importPanelRef}
+                onClose={closeImport}
+                onImported={() => data.refresh(false)}
+              />
+            ) : null}
+            {view === 'transactions' && importMode === 'ai' ? (
               <BankImportPanel
                 settings={aiSettings}
                 accounts={data.accounts}

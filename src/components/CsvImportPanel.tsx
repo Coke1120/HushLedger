@@ -1,0 +1,387 @@
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileUp,
+  LoaderCircle,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
+import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from 'react'
+import { messageForError, renderMessage, useI18n, type MessageKey } from '../i18n'
+import { api } from '../lib/api'
+import {
+  MAX_CSV_IMPORT_BYTES,
+  csvImportCommitResultSchema,
+  csvImportPreviewResultSchema,
+  parseHushLedgerCsv,
+  type CsvImportIssue,
+  type CsvImportIssueCode,
+  type CsvImportPreviewResult,
+  type CsvImportRow,
+  type CsvImportRowStatus,
+} from '../lib/csvImport'
+import type { Account, Category } from '../lib/schema'
+
+type CsvImportPanelProps = {
+  accounts: Account[]
+  categories: Category[]
+  available: boolean
+  panelRef: RefObject<HTMLElement | null>
+  onClose: () => void
+  onImported: () => Promise<unknown>
+}
+
+export function CsvImportPanel({
+  accounts,
+  categories,
+  available,
+  panelRef,
+  onClose,
+  onImported,
+}: CsvImportPanelProps) {
+  const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
+  const [fileName, setFileName] = useState('')
+  const [rows, setRows] = useState<CsvImportRow[]>([])
+  const [preview, setPreview] = useState<CsvImportPreviewResult | null>(null)
+  const [issues, setIssues] = useState<CsvImportIssue[]>([])
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const requestSequence = useRef(0)
+  const requestController = useRef<AbortController | null>(null)
+
+  useEffect(() => () => {
+    requestSequence.current += 1
+    requestController.current?.abort()
+  }, [])
+
+  const resetPreview = () => {
+    requestSequence.current += 1
+    requestController.current?.abort()
+    requestController.current = null
+    setRows([])
+    setPreview(null)
+    setIssues([])
+    setSelected(new Set())
+    setBusy(false)
+    setError('')
+    setStatus('')
+  }
+
+  const chooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    resetPreview()
+    setFileName(file?.name ?? '')
+    if (!file) return
+    if (!available) {
+      setError(t('csvImportUnavailable'))
+      return
+    }
+    if (file.size > MAX_CSV_IMPORT_BYTES) {
+      setIssues([{ row: null, code: 'file_too_large' }])
+      return
+    }
+
+    const sequence = ++requestSequence.current
+    const controller = new AbortController()
+    requestController.current = controller
+    setBusy(true)
+    try {
+      const bytes = await file.arrayBuffer()
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+      const parsed = await parseHushLedgerCsv(text, { accounts, categories })
+      if (sequence !== requestSequence.current) return
+      if (parsed.issues.length > 0) {
+        setIssues(parsed.issues)
+        return
+      }
+
+      const response = await api<unknown>('/api/imports/csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'preview', rows: parsed.rows }),
+        signal: controller.signal,
+      })
+      if (sequence !== requestSequence.current) return
+      const parsedPreview = csvImportPreviewResultSchema.safeParse(response)
+      if (!parsedPreview.success) throw new Error('Invalid CSV preview response')
+      setRows(parsed.rows)
+      setPreview(parsedPreview.data)
+      setSelected(new Set(
+        parsedPreview.data.rows
+          .filter((row) => row.status === 'new')
+          .map((row) => row.importKey),
+      ))
+    } catch (caught) {
+      if (controller.signal.aborted || sequence !== requestSequence.current) return
+      if (caught instanceof TypeError && /encoded data/i.test(caught.message)) {
+        setIssues([{ row: null, code: 'invalid_csv' }])
+      } else {
+        setError(renderMessage(t, messageForError(caught, 'csvImportFailed')))
+      }
+    } finally {
+      if (sequence === requestSequence.current) {
+        requestController.current = null
+        setBusy(false)
+      }
+    }
+  }
+
+  const toggleRow = (importKey: string) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(importKey)) next.delete(importKey)
+      else next.add(importKey)
+      return next
+    })
+  }
+
+  const importSelected = async () => {
+    if (!available || busy || selected.size === 0) return
+    setBusy(true)
+    setError('')
+    setStatus('')
+    const sequence = ++requestSequence.current
+    const controller = new AbortController()
+    requestController.current = controller
+    try {
+      const response = await api<unknown>('/api/imports/csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'commit',
+          rows: rows.map((row) => ({ ...row, include: selected.has(row.importKey) })),
+        }),
+        signal: controller.signal,
+      })
+      if (sequence !== requestSequence.current) return
+      const result = csvImportCommitResultSchema.safeParse(response)
+      if (!result.success) throw new Error('Invalid CSV import response')
+      if (result.data.imported > 0) await onImported()
+      setStatus(
+        result.data.staleSkipped > 0
+          ? t('csvImportSuccessWithStale', {
+              count: result.data.imported,
+              stale: result.data.staleSkipped,
+            })
+          : t('csvImportSuccess', { count: result.data.imported }),
+      )
+      setFileName('')
+      setRows([])
+      setPreview(null)
+      setSelected(new Set())
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    } catch (caught) {
+      if (controller.signal.aborted || sequence !== requestSequence.current) return
+      setError(renderMessage(t, messageForError(caught, 'csvImportFailed')))
+    } finally {
+      if (sequence === requestSequence.current) {
+        requestController.current = null
+        setBusy(false)
+      }
+    }
+  }
+
+  const previewByKey = new Map(preview?.rows.map((row) => [row.importKey, row]) ?? [])
+
+  return (
+    <section
+      id="csv-import-panel"
+      className="bank-import-panel csv-import-panel"
+      aria-labelledby="csv-import-title"
+      ref={panelRef}
+      tabIndex={-1}
+    >
+      <div className="bank-import-heading">
+        <div>
+          <h3 id="csv-import-title">{t('csvImportTitle')}</h3>
+          <p>{t('csvImportHelp')}</p>
+        </div>
+        <button className="icon-button" type="button" onClick={onClose} aria-label={t('csvImportClose')}>
+          <X aria-hidden="true" />
+        </button>
+      </div>
+
+      {!available ? <p className="form-error" role="alert">{t('csvImportUnavailable')}</p> : null}
+
+      <div className="csv-import-form">
+        <label className="csv-file-picker">
+          <FileUp aria-hidden="true" />
+          <span>
+            <strong>{t('csvImportChooseFile')}</strong>
+            <small>{fileName || t('csvImportFileHelp')}</small>
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(event) => void chooseFile(event)}
+            disabled={!available || busy}
+          />
+        </label>
+        <div className="ai-provider-warning">
+          <ShieldCheck aria-hidden="true" />
+          <span>{t('csvImportPrivacy')}</span>
+        </div>
+      </div>
+
+      {busy && !preview ? (
+        <p className="csv-import-progress" role="status">
+          <LoaderCircle className="spin" aria-hidden="true" />
+          {t('csvImportPreviewing')}
+        </p>
+      ) : null}
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      <p className="settings-save-status" aria-live="polite" aria-atomic="true">{status}</p>
+
+      {issues.length > 0 ? (
+        <div className="csv-import-issues" role="alert">
+          <div>
+            <AlertTriangle aria-hidden="true" />
+            <h4>{t('csvImportIssuesTitle')}</h4>
+          </div>
+          <ul>
+            {issues.map((issue, index) => {
+              const reason = t(issueMessageKey(issue.code))
+              return (
+                <li key={`${issue.row ?? 'file'}-${issue.code}-${index}`}>
+                  {issue.row
+                    ? t('csvImportIssueAtRow', { row: issue.row, reason })
+                    : t('csvImportIssueFile', { reason })}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ) : null}
+
+      {preview ? (
+        <div className="csv-import-review">
+          <div className="ai-draft-review-heading">
+            <div>
+              <h4>{t('csvImportReviewTitle')}</h4>
+              <p>{t('csvImportReviewHelp')}</p>
+            </div>
+            <span>{t('csvImportSelected', { count: selected.size })}</span>
+          </div>
+          <div className="csv-import-summary" aria-label={t('csvImportReviewTitle')}>
+            <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
+            <span className="is-possible">
+              {t('csvImportSummaryPossible', { count: preview.possibleDuplicates })}
+            </span>
+            <span>{t('csvImportSummarySkipped', { count: preview.skipped })}</span>
+            <span className="is-blocked">{t('csvImportSummaryBlocked', { count: preview.blocked })}</span>
+          </div>
+          <div className="csv-import-list">
+            {rows.map((row) => {
+              const result = previewByKey.get(row.importKey)
+              if (!result) return null
+              const selectable = result.status === 'new' || result.status === 'possible_duplicate'
+              const account = accounts.find((item) => item.id === row.accountId)
+              const category = categories.find((item) => item.id === row.categoryId)
+              const checked = selected.has(row.importKey)
+              return (
+                <article className={`csv-import-row is-${result.status}`} key={row.importKey}>
+                  <label className="csv-import-select">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!selectable || busy}
+                      onChange={() => toggleRow(row.importKey)}
+                      aria-label={t('csvImportSelectRow', { row: row.sourceRow })}
+                    />
+                    <span className="csv-import-row-heading">
+                      <small>{t('csvImportRow', { row: row.sourceRow })}</small>
+                      <strong>{row.payee || row.note || t(row.type)}</strong>
+                    </span>
+                  </label>
+                  <span className={`csv-import-status is-${result.status}`}>
+                    {result.status === 'new' ? <CheckCircle2 aria-hidden="true" /> : null}
+                    {isBlockedStatus(result.status) ? <AlertTriangle aria-hidden="true" /> : null}
+                    {t(statusMessageKey(result.status))}
+                  </span>
+                  <dl>
+                    <div>
+                      <dt>{t('date')}</dt>
+                      <dd>{formatDate(row.occurredOn)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('amount')}</dt>
+                      <dd className={row.type === 'expense' ? 'expense' : 'income'}>
+                        {row.type === 'expense' ? '−' : '+'}{formatMoney(row.amountMinor)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{t('account')}</dt>
+                      <dd>{account ? localizeEntityName(account.name, account.localizationKey) : '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('category')}</dt>
+                      <dd>{category ? localizeEntityName(category.name, category.localizationKey) : '—'}</dd>
+                    </div>
+                  </dl>
+                </article>
+              )
+            })}
+          </div>
+          <div className="csv-import-actions">
+            <span>{t('csvImportSelected', { count: selected.size })}</span>
+            <button
+              className="button button-primary"
+              type="button"
+              onClick={() => void importSelected()}
+              disabled={!available || busy || selected.size === 0}
+            >
+              {busy ? <LoaderCircle className="spin" aria-hidden="true" /> : <FileUp aria-hidden="true" />}
+              {busy ? t('csvImportImporting') : t('csvImportImportSelected')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function issueMessageKey(code: CsvImportIssueCode): MessageKey {
+  switch (code) {
+    case 'empty_file': return 'csvIssueEmptyFile'
+    case 'file_too_large': return 'csvIssueFileTooLarge'
+    case 'invalid_csv': return 'csvIssueInvalidCsv'
+    case 'invalid_header': return 'csvIssueInvalidHeader'
+    case 'too_many_rows': return 'csvIssueTooManyRows'
+    case 'invalid_column_count': return 'csvIssueInvalidColumnCount'
+    case 'invalid_date': return 'csvIssueInvalidDate'
+    case 'invalid_type': return 'csvIssueInvalidType'
+    case 'invalid_amount': return 'csvIssueInvalidAmount'
+    case 'invalid_currency': return 'csvIssueInvalidCurrency'
+    case 'account_not_found': return 'csvIssueAccountNotFound'
+    case 'account_ambiguous': return 'csvIssueAccountAmbiguous'
+    case 'category_not_found': return 'csvIssueCategoryNotFound'
+    case 'category_ambiguous': return 'csvIssueCategoryAmbiguous'
+    case 'payee_too_long': return 'csvIssuePayeeTooLong'
+    case 'note_too_long': return 'csvIssueNoteTooLong'
+    case 'invalid_transaction_id': return 'csvIssueInvalidTransactionId'
+  }
+}
+
+function statusMessageKey(status: CsvImportRowStatus): MessageKey {
+  switch (status) {
+    case 'new': return 'csvStatusNew'
+    case 'possible_duplicate': return 'csvStatusPossibleDuplicate'
+    case 'already_imported': return 'csvStatusAlreadyImported'
+    case 'existing_transaction': return 'csvStatusExistingTransaction'
+    case 'id_conflict': return 'csvStatusIdConflict'
+    case 'account_invalid': return 'csvStatusAccountInvalid'
+    case 'category_invalid': return 'csvStatusCategoryInvalid'
+    case 'category_mismatch': return 'csvStatusCategoryMismatch'
+  }
+}
+
+function isBlockedStatus(status: CsvImportRowStatus) {
+  return status === 'id_conflict' ||
+    status === 'account_invalid' ||
+    status === 'category_invalid' ||
+    status === 'category_mismatch'
+}

@@ -1,4 +1,4 @@
-import { Download, Search, Sparkles } from 'lucide-react'
+import { Download, FileUp, Search, Sparkles } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useI18n } from '../i18n'
 import type { TransactionType } from '../lib/schema'
@@ -10,11 +10,15 @@ type TransactionToolbarProps = {
   filter: TransactionFilter
   month: string
   canExport: boolean
+  canImport: boolean
   onSearchChange: (value: string) => void
   onFilterChange: (value: TransactionFilter) => void
-  onImport: () => void
-  importOpen: boolean
-  importButtonRef: RefObject<HTMLButtonElement | null>
+  onCsvImport: () => void
+  onAiImport: () => void
+  csvImportOpen: boolean
+  aiImportOpen: boolean
+  csvImportButtonRef: RefObject<HTMLButtonElement | null>
+  aiImportButtonRef: RefObject<HTMLButtonElement | null>
 }
 
 export function TransactionToolbar({
@@ -22,11 +26,15 @@ export function TransactionToolbar({
   filter,
   month,
   canExport,
+  canImport,
   onSearchChange,
   onFilterChange,
-  onImport,
-  importOpen,
-  importButtonRef,
+  onCsvImport,
+  onAiImport,
+  csvImportOpen,
+  aiImportOpen,
+  csvImportButtonRef,
+  aiImportButtonRef,
 }: TransactionToolbarProps) {
   const { t } = useI18n()
   const filters: Array<{ value: TransactionFilter; label: string }> = [
@@ -87,13 +95,27 @@ export function TransactionToolbar({
         </button>
       )}
       <button
+        id="csv-import-trigger"
+        className="button button-secondary csv-import-button"
+        type="button"
+        onClick={onCsvImport}
+        aria-expanded={csvImportOpen}
+        aria-controls="csv-import-panel"
+        ref={csvImportButtonRef}
+        disabled={!canImport}
+        title={!canImport ? t('csvImportUnavailable') : undefined}
+      >
+        <FileUp aria-hidden="true" />
+        {t('csvImport')}
+      </button>
+      <button
         id="ai-import-trigger"
         className="button button-secondary ai-import-button"
         type="button"
-        onClick={onImport}
-        aria-expanded={importOpen}
+        onClick={onAiImport}
+        aria-expanded={aiImportOpen}
         aria-controls="bank-import-panel"
-        ref={importButtonRef}
+        ref={aiImportButtonRef}
       >
         <Sparkles aria-hidden="true" />
         {t('aiImport')}
