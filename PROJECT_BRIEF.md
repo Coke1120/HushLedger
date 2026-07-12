@@ -56,6 +56,9 @@ not operate an independent database server or a multi-user identity system.
 - Add income or expense in a short responsive form.
 - Correct or delete an existing transaction; reject stale changes made from an
   out-of-date view.
+- Duplicate an existing transaction into a separate reviewable draft when a
+  one-off entry should be repeated without creating a recurring rule. Preserve
+  its editable details and date, but issue a fresh UUID and omit provenance.
 - Choose an active account and a matching income or expense category.
 - Create, rename, disable, re-enable, and reorder accounts and categories in
   Settings without deleting historical references.

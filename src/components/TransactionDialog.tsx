@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, LoaderCircle, Trash2, X } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, CopyPlus, LoaderCircle, Trash2, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useI18n } from '../i18n'
 import { api } from '../lib/api'
@@ -22,9 +22,11 @@ type TransactionDialogProps = {
   serverError: string
   online: boolean
   transaction: Transaction | null
+  draft: TransactionInput | null
   onClose: () => void
   onSubmit: (input: TransactionInput) => Promise<boolean>
   onDelete: (transaction: Transaction) => Promise<boolean>
+  onDuplicate: (transaction: Transaction) => void
 }
 
 export function TransactionDialog({
@@ -34,24 +36,27 @@ export function TransactionDialog({
   serverError,
   online,
   transaction,
+  draft,
   onClose,
   onSubmit,
   onDelete,
+  onDuplicate,
 }: TransactionDialogProps) {
   const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const initialTransaction = transaction ?? draft
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => account.isActive || account.id === transaction?.accountId),
     [accounts, transaction?.accountId],
   )
-  const [type, setType] = useState<TransactionType>(transaction?.type ?? 'expense')
-  const [accountId, setAccountId] = useState(transaction?.accountId ?? selectableAccounts[0]?.id ?? 0)
+  const [type, setType] = useState<TransactionType>(initialTransaction?.type ?? 'expense')
+  const [accountId, setAccountId] = useState(initialTransaction?.accountId ?? selectableAccounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState(
-    transaction?.categoryId
+    initialTransaction?.categoryId
       ?? categories.find((category) => category.isActive && category.type === 'expense')?.id
       ?? 0,
   )
-  const [date, setDate] = useState(transaction?.occurredOn ?? currentHongKongDate().date)
-  const [payee, setPayee] = useState(transaction?.payee ?? '')
+  const [date, setDate] = useState(initialTransaction?.occurredOn ?? currentHongKongDate().date)
+  const [payee, setPayee] = useState(initialTransaction?.payee ?? '')
   const [suggestions, setSuggestions] = useState<PayeeSuggestion[]>([])
   const [payeeMemoryApplied, setPayeeMemoryApplied] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -59,7 +64,7 @@ export function TransactionDialog({
   const dialogRef = useRef<HTMLDivElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
-  const draftIdRef = useRef(transaction?.id ?? crypto.randomUUID())
+  const draftIdRef = useRef(initialTransaction?.id ?? crypto.randomUUID())
   const savingRef = useRef(saving)
   const accountChangedRef = useRef(false)
   const categoryChangedRef = useRef(false)
@@ -75,13 +80,18 @@ export function TransactionDialog({
     [categories, transaction?.categoryId, type],
   )
   const suggestedPayees = useMemo(() => payeeOptions(suggestions, type), [suggestions, type])
+  const canDuplicate = Boolean(
+    transaction
+    && accounts.some((account) => account.id === transaction.accountId && account.isActive)
+    && categories.some((category) => category.id === transaction.categoryId && category.isActive),
+  )
 
   const applyPayeeMemory = useCallback((
     nextPayee: string,
     nextType: TransactionType,
     nextSuggestions: readonly PayeeSuggestion[],
   ) => {
-    if (transaction) return
+    if (transaction || draft) return
     const remembered = rememberPayeeReferences(
       nextSuggestions,
       nextPayee,
@@ -99,14 +109,14 @@ export function TransactionDialog({
     if (applyAccount) setAccountId(remembered.accountId ?? 0)
     if (applyCategory) setCategoryId(remembered.categoryId ?? 0)
     setPayeeMemoryApplied(applyAccount || applyCategory)
-  }, [accounts, categories, transaction])
+  }, [accounts, categories, draft, transaction])
 
   useEffect(() => {
     savingRef.current = saving
   }, [saving])
 
   useEffect(() => {
-    if (transaction || !online) return
+    if (transaction || draft || !online) return
     let active = true
     void api<PayeeSuggestion[]>('/api/payee-suggestions')
       .then((items) => {
@@ -118,7 +128,7 @@ export function TransactionDialog({
     return () => {
       active = false
     }
-  }, [applyPayeeMemory, online, transaction])
+  }, [applyPayeeMemory, draft, online, transaction])
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -241,13 +251,18 @@ export function TransactionDialog({
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
-          <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : 'addTransaction')}</h2>
+          <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
         <form onSubmit={handleSubmit} noValidate>
+          {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
+          {transaction && !canDuplicate ? (
+            <p className="duplicate-form-note">{t('duplicateUnavailableHelp')}</p>
+          ) : null}
+
           <div className="type-switch" role="group" aria-label={t('transactionType')}>
             <button type="button" className={type === 'expense' ? 'is-active expense' : undefined} aria-pressed={type === 'expense'} onClick={() => selectType('expense')}>
               <ArrowDownRight aria-hidden="true" />
@@ -271,7 +286,7 @@ export function TransactionDialog({
                 autoComplete="off"
                 placeholder={locale === 'fr' ? '0,00' : '0.00'}
                 pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
-                defaultValue={transaction ? formatAmountInput(transaction.amountMinor, locale) : undefined}
+                defaultValue={initialTransaction ? formatAmountInput(initialTransaction.amountMinor, locale) : undefined}
                 aria-invalid={Boolean(error)}
                 required
               />
@@ -341,11 +356,11 @@ export function TransactionDialog({
                 setPayee(nextPayee)
                 applyPayeeMemory(nextPayee, typeRef.current, suggestions)
               }}
-              list={transaction || suggestedPayees.length === 0 ? undefined : 'payee-suggestions'}
-              aria-describedby={!transaction && suggestedPayees.length > 0 ? 'payee-suggestion-help' : undefined}
+              list={transaction || draft || suggestedPayees.length === 0 ? undefined : 'payee-suggestions'}
+              aria-describedby={!transaction && !draft && suggestedPayees.length > 0 ? 'payee-suggestion-help' : undefined}
               placeholder={type === 'expense' ? t('expensePayeeExample') : t('incomePayeeExample')}
             />
-            {!transaction && suggestedPayees.length > 0 ? (
+            {!transaction && !draft && suggestedPayees.length > 0 ? (
               <small
                 className={`payee-suggestion-help${payeeMemoryApplied ? ' is-applied' : ''}`}
                 id="payee-suggestion-help"
@@ -353,7 +368,7 @@ export function TransactionDialog({
                 {t(payeeMemoryApplied ? 'payeeMemoryApplied' : 'payeeSuggestionsHelp')}
               </small>
             ) : null}
-            {!transaction && suggestedPayees.length > 0 ? (
+            {!transaction && !draft && suggestedPayees.length > 0 ? (
               <datalist id="payee-suggestions">
                 {suggestedPayees.map((suggestedPayee) => (
                   <option value={suggestedPayee} key={suggestedPayee} />
@@ -367,7 +382,7 @@ export function TransactionDialog({
               name="note"
               maxLength={200}
               rows={2}
-              defaultValue={transaction?.note}
+              defaultValue={initialTransaction?.note}
               placeholder={t('notePlaceholder')}
             />
           </label>
@@ -390,6 +405,17 @@ export function TransactionDialog({
               >
                 {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                 {deleting ? t('deleting') : t('delete')}
+              </button>
+            ) : null}
+            {transaction ? (
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled={saving || !online || !canDuplicate}
+                onClick={() => onDuplicate(transaction)}
+              >
+                <CopyPlus aria-hidden="true" />
+                {t('duplicate')}
               </button>
             ) : null}
             <button className="button button-primary save-button" type="submit" disabled={saving || !online}>

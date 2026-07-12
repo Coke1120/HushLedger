@@ -19,6 +19,7 @@ import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import type { Transaction, TransactionInput } from './lib/schema'
+import { duplicateTransactionDraft } from './lib/transactionDraft'
 
 const initialAiSettings: AiProviderSettings = {
   baseUrl: 'https://api.openai.com/v1',
@@ -36,6 +37,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
+  const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const [ledgerGeneration, setLedgerGeneration] = useState(0)
@@ -56,18 +58,28 @@ function App({ initialMonth }: { initialMonth: string }) {
   const openDialog = useCallback(() => {
     clearActionMessage()
     setEditingTransaction(null)
+    setTransactionDraft(null)
     setDialogOpen(true)
   }, [clearActionMessage])
 
   const openTransaction = useCallback((transaction: Transaction) => {
     clearActionMessage()
     setEditingTransaction(transaction)
+    setTransactionDraft(null)
+    setDialogOpen(true)
+  }, [clearActionMessage])
+
+  const duplicateTransaction = useCallback((transaction: Transaction) => {
+    clearActionMessage()
+    setEditingTransaction(null)
+    setTransactionDraft(duplicateTransactionDraft(transaction))
     setDialogOpen(true)
   }, [clearActionMessage])
 
   const closeDialog = useCallback(() => {
     setDialogOpen(false)
     setEditingTransaction(null)
+    setTransactionDraft(null)
   }, [])
 
   const saveTransaction = useCallback(
@@ -252,15 +264,18 @@ function App({ initialMonth }: { initialMonth: string }) {
       <MobileNavigation view={view} onChange={changeView} />
       {dialogOpen ? (
         <TransactionDialog
+          key={editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}
           accounts={data.accounts}
           categories={data.categories}
           saving={data.saving}
           serverError={data.saveError}
           online={data.online}
           transaction={editingTransaction}
+          draft={transactionDraft}
           onClose={closeDialog}
           onSubmit={saveTransaction}
           onDelete={removeTransaction}
+          onDuplicate={duplicateTransaction}
         />
       ) : null}
     </div>

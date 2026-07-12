@@ -48,6 +48,8 @@ knowledge and explains every command and dashboard click.
   confirmation before one transactional D1 replacement.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
+- Duplicate an existing transaction into a reviewable draft with a fresh UUID;
+  editable details and date are copied, while recurring/import provenance is not.
 - Create and rename accounts and categories from Settings, and disable or
   re-enable them without deleting transaction history. Arrow controls reorder
   accounts within the same status and categories within the same type/status.
@@ -87,6 +89,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - HK$123.45 is stored as `12345` in `amount_minor`.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
+- Duplicating a transaction opens a separate create-mode draft for review. It
+  copies only editable fields, never recurring provenance, audit timestamps, or
+  import identity, and requires active account/category references.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
