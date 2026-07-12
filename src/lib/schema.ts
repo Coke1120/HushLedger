@@ -209,6 +209,7 @@ export type Summary = {
   expense: number
   balance: number
   expenseByCategory: ExpenseCategorySummary[]
+  recurringForecast: ScheduledRecurringSummary[]
 }
 
 export type ExpenseCategorySummary = {
@@ -219,6 +220,16 @@ export type ExpenseCategorySummary = {
   categoryColor: string
   amountMinor: number
   transactionCount: number
+}
+
+export type ScheduledRecurringSummary = {
+  recurringRuleId: string
+  name: string
+  type: TransactionType
+  amountMinor: number
+  frequency: RecurrenceFrequency
+  firstOccurrenceOn: string
+  occurrenceCount: number
 }
 
 export type PayeeSuggestion = {

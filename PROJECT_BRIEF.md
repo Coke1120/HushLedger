@@ -33,6 +33,8 @@ not operate an independent database server or a multi-user identity system.
 - View HKD income, expense, and balance for a selected month.
 - Review the top five expense categories by exact total and transaction count;
   select one to open the existing expense/category transaction filters.
+- Review active recurring entries that remain ungenerated in the selected month,
+  including each rule's next date and exact occurrence count.
 - Browse the latest 200 transactions for a selected month; the UI explicitly
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
@@ -82,6 +84,8 @@ not operate an independent database server or a multi-user identity system.
 - Generate due transactions from Cloudflare Cron or the authenticated manual
   action.
 - Preserve generated history when a rule changes or is deleted.
+- Use the overview forecast to see only future, ungenerated occurrences in the
+  selected month; generated ledger entries remain part of actual totals instead.
 
 ## Data contract
 

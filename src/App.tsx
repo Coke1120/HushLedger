@@ -10,6 +10,7 @@ import { CsvImportPanel } from './components/CsvImportPanel'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
+import { RecurringForecast } from './components/RecurringForecast'
 import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
 import { TransactionDialog } from './components/TransactionDialog'
@@ -145,6 +146,11 @@ function App({ initialMonth }: { initialMonth: string }) {
     changeView('transactions')
   }, [changeView, data.categories])
 
+  const openRecurringRules = useCallback(() => {
+    setImportMode(null)
+    changeView('recurring')
+  }, [changeView])
+
   const handleLedgerRestored = useCallback(async () => {
     const refreshed = await refreshMoneyData(false)
     setLedgerGeneration((generation) => generation + 1)
@@ -208,11 +214,18 @@ function App({ initialMonth }: { initialMonth: string }) {
             />
             <SummaryCards summary={data.summary} loading={loading} />
             {view === 'overview' ? (
-              <CategorySpending
-                summary={data.summary}
-                loading={loading}
-                onSelect={openCategoryTransactions}
-              />
+              <>
+                <CategorySpending
+                  summary={data.summary}
+                  loading={loading}
+                  onSelect={openCategoryTransactions}
+                />
+                <RecurringForecast
+                  summary={data.summary}
+                  loading={loading}
+                  onManage={openRecurringRules}
+                />
+              </>
             ) : null}
           </div>
 

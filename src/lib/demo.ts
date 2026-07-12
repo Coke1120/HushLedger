@@ -301,5 +301,12 @@ export function demoSummary(month: string): Summary {
     return categories
   }, new Map<number, ExpenseCategorySummary>()).values()]
     .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
-  return { month, income, expense, balance: income - expense, expenseByCategory }
+  return {
+    month,
+    income,
+    expense,
+    balance: income - expense,
+    expenseByCategory,
+    recurringForecast: [],
+  }
 }

@@ -483,6 +483,7 @@ async function verifyWorkerApi() {
     amountMinor: 41_615,
     transactionCount: 205,
   }])
+  assert.deepEqual(categorySummary.payload.data.recurringForecast, [])
 
   const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
   assert.equal(duplicateMonth.response.status, 400)
@@ -1481,6 +1482,7 @@ async function verifyWorkerApi() {
     transactionFilterGuards: 2,
     transactionFilterQueries: 3,
     categorySummaries: 1,
+    recurringForecasts: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,

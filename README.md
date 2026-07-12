@@ -33,6 +33,8 @@ knowledge and explains every command and dashboard click.
 - Monthly income, expenses, balance, and recent transactions.
 - A ranked top-five monthly expense breakdown by category, with exact totals,
   transaction counts, and one-tap drilldown into the matching ledger records.
+- A selected-month forecast of active recurring entries that have not yet been
+  generated, including the next date and exact occurrence count for each rule.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Stack search, income/expense, account, and category filters across the 200 most
   recent matching transactions in each month, with inactive references still
@@ -400,7 +402,7 @@ DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals plus ranked expense categories)
+GET    /api/summary?month=YYYY-MM  (totals, ranked expense categories, and remaining recurring entries)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

@@ -1,6 +1,10 @@
 import 'server-only'
 
 import { monthRangeDates } from '../lib/date'
+import {
+  recurringForecastForMonth,
+  type RecurringForecastRule,
+} from '../lib/recurringForecast'
 import type {
   Account,
   AccountLocalizationKey,
@@ -405,7 +409,7 @@ export async function deleteTransaction(
 
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
-  const [row, expenseByCategoryResult] = await Promise.all([
+  const [row, expenseByCategoryResult, recurringRulesResult] = await Promise.all([
     database.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
@@ -438,6 +442,23 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     `)
       .bind(start, end)
       .all<ExpenseCategorySummary>(),
+    database.prepare(`
+      SELECT
+        id,
+        name,
+        type,
+        amount_minor AS amountMinor,
+        frequency,
+        next_occurrence_on AS nextOccurrenceOn,
+        anchor_day AS anchorDay
+      FROM recurring_rules
+      WHERE is_active = 1
+        AND deleted_at IS NULL
+        AND next_occurrence_on < ?
+      ORDER BY next_occurrence_on ASC, id ASC
+    `)
+      .bind(end)
+      .all<RecurringForecastRule>(),
   ])
 
   const income = row?.income ?? 0
@@ -448,6 +469,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     expense,
     balance: income - expense,
     expenseByCategory: expenseByCategoryResult.results,
+    recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
   }
 }
 

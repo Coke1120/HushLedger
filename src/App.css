@@ -452,6 +452,11 @@ textarea:focus-visible {
   height: 22px;
 }
 
+.recurring-forecast-heading-icon {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
 .category-spending-heading h2,
 .category-spending-heading p,
 .category-spending-more {
@@ -547,6 +552,42 @@ textarea:focus-visible {
   width: 10px;
   height: 10px;
   border-radius: 999px;
+}
+
+.recurring-forecast-rule-icon {
+  display: grid;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  place-items: center;
+}
+
+.recurring-forecast-rule-icon.expense {
+  color: var(--expense);
+  background: var(--expense-soft);
+}
+
+.recurring-forecast-rule-icon.income {
+  color: var(--income);
+  background: var(--income-soft);
+}
+
+.recurring-forecast-rule-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.recurring-forecast-row {
+  grid-template-rows: 1fr;
+}
+
+.recurring-forecast-row .category-spending-amount strong.expense {
+  color: var(--expense);
+}
+
+.recurring-forecast-row .category-spending-amount strong.income {
+  color: var(--income);
 }
 
 .category-spending-amount {
