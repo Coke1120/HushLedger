@@ -15,6 +15,9 @@ fast transaction entry, clear monthly summaries, and dependable daily, weekly,
 and monthly recurring transactions.
 Production deployments must be protected by Cloudflare Access.
 
+**Live demo:** [Try HushLedger in your browser](https://hushledger-demo.howailoklineage.workers.dev/).
+Use sample data only; this public deployment is not a private ledger.
+
 You do not need to deploy HushLedger to use it. Local mode needs no Cloudflare
 account, domain, Access setup, or API key. Deploy only when you want the same
 private ledger available from other devices or outside your computer.
