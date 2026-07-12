@@ -7,6 +7,7 @@ import {
   categoryCreateSchema,
   categoryUpdateSchema,
   referenceIdSchema,
+  referenceOrderSchema,
   referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
@@ -38,11 +39,14 @@ import {
 import {
   createAccountReference,
   createCategoryReference,
+  reorderAccountReferences,
+  reorderCategoryReferences,
   setAccountReferenceStatus,
   setCategoryReferenceStatus,
   updateAccountReference,
   updateCategoryReference,
   type ReferenceMutationResult,
+  type ReferenceOrderResult,
 } from '../server/referenceData'
 import {
   createRecurringRule,
@@ -105,6 +109,18 @@ export async function setAccountStatusAction(
   ))
 }
 
+export async function reorderAccountsAction(input: unknown): Promise<ActionResult<Account[]>> {
+  const denied = await accessDenied<Account[]>()
+  if (denied) return denied
+
+  const parsed = referenceOrderSchema.safeParse(input)
+  if (!parsed.success) return validationError('帳戶排序資料不正確', parsed.error.issues)
+
+  return runAction('reorder_accounts', async () => referenceOrderResult(
+    await reorderAccountReferences(await getDatabase(), parsed.data),
+  ))
+}
+
 export async function createCategoryAction(input: unknown): Promise<ActionResult<Category>> {
   const denied = await accessDenied<Category>()
   if (denied) return denied
@@ -148,6 +164,18 @@ export async function setCategoryStatusAction(
 
   return runAction('set_category_status', async () => referenceMutationResult(
     await setCategoryReferenceStatus(await getDatabase(), id.data, parsed.data),
+  ))
+}
+
+export async function reorderCategoriesAction(input: unknown): Promise<ActionResult<Category[]>> {
+  const denied = await accessDenied<Category[]>()
+  if (denied) return denied
+
+  const parsed = referenceOrderSchema.safeParse(input)
+  if (!parsed.success) return validationError('分類排序資料不正確', parsed.error.issues)
+
+  return runAction('reorder_categories', async () => referenceOrderResult(
+    await reorderCategoryReferences(await getDatabase(), parsed.data),
   ))
 }
 
@@ -392,6 +420,11 @@ function referenceMutationResult<T>(result: ReferenceMutationResult<T>): ActionR
     return actionError('REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
   }
   return actionError('INTERNAL_ERROR', '伺服器暫時無法處理請求')
+}
+
+function referenceOrderResult<T>(result: ReferenceOrderResult<T>): ActionResult<T[]> {
+  if (result.kind === 'updated') return revalidatedSuccess(result.items)
+  return actionError('REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
 }
 
 function referenceError<T>(code: ReferenceErrorCode): ActionResult<T> {

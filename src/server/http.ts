@@ -1,6 +1,6 @@
 import type { ZodIssue } from 'zod'
 import type { ReferenceErrorCode, UpdateRuleResult } from './recurring'
-import type { ReferenceMutationResult } from './referenceData'
+import type { ReferenceMutationResult, ReferenceOrderResult } from './referenceData'
 
 export const MAX_JSON_BODY_BYTES = 16 * 1024
 
@@ -242,6 +242,12 @@ export function jsonReferenceMutationResult<T>(result: ReferenceMutationResult<T
     return jsonError(409, 'REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
   }
   return jsonError(500, 'INTERNAL_ERROR', '伺服器暫時無法處理請求')
+}
+
+export function jsonReferenceOrderResult<T>(result: ReferenceOrderResult<T>) {
+  return result.kind === 'updated'
+    ? jsonSuccess(result.items)
+    : jsonError(409, 'REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
 }
 
 export function apiRoute<Args extends unknown[]>(

@@ -48,8 +48,10 @@ knowledge and explains every command and dashboard click.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Create and rename accounts and categories from Settings, and disable or
-  re-enable them without deleting transaction history. Active recurring rules
-  and the last usable account/category are protected from accidental disabling.
+  re-enable them without deleting transaction history. Arrow controls reorder
+  accounts within the same status and categories within the same type/status.
+  Active recurring rules and the last usable account/category are protected
+  from accidental disabling.
 - Custom payees and notes.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
   paused, resumed, and deleted.
@@ -67,9 +69,10 @@ knowledge and explains every command and dashboard click.
 
 HushLedger starts with cash, bank, credit-card, wallet, income, and expense
 defaults. Settings can add custom accounts and categories, rename them, change a
-custom or built-in account type, and disable or re-enable entries. Disabled
-entries disappear from new transaction choices but remain attached to history;
-the app intentionally offers no destructive account/category delete action. See
+custom or built-in account type, disable or re-enable entries, and persist a
+preferred order without drag-and-drop. Disabled entries disappear from new
+transaction choices but remain attached to history; the app intentionally offers
+no destructive account/category delete action. See
 [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
 
 In HushLedger, a payment method is an account such as cash, a bank account, a
@@ -363,11 +366,13 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 GET    /api/health
 GET    /api/accounts
 POST   /api/accounts
+PATCH  /api/accounts  (reorder one complete active/inactive group)
 GET    /api/accounts/:id
 PUT    /api/accounts/:id
 PATCH  /api/accounts/:id
 GET    /api/categories
 POST   /api/categories
+PATCH  /api/categories  (reorder one complete type/status group)
 GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
@@ -394,11 +399,13 @@ POST   /api/imports/ai  (preview or commit reviewed AI drafts, maximum 200 rows)
 POST   /api/imports/csv  (preview or commit normalized HushLedger/bank CSV rows, maximum 200)
 ```
 
-Account/category `PATCH` changes `isActive`; `PUT` renames an entry and may also
-change an account type. Both use `updatedAt` for optimistic concurrency. There is
-no account/category `DELETE`: disabling preserves historical foreign-key links,
-and the server rejects disabling the last active choice or a choice used by an
-active recurring rule.
+Item-level account/category `PATCH` changes `isActive`; collection-level `PATCH`
+reorders one complete account status group or category type/status group. `PUT`
+renames an entry and may also change an account type. Mutations use `updatedAt`
+for optimistic concurrency. Reordering normalizes positions in one guarded SQL
+statement, so a stale or partial list writes nothing. There is no account/category
+`DELETE`: disabling preserves historical foreign-key links, and the server rejects
+disabling the last active choice or a choice used by an active recurring rule.
 
 Transactions are ordered from newest to oldest by transaction date. A response
 contains at most 200 transactions. When that limit is reached, the UI explicitly

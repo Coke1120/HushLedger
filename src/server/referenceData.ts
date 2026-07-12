@@ -7,6 +7,7 @@ import type {
   Category,
   CategoryCreateInput,
   CategoryUpdateInput,
+  ReferenceOrderInput,
   ReferenceStatusInput,
   TransactionType,
 } from '../lib/schema'
@@ -17,6 +18,10 @@ type CategoryRow = Omit<Category, 'isActive'> & { isActive: number }
 export type ReferenceMutationResult<T> =
   | { kind: 'created' | 'updated'; item: T }
   | { kind: 'not_found' | 'version_conflict' | 'name_conflict' | 'last_active' | 'active_rules' }
+
+export type ReferenceOrderResult<T> =
+  | { kind: 'updated'; items: T[] }
+  | { kind: 'version_conflict' }
 
 const accountSelect = `
   SELECT
@@ -51,6 +56,98 @@ const nextUpdatedAt = `
       THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
   END
+`
+
+const desiredOrder = `
+  SELECT
+    CAST(json_extract(value, '$.id') AS INTEGER) AS desired_id,
+    json_extract(value, '$.updatedAt') AS expected_updated_at,
+    CAST(key AS INTEGER) AS position
+  FROM json_each(?)
+`
+
+const accountOrderUpdate = `
+  WITH
+  desired AS (${desiredOrder}),
+  scope AS (
+    SELECT account.is_active AS is_active
+    FROM accounts AS account
+    INNER JOIN desired ON desired.desired_id = account.id
+    ORDER BY desired.position
+    LIMIT 1
+  ),
+  order_guard AS (
+    SELECT
+      (SELECT COUNT(*) FROM desired) AS desired_count,
+      (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN accounts AS account ON account.id = desired.desired_id
+        WHERE account.updated_at = desired.expected_updated_at
+          AND account.is_active = (SELECT is_active FROM scope)
+      ) AS matched_count,
+      (
+        SELECT COUNT(*)
+        FROM accounts
+        WHERE is_active = (SELECT is_active FROM scope)
+      ) AS scope_count
+  )
+  UPDATE accounts
+  SET
+    sort_order = (
+      SELECT (desired.position + 1) * 10
+      FROM desired
+      WHERE desired.desired_id = accounts.id
+    ),
+    updated_at = ${nextUpdatedAt}
+  WHERE id IN (SELECT desired_id FROM desired)
+    AND (
+      SELECT desired_count = matched_count AND desired_count = scope_count
+      FROM order_guard
+    )
+`
+
+const categoryOrderUpdate = `
+  WITH
+  desired AS (${desiredOrder}),
+  scope AS (
+    SELECT category.type AS type, category.is_active AS is_active
+    FROM categories AS category
+    INNER JOIN desired ON desired.desired_id = category.id
+    ORDER BY desired.position
+    LIMIT 1
+  ),
+  order_guard AS (
+    SELECT
+      (SELECT COUNT(*) FROM desired) AS desired_count,
+      (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN categories AS category ON category.id = desired.desired_id
+        WHERE category.updated_at = desired.expected_updated_at
+          AND category.type = (SELECT type FROM scope)
+          AND category.is_active = (SELECT is_active FROM scope)
+      ) AS matched_count,
+      (
+        SELECT COUNT(*)
+        FROM categories
+        WHERE type = (SELECT type FROM scope)
+          AND is_active = (SELECT is_active FROM scope)
+      ) AS scope_count
+  )
+  UPDATE categories
+  SET
+    sort_order = (
+      SELECT (desired.position + 1) * 10
+      FROM desired
+      WHERE desired.desired_id = categories.id
+    ),
+    updated_at = ${nextUpdatedAt}
+  WHERE id IN (SELECT desired_id FROM desired)
+    AND (
+      SELECT desired_count = matched_count AND desired_count = scope_count
+      FROM order_guard
+    )
 `
 
 export async function getAccountReference(database: D1Database, id: number) {
@@ -268,6 +365,28 @@ export async function setCategoryReferenceStatus(
   return { kind: 'updated', item }
 }
 
+export async function reorderAccountReferences(
+  database: D1Database,
+  input: ReferenceOrderInput,
+): Promise<ReferenceOrderResult<Account>> {
+  const desired = JSON.stringify(input.items)
+  const updated = await database.prepare(accountOrderUpdate).bind(desired).run()
+  if (Number(updated.meta.changes) === 0) return { kind: 'version_conflict' }
+
+  return { kind: 'updated', items: await orderedAccounts(database, desired) }
+}
+
+export async function reorderCategoryReferences(
+  database: D1Database,
+  input: ReferenceOrderInput,
+): Promise<ReferenceOrderResult<Category>> {
+  const desired = JSON.stringify(input.items)
+  const updated = await database.prepare(categoryOrderUpdate).bind(desired).run()
+  if (Number(updated.meta.changes) === 0) return { kind: 'version_conflict' }
+
+  return { kind: 'updated', items: await orderedCategories(database, desired) }
+}
+
 async function diagnoseAccountMutation(
   database: D1Database,
   id: number,
@@ -352,6 +471,26 @@ async function getCategoryByName(database: D1Database, name: string, type: Trans
     LIMIT 1
   `).bind(name, type).first<CategoryRow>()
   return row ? categoryFromRow(row) : null
+}
+
+async function orderedAccounts(database: D1Database, desired: string) {
+  const result = await database.prepare(`
+    WITH desired AS (${desiredOrder})
+    ${accountSelect}
+    INNER JOIN desired ON desired.desired_id = accounts.id
+    ORDER BY desired.position
+  `).bind(desired).all<AccountRow>()
+  return result.results.map(accountFromRow)
+}
+
+async function orderedCategories(database: D1Database, desired: string) {
+  const result = await database.prepare(`
+    WITH desired AS (${desiredOrder})
+    ${categorySelect}
+    INNER JOIN desired ON desired.desired_id = categories.id
+    ORDER BY desired.position
+  `).bind(desired).all<CategoryRow>()
+  return result.results.map(categoryFromRow)
 }
 
 async function accountNameIsTaken(database: D1Database, name: string, id: number) {

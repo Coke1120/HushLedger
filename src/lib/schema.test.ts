@@ -6,6 +6,7 @@ import {
   categoryCreateSchema,
   categoryUpdateSchema,
   referenceIdSchema,
+  referenceOrderSchema,
   referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
@@ -29,6 +30,9 @@ describe('reference data validation', () => {
     assert.equal(categoryCreateSchema.safeParse({ name: 'Education', type: 'expense' }).success, true)
     assert.equal(categoryUpdateSchema.safeParse({ name: 'Books', updatedAt }).success, true)
     assert.equal(referenceStatusSchema.safeParse({ isActive: false, updatedAt }).success, true)
+    assert.equal(referenceOrderSchema.safeParse({
+      items: [{ id: 2, updatedAt }, { id: 1, updatedAt }],
+    }).success, true)
     assert.equal(referenceIdSchema.parse('42'), 42)
   })
 
@@ -40,6 +44,13 @@ describe('reference data validation', () => {
       categoryUpdateSchema.safeParse({ name: 'Food', type: 'expense', updatedAt }).success,
       false,
     )
+    assert.equal(referenceOrderSchema.safeParse({ items: [{ id: 1, updatedAt }] }).success, false)
+    assert.equal(referenceOrderSchema.safeParse({
+      items: [{ id: 1, updatedAt }, { id: 1, updatedAt }],
+    }).success, false)
+    assert.equal(referenceOrderSchema.safeParse({
+      items: [{ id: 1, updatedAt }, { id: 2, updatedAt, sortOrder: 20 }],
+    }).success, false)
   })
 })
 

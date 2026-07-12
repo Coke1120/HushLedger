@@ -719,8 +719,100 @@ async function verifyWorkerApi() {
   assert.equal(referenceDelete.response.status, 404)
   assert.equal(referenceDelete.payload.error.code, 'NOT_FOUND')
 
-  let account = enabledAccount.payload.data
-  let expenseCategory = enabledCategory.payload.data
+  const freshAccounts = await api(baseUrl, '/api/accounts')
+  const activeAccounts = freshAccounts.payload.data.filter(({ isActive }) => isActive)
+  const desiredAccountOrder = [...activeAccounts].reverse()
+  const crossOriginAccountOrder = await api(baseUrl, '/api/accounts', {
+    method: 'PATCH',
+    origin: 'https://attacker.invalid',
+    body: {
+      items: desiredAccountOrder.map(({ id, updatedAt }) => ({ id, updatedAt })),
+    },
+  })
+  assert.equal(crossOriginAccountOrder.response.status, 403)
+  assert.equal(crossOriginAccountOrder.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const reorderedAccounts = await api(baseUrl, '/api/accounts', {
+    method: 'PATCH',
+    body: {
+      items: desiredAccountOrder.map(({ id, updatedAt }) => ({ id, updatedAt })),
+    },
+  })
+  assert.equal(reorderedAccounts.response.status, 200, JSON.stringify(reorderedAccounts.payload))
+  assert.deepEqual(
+    reorderedAccounts.payload.data.map(({ id }) => id),
+    desiredAccountOrder.map(({ id }) => id),
+  )
+
+  const staleAccountOrder = await api(baseUrl, '/api/accounts', {
+    method: 'PATCH',
+    body: {
+      items: activeAccounts.map(({ id, updatedAt }) => ({ id, updatedAt })),
+    },
+  })
+  assert.equal(staleAccountOrder.response.status, 409)
+  assert.equal(staleAccountOrder.payload.error.code, 'REFERENCE_VERSION_CONFLICT')
+  const accountsAfterStaleOrder = await api(baseUrl, '/api/accounts')
+  assert.deepEqual(
+    accountsAfterStaleOrder.payload.data.filter(({ isActive }) => isActive).map(({ id }) => id),
+    desiredAccountOrder.map(({ id }) => id),
+  )
+
+  const freshCategories = await api(baseUrl, '/api/categories')
+  const activeExpenseCategories = freshCategories.payload.data
+    .filter(({ isActive, type }) => isActive && type === 'expense')
+  const desiredCategoryOrder = [...activeExpenseCategories].reverse()
+  const reorderedCategories = await api(baseUrl, '/api/categories', {
+    method: 'PATCH',
+    body: {
+      items: desiredCategoryOrder.map(({ id, updatedAt }) => ({ id, updatedAt })),
+    },
+  })
+  assert.equal(reorderedCategories.response.status, 200, JSON.stringify(reorderedCategories.payload))
+  assert.deepEqual(
+    reorderedCategories.payload.data.map(({ id }) => id),
+    desiredCategoryOrder.map(({ id }) => id),
+  )
+
+  const categoriesAfterOrder = await api(baseUrl, '/api/categories')
+  const orderedExpenseIds = categoriesAfterOrder.payload.data
+    .filter(({ isActive, type }) => isActive && type === 'expense')
+    .map(({ id }) => id)
+  assert.deepEqual(orderedExpenseIds, desiredCategoryOrder.map(({ id }) => id))
+  assert.deepEqual(
+    categoriesAfterOrder.payload.data
+      .filter(({ isActive, type }) => isActive && type === 'income')
+      .map(({ id }) => id),
+    freshCategories.payload.data
+      .filter(({ isActive, type }) => isActive && type === 'income')
+      .map(({ id }) => id),
+  )
+
+  const partialCategoryOrder = await api(baseUrl, '/api/categories', {
+    method: 'PATCH',
+    body: {
+      items: categoriesAfterOrder.payload.data
+        .filter(({ isActive, type }) => isActive && type === 'expense')
+        .slice(1)
+        .map(({ id, updatedAt }) => ({ id, updatedAt })),
+    },
+  })
+  assert.equal(partialCategoryOrder.response.status, 409)
+  assert.equal(partialCategoryOrder.payload.error.code, 'REFERENCE_VERSION_CONFLICT')
+  const categoriesAfterPartialOrder = await api(baseUrl, '/api/categories')
+  assert.deepEqual(
+    categoriesAfterPartialOrder.payload.data
+      .filter(({ isActive, type }) => isActive && type === 'expense')
+      .map(({ id }) => id),
+    desiredCategoryOrder.map(({ id }) => id),
+  )
+
+  let account = reorderedAccounts.payload.data
+    .find(({ id }) => id === enabledAccount.payload.data.id)
+  let expenseCategory = reorderedCategories.payload.data
+    .find(({ id }) => id === enabledCategory.payload.data.id)
+  assert(account)
+  assert(expenseCategory)
 
   const cappedExportRows = await api(baseUrl, `/api/transactions?month=${month}&search=export%20bulk`)
   assert.equal(cappedExportRows.response.status, 200)
@@ -1327,6 +1419,8 @@ async function verifyWorkerApi() {
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,
     referenceConflictChecks: 4,
+    referenceOrderWrites: 2,
+    referenceOrderGuards: 3,
     csvImportPreviewStatuses: 4,
     csvImportWrites: 2,
     csvImportTombstones: 1,

@@ -46,6 +46,11 @@ inside that D1 transaction so a stale preview cannot overwrite intervening write
 The in-app flow is not a substitute for encrypted D1 exports, Time Travel, and
 periodic recovery drills.
 
+Account and category ordering uses the same same-origin boundary as other writes.
+Each request must contain one complete status/type group and a fresh `updatedAt`
+token for every member. A single guarded SQL statement applies all positions or
+none, preventing a stale tab or partial API request from silently mixing orders.
+
 ## Imported CSV files
 
 HushLedger and generic bank CSV files are decoded, parsed, and mapped in the

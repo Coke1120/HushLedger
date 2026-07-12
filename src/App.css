@@ -1831,6 +1831,11 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.reference-row-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .reference-row-actions .button {
   min-height: 36px;
   padding: 7px 9px;
@@ -1840,6 +1845,12 @@ textarea:focus-visible {
 .reference-row-actions svg {
   width: 14px;
   height: 14px;
+}
+
+.reference-row-actions .reference-order-button {
+  width: 36px;
+  min-width: 36px;
+  padding-inline: 8px;
 }
 
 .reference-editor {
@@ -3676,6 +3687,12 @@ textarea:focus-visible {
 
   .reference-row-actions .button {
     flex: 1;
+    min-height: 44px;
+  }
+
+  .reference-row-actions .reference-order-button {
+    flex: 0 0 44px;
+    width: 44px;
   }
 
   .ledger-backup-actions,

@@ -1,8 +1,10 @@
-import { Pencil, Plus, RotateCcw, Tags, WalletCards } from 'lucide-react'
+import { ArrowDown, ArrowUp, Pencil, Plus, RotateCcw, Tags, WalletCards } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import {
   createAccountAction,
   createCategoryAction,
+  reorderAccountsAction,
+  reorderCategoriesAction,
   setAccountStatusAction,
   setCategoryStatusAction,
   updateAccountAction,
@@ -18,6 +20,11 @@ import {
   type MessageKey,
 } from '../i18n'
 import type { Account, AccountType, Category, TransactionType } from '../lib/schema'
+import {
+  canMoveReference,
+  orderedReferenceGroup,
+  type ReferenceMoveDirection,
+} from '../lib/referenceOrder'
 
 type ReferenceDataSettingsProps = {
   accounts: Account[]
@@ -103,6 +110,28 @@ export function ReferenceDataSettings({
       'referenceCreated',
     )
     if (saved) setCategoryName('')
+  }
+
+  async function moveAccount(account: Account, direction: ReferenceMoveDirection) {
+    if (!canMoveReference(accounts, account, direction, accountOrderGroup)) return
+    const items = orderedReferenceGroup(accounts, account, direction, accountOrderGroup)
+      .map(({ id, updatedAt }) => ({ id, updatedAt }))
+    await mutate(
+      `account-order-${account.id}`,
+      () => actionData(reorderAccountsAction({ items })),
+      'referenceReordered',
+    )
+  }
+
+  async function moveCategory(category: Category, direction: ReferenceMoveDirection) {
+    if (!canMoveReference(categories, category, direction, categoryOrderGroup)) return
+    const items = orderedReferenceGroup(categories, category, direction, categoryOrderGroup)
+      .map(({ id, updatedAt }) => ({ id, updatedAt }))
+    await mutate(
+      `category-order-${category.id}`,
+      () => actionData(reorderCategoriesAction({ items })),
+      'referenceReordered',
+    )
   }
 
   async function saveEditor(event: FormEvent<HTMLFormElement>) {
@@ -218,6 +247,10 @@ export function ReferenceDataSettings({
                     || busy !== null
                     || (editor?.kind === 'account' && editor.id === account.id)
                   }
+                  canMoveUp={editor === null && canMoveReference(accounts, account, 'up', accountOrderGroup)}
+                  canMoveDown={editor === null && canMoveReference(accounts, account, 'down', accountOrderGroup)}
+                  onMoveUp={() => void moveAccount(account, 'up')}
+                  onMoveDown={() => void moveAccount(account, 'down')}
                   onEdit={() => editAccount(account)}
                   onStatus={() => void mutate(
                     `account-status-${account.id}`,
@@ -292,6 +325,10 @@ export function ReferenceDataSettings({
                     || busy !== null
                     || (editor?.kind === 'category' && editor.id === category.id)
                   }
+                  canMoveUp={editor === null && canMoveReference(categories, category, 'up', categoryOrderGroup)}
+                  canMoveDown={editor === null && canMoveReference(categories, category, 'down', categoryOrderGroup)}
+                  onMoveUp={() => void moveCategory(category, 'up')}
+                  onMoveDown={() => void moveCategory(category, 'down')}
                   onEdit={() => editCategory(category)}
                   onStatus={() => void mutate(
                     `category-status-${category.id}`,
@@ -335,11 +372,27 @@ type ReferenceRowProps = {
   active: boolean
   editing: boolean
   disabled: boolean
+  canMoveUp: boolean
+  canMoveDown: boolean
+  onMoveUp: () => void
+  onMoveDown: () => void
   onEdit: () => void
   onStatus: () => void
 }
 
-function ReferenceRow({ name, detail, active, editing, disabled, onEdit, onStatus }: ReferenceRowProps) {
+function ReferenceRow({
+  name,
+  detail,
+  active,
+  editing,
+  disabled,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+  onEdit,
+  onStatus,
+}: ReferenceRowProps) {
   const { t } = useI18n()
   return (
     <div className="reference-row">
@@ -348,6 +401,26 @@ function ReferenceRow({ name, detail, active, editing, disabled, onEdit, onStatu
         <span>{detail} · {active ? t('active') : t('inactive')}</span>
       </div>
       <div className="reference-row-actions">
+        <button
+          className="button button-secondary reference-order-button"
+          type="button"
+          onClick={onMoveUp}
+          disabled={disabled || !canMoveUp}
+          aria-label={t('moveReferenceUp', { name })}
+          title={t('moveReferenceUp', { name })}
+        >
+          <ArrowUp aria-hidden="true" />
+        </button>
+        <button
+          className="button button-secondary reference-order-button"
+          type="button"
+          onClick={onMoveDown}
+          disabled={disabled || !canMoveDown}
+          aria-label={t('moveReferenceDown', { name })}
+          title={t('moveReferenceDown', { name })}
+        >
+          <ArrowDown aria-hidden="true" />
+        </button>
         <button className="button button-secondary" type="button" onClick={onEdit} disabled={disabled || editing}>
           <Pencil aria-hidden="true" />
           {t('edit')}
@@ -413,6 +486,9 @@ function EditorForm({ editor, busy, onChange, onCancel, onSubmit }: EditorFormPr
 }
 
 const accountTypes: AccountType[] = ['cash', 'bank', 'credit_card', 'wallet']
+
+const accountOrderGroup = (account: Account) => String(account.isActive)
+const categoryOrderGroup = (category: Category) => `${category.type}:${category.isActive}`
 
 function accountTypeLabel(t: (key: MessageKey) => string, type: AccountType) {
   if (type === 'cash') return t('accountCash')

@@ -77,12 +77,33 @@ export const referenceStatusSchema = z
   .object({ isActive: z.boolean() })
   .extend(updatedReferenceSchema.shape)
   .strict()
+const referenceOrderItemSchema = z
+  .object({ id: z.number().int().positive() })
+  .extend(updatedReferenceSchema.shape)
+  .strict()
+export const referenceOrderSchema = z
+  .object({ items: z.array(referenceOrderItemSchema).min(2).max(200) })
+  .strict()
+  .superRefine(({ items }, context) => {
+    const seen = new Set<number>()
+    for (const [index, item] of items.entries()) {
+      if (seen.has(item.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['items', index, 'id'],
+          message: '項目 ID 不可重複',
+        })
+      }
+      seen.add(item.id)
+    }
+  })
 
 export type AccountCreateInput = z.infer<typeof accountCreateSchema>
 export type AccountUpdateInput = z.infer<typeof accountUpdateSchema>
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>
 export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>
 export type ReferenceStatusInput = z.infer<typeof referenceStatusSchema>
+export type ReferenceOrderInput = z.infer<typeof referenceOrderSchema>
 
 export const accountLocalizationKeys = [
   'account.cash',

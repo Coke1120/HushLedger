@@ -55,8 +55,8 @@ not operate an independent database server or a multi-user identity system.
 - Correct or delete an existing transaction; reject stale changes made from an
   out-of-date view.
 - Choose an active account and a matching income or expense category.
-- Create, rename, disable, and re-enable accounts and categories in Settings
-  without deleting historical references.
+- Create, rename, disable, re-enable, and reorder accounts and categories in
+  Settings without deleting historical references.
 - Add a custom payee or note.
 - Select a calendar date only; no transaction-time field exists.
 - Receive explicit success, error, demo, and offline feedback.
@@ -107,7 +107,10 @@ type cannot be disabled, nor can a reference used by an active recurring rule.
 Foreign keys and the absence of hard-delete routes preserve transaction history.
 Disabled references are excluded from new transactions and rules, while an
 existing transaction can retain and edit its original archived references.
-Reordering remains future work.
+Accessible arrow controls reorder accounts within an active/inactive group and
+categories within a type plus active/inactive group. The server requires the
+complete group with fresh conflict tokens and normalizes its positions in one
+guarded statement, so stale or partial requests write nothing.
 
 In product wording, a custom `payment` item means a payment-method account such
 as cash, bank, credit card, or wallet. It is not a separate transaction or
@@ -134,11 +137,13 @@ account type in the current data model.
 GET    /api/health
 GET    /api/accounts
 POST   /api/accounts
+PATCH  /api/accounts
 GET    /api/accounts/:id
 PUT    /api/accounts/:id
 PATCH  /api/accounts/:id
 GET    /api/categories
 POST   /api/categories
+PATCH  /api/categories
 GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
@@ -231,8 +236,8 @@ uses Wrangler D1 export and restore.
 ### Complete core
 
 - D1 schema, seed, constraints, indexes, and date-only migration.
-- Account/category create, rename, disable/re-enable, transaction, summary, and
-  recurring-rule APIs.
+- Account/category create, rename, disable/re-enable/reorder, transaction,
+  summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   filtered transaction CSV export, deterministic preview-first HushLedger and
   generic bank CSV import,
@@ -247,9 +252,11 @@ uses Wrangler D1 export and restore.
   preview, fresh migration, and upgrade migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
-### Next: deeper organization
+### Implemented: deeper organization
 
-1. Add optional account/category reordering.
+Accounts and categories can be moved with keyboard- and touch-friendly arrow
+controls. Ordering persists in D1 without a drag-and-drop dependency and remains
+isolated by active state plus category type.
 
 ### Implemented: user-configured AI bank-text parser
 

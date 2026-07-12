@@ -1,4 +1,4 @@
-import { accountCreateSchema } from '../../../lib/schema'
+import { accountCreateSchema, referenceOrderSchema } from '../../../lib/schema'
 import { getDatabase } from '../../../server/db'
 import {
   apiNotFound,
@@ -6,12 +6,13 @@ import {
   guardMutationRequest,
   jsonError,
   jsonReferenceMutationResult,
+  jsonReferenceOrderResult,
   jsonSuccess,
   readApiJson,
   sanitizeValidationIssues,
 } from '../../../server/http'
 import { listAccounts } from '../../../server/money'
-import { createAccountReference } from '../../../server/referenceData'
+import { createAccountReference, reorderAccountReferences } from '../../../server/referenceData'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,8 +40,28 @@ export const POST = apiRoute(async (request) => {
   )
 })
 
+export const PATCH = apiRoute(async (request) => {
+  const guarded = guardMutationRequest(request)
+  if (guarded) return guarded
+
+  const body = await readApiJson(request)
+  if (!body.ok) return body.response
+  const parsed = referenceOrderSchema.safeParse(body.data)
+  if (!parsed.success) {
+    return jsonError(
+      400,
+      'VALIDATION_ERROR',
+      '帳戶排序資料不正確',
+      sanitizeValidationIssues(parsed.error.issues),
+    )
+  }
+
+  return jsonReferenceOrderResult(
+    await reorderAccountReferences(await getDatabase(), parsed.data),
+  )
+})
+
 export const HEAD = apiNotFound
 export const PUT = apiNotFound
-export const PATCH = apiNotFound
 export const DELETE = apiNotFound
 export const OPTIONS = apiNotFound
