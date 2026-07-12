@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  message,
+  messageForError,
+  renderMessage,
+  supportedLocales,
+  translate,
+  useI18n,
+  type LocalizedMessage,
+  type Translator,
+} from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate } from '../lib/date'
 import type {
@@ -10,16 +20,17 @@ import type {
 import type { DataSource } from './useMoneyData'
 
 type MutationOptions = {
-  successMessage: string | ((result: unknown) => string)
+  successMessage: LocalizedMessage | ((result: unknown) => LocalizedMessage)
   demoUpdate: (rules: RecurringRule[]) => RecurringRule[]
   request: () => Promise<unknown>
 }
 
 const today = currentHongKongDate().date
+const DEMO_RULE_ID = '951b4d12-4aa8-4d8b-8947-648ae88c48af'
 
-const demoRules: RecurringRule[] = [
-  {
-    id: '951b4d12-4aa8-4d8b-8947-648ae88c48af',
+function createDemoRules(): RecurringRule[] {
+  return [{
+    id: DEMO_RULE_ID,
     name: '每月薪金',
     type: 'income',
     amountMinor: 3280000,
@@ -39,8 +50,23 @@ const demoRules: RecurringRule[] = [
     revision: 1,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  },
-]
+  }]
+}
+
+const demoRules = createDemoRules()
+const demoNames = new Set(supportedLocales.map((locale) => translate(locale, 'demoRecurringName')))
+const demoPayees = new Set(supportedLocales.map((locale) => translate(locale, 'demoRecurringPayee')))
+const demoNotes = new Set(supportedLocales.map((locale) => translate(locale, 'demoRecurringNote')))
+
+function localizeDemoRule(rule: RecurringRule, t: Translator): RecurringRule {
+  if (rule.id !== DEMO_RULE_ID) return rule
+  return {
+    ...rule,
+    name: demoNames.has(rule.name) ? t('demoRecurringName') : rule.name,
+    payee: demoPayees.has(rule.payee) ? t('demoRecurringPayee') : rule.payee,
+    note: demoNotes.has(rule.note) ? t('demoRecurringNote') : rule.note,
+  }
+}
 
 function toRule(input: RecurringRuleCreateInput): RecurringRule {
   const timestamp = new Date().toISOString()
@@ -70,16 +96,17 @@ function updateRule(rule: RecurringRule, input: RecurringRuleUpdateInput): Recur
   }
 }
 
-function resolveSuccessMessage(message: MutationOptions['successMessage'], result?: unknown) {
-  return typeof message === 'function' ? message(result) : message
+function resolveSuccessMessage(messageValue: MutationOptions['successMessage'], result?: unknown) {
+  return typeof messageValue === 'function' ? messageValue(result) : messageValue
 }
 
 export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
+  const { t } = useI18n()
   const [rules, setRules] = useState<RecurringRule[]>(demoRules)
   const [source, setSource] = useState<DataSource>('loading')
   const [online, setOnline] = useState(() => navigator.onLine)
-  const [actionMessage, setActionMessage] = useState('')
-  const [error, setError] = useState('')
+  const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
+  const [error, setError] = useState<LocalizedMessage | null>(null)
   const [mutatingId, setMutatingId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const requestSequence = useRef(0)
@@ -87,7 +114,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
 
   const refresh = useCallback(async (allowDemoFallback = true) => {
     const sequence = ++requestSequence.current
-    setError('')
+    setError(null)
     if (allowDemoFallback) setSource('loading')
 
     if (!navigator.onLine) {
@@ -113,7 +140,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
         setSource('demo')
       } else {
         setSource('error')
-        setError(requestError instanceof Error ? requestError.message : '未能重新載入週期交易。')
+        setError(messageForError(requestError, 'recurringLoadFailed'))
       }
       return false
     }
@@ -133,7 +160,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setOnline(false)
       setRules(demoRules)
       setSource('demo')
-      setActionMessage('目前離線，顯示示範週期交易；變更不會送出。')
+      setActionMessage(message('recurringOfflineDemo'))
     }
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -147,26 +174,32 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     async ({ successMessage, demoUpdate, request }: MutationOptions) => {
       if (submitting.current) return false
       submitting.current = true
-      setError('')
-      setActionMessage('')
+      setError(null)
+      setActionMessage(null)
 
       try {
-        if (!navigator.onLine) throw new Error('目前處於離線狀態，週期交易尚未變更。請連線後再試。')
+        if (!navigator.onLine) {
+          setError(message('recurringOfflineError'))
+          return false
+        }
 
         if (source === 'demo') {
           setRules(demoUpdate)
-          setActionMessage(`${resolveSuccessMessage(successMessage)}（展示模式，不會永久儲存。）`)
-          await onMoneyRefresh()
+          setActionMessage(
+            message('recurringDemoSuffix', { message: resolveSuccessMessage(successMessage) }),
+          )
           return true
         }
 
         const requestResult = await request()
         const [rulesRefreshed] = await Promise.all([refresh(false), onMoneyRefresh()])
-        const message = resolveSuccessMessage(successMessage, requestResult)
-        setActionMessage(rulesRefreshed ? message : `${message} 畫面未能重新整理，請按重試。`)
+        const success = resolveSuccessMessage(successMessage, requestResult)
+        setActionMessage(
+          rulesRefreshed ? success : message('recurringRefreshSuffix', { message: success }),
+        )
         return true
       } catch (mutationError) {
-        setError(mutationError instanceof Error ? mutationError.message : '未能更新週期交易，請再試一次。')
+        setError(messageForError(mutationError, 'recurringUpdateFailed'))
         return false
       } finally {
         submitting.current = false
@@ -180,7 +213,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     async (input: RecurringRuleCreateInput) => {
       setMutatingId('new')
       return mutate({
-        successMessage: '週期交易已建立，系統會按日期自動產生交易。',
+        successMessage: message('recurringCreated'),
         demoUpdate: (current) => [toRule(input), ...current],
         request: () =>
           api<RecurringRule>('/api/recurring-rules', {
@@ -197,7 +230,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     async (id: string, input: RecurringRuleUpdateInput) => {
       setMutatingId(id)
       return mutate({
-        successMessage: '週期交易已更新；已產生的歷史交易不會改動。',
+        successMessage: message('recurringUpdated'),
         demoUpdate: (current) => current.map((rule) => (rule.id === id ? updateRule(rule, input) : rule)),
         request: () =>
           api<RecurringRule>(`/api/recurring-rules/${encodeURIComponent(id)}`, {
@@ -214,7 +247,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     async (rule: RecurringRule, isActive: boolean) => {
       setMutatingId(rule.id)
       return mutate({
-        successMessage: isActive ? '週期交易已恢復。' : '週期交易已暫停。',
+        successMessage: message(isActive ? 'recurringResumed' : 'recurringPaused'),
         demoUpdate: (current) =>
           current.map((item) =>
             item.id === rule.id
@@ -236,7 +269,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     async (rule: RecurringRule) => {
       setMutatingId(rule.id)
       return mutate({
-        successMessage: '週期交易已刪除；過往自動產生的交易仍然保留。',
+        successMessage: message('recurringDeleted'),
         demoUpdate: (current) => current.filter((item) => item.id !== rule.id),
         request: () =>
           api<null>(`/api/recurring-rules/${encodeURIComponent(rule.id)}`, {
@@ -255,9 +288,13 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     setMutatingId('run-due')
     const result = await mutate({
       successMessage: (requestResult) => {
-        if (!requestResult) return '已在展示模式模擬檢查到期交易。'
+        if (!requestResult) return message('recurringDemoRun')
         const generation = requestResult as RecurringGenerationResult
-        return `已檢查 ${generation.scanned} 項週期交易，新增 ${generation.created} 筆；另有 ${generation.alreadyExisting} 筆已存在。`
+        return message('recurringRunResult', {
+          scanned: generation.scanned,
+          created: generation.created,
+          existing: generation.alreadyExisting,
+        })
       },
       demoUpdate: (current) => current,
       request: () =>
@@ -271,12 +308,14 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     return result
   }, [mutate])
 
+  const visibleRules = useMemo(() => rules.map((rule) => localizeDemoRule(rule, t)), [rules, t])
+
   return {
-    rules,
+    rules: visibleRules,
     source,
     online,
-    actionMessage,
-    error,
+    actionMessage: renderMessage(t, actionMessage),
+    error: renderMessage(t, error),
     mutatingId,
     running,
     refresh,
@@ -286,8 +325,8 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     deleteRule,
     runDue,
     clearActionMessage: () => {
-      setActionMessage('')
-      setError('')
+      setActionMessage(null)
+      setError(null)
     },
   }
 }

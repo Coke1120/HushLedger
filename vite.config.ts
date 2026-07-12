@@ -10,10 +10,9 @@ export default defineConfig({
       includeAssets: ['favicon.svg'],
       manifest: {
         id: '/',
-        name: 'HushLedger · 私人收支管理',
+        name: 'HushLedger · Personal Finance',
         short_name: 'HushLedger',
-        description: '私人收入、支出與週期交易記錄器',
-        lang: 'zh-Hant-HK',
+        description: 'Privacy-first multilingual income, expense, and recurring transaction tracker',
         start_url: '/',
         scope: '/',
         display: 'standalone',

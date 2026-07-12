@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
 import { addDemo, demoAccounts, demoCategories, demoSummary, getDemoTransactions } from '../lib/demo'
 import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from '../lib/schema'
@@ -12,7 +13,11 @@ type Snapshot = {
   categories: Category[]
 }
 
-function demoSnapshot(month: string, type: TransactionType | 'all', search: string): Snapshot {
+function demoSnapshot(
+  month: string,
+  type: TransactionType | 'all',
+  search: string,
+): Snapshot {
   return {
     transactions: getDemoTransactions(month, type, search),
     summary: demoSummary(month),
@@ -22,12 +27,13 @@ function demoSnapshot(month: string, type: TransactionType | 'all', search: stri
 }
 
 export function useMoneyData(month: string, type: TransactionType | 'all', search: string) {
+  const { t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => demoSnapshot(month, type, search))
   const [source, setSource] = useState<DataSource>('loading')
   const [online, setOnline] = useState(() => navigator.onLine)
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState('')
-  const [actionMessage, setActionMessage] = useState('')
+  const [saveError, setSaveError] = useState<LocalizedMessage | null>(null)
+  const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
   const requestSequence = useRef(0)
   const submitting = useRef(false)
 
@@ -48,7 +54,7 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
       const sequence = ++requestSequence.current
-      setSaveError('')
+      setSaveError(null)
       if (allowDemoFallback) setSource('loading')
 
       if (!navigator.onLine) {
@@ -109,16 +115,19 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
       if (submitting.current) return false
       submitting.current = true
       setSaving(true)
-      setSaveError('')
-      setActionMessage('')
+      setSaveError(null)
+      setActionMessage(null)
 
       try {
-        if (!navigator.onLine) throw new Error('目前處於離線狀態，交易尚未儲存。請連線後再試。')
+        if (!navigator.onLine) {
+          setSaveError(message('transactionOfflineError'))
+          return false
+        }
 
         if (source === 'demo') {
           addDemo(input)
           setSnapshot(demoSnapshot(month, type, search))
-          setActionMessage('已加入展示資料；只保留在本次頁面，不會儲存到 Cloudflare。')
+          setActionMessage(message('demoTransactionSaved'))
           return true
         }
 
@@ -128,10 +137,12 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
           body: JSON.stringify(input),
         })
         const refreshed = await refresh(false)
-        setActionMessage(refreshed ? '交易已安全儲存。' : '交易已儲存，但畫面未能重新整理；請按重試。')
+        setActionMessage(
+          message(refreshed ? 'transactionSaved' : 'transactionSavedRefreshFailed'),
+        )
         return true
       } catch (error) {
-        setSaveError(error instanceof Error ? error.message : '交易未能儲存，請再試一次。')
+        setSaveError(messageForError(error, 'transactionSaveFailed'))
         return false
       } finally {
         submitting.current = false
@@ -141,15 +152,23 @@ export function useMoneyData(month: string, type: TransactionType | 'all', searc
     [month, refresh, search, source, type],
   )
 
+  const visibleSnapshot = useMemo(
+    () =>
+      source === 'demo'
+        ? { ...snapshot, transactions: getDemoTransactions(month, type, search, t) }
+        : snapshot,
+    [month, search, snapshot, source, t, type],
+  )
+
   return {
-    ...snapshot,
+    ...visibleSnapshot,
     source,
     online,
     saving,
-    saveError,
-    actionMessage,
+    saveError: renderMessage(t, saveError),
+    actionMessage: renderMessage(t, actionMessage),
     refresh,
     saveTransaction,
-    clearActionMessage: () => setActionMessage(''),
+    clearActionMessage: () => setActionMessage(null),
   }
 }

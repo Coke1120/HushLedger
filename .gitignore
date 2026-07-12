@@ -23,6 +23,7 @@ dist-ssr
 *.sqlite-wal
 exports/
 backups/
+output/playwright/
 
 # Editor directories and files
 .vscode/*

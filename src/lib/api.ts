@@ -40,7 +40,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok || !payload || payload.ok === false) {
     const error = payload && payload.ok === false ? payload.error : undefined
-    throw new ApiError(error?.message ?? '暫時無法連線，請稍後再試。', error?.code ?? 'REQUEST_FAILED', response.status)
+    throw new ApiError(
+      error?.message ?? 'The request could not be completed.',
+      error?.code ?? 'REQUEST_FAILED',
+      response.status,
+    )
   }
 
   return payload.data

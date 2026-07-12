@@ -2,7 +2,7 @@
   "name": "hushledger",
   "private": true,
   "version": "0.1.0",
-  "description": "Open-source privacy-first personal finance PWA and expense tracker for Hong Kong, with recurring transactions on Cloudflare Workers and D1.",
+  "description": "Open-source privacy-first multilingual personal finance PWA and expense tracker with recurring transactions on Cloudflare Workers and D1.",
   "keywords": [
     "personal-finance",
     "expense-tracker",
@@ -15,7 +15,10 @@
     "react",
     "typescript",
     "cloudflare-workers",
-    "cloudflare-d1"
+    "cloudflare-d1",
+    "multilingual",
+    "internationalization",
+    "localization"
   ],
   "license": "MIT",
   "repository": {

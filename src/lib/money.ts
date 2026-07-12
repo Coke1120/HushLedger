@@ -2,10 +2,10 @@ export const DEFAULT_CURRENCY = 'HKD' as const
 
 const amountPattern = /^(?:0|[1-9]\d*)(?:\.(\d{1,2}))?$/
 
-export const formatMoney = (minor: number, currency = DEFAULT_CURRENCY) => {
-  if (!Number.isSafeInteger(minor)) throw new Error('金額超出安全範圍')
+export const formatMoney = (minor: number, currency: string = DEFAULT_CURRENCY, locale = 'zh-Hant') => {
+  if (!Number.isSafeInteger(minor)) throw new Error('Amount exceeds the safe integer range')
 
-  return new Intl.NumberFormat('zh-HK', {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     currencyDisplay: 'symbol',
@@ -14,13 +14,15 @@ export const formatMoney = (minor: number, currency = DEFAULT_CURRENCY) => {
   }).format(minor / 100)
 }
 
-export function parseAmount(value: string): number {
-  const normalized = value.trim()
+export function parseAmount(value: string, locale = 'en'): number {
+  const normalized = locale.toLowerCase().startsWith('fr')
+    ? value.trim().replace(',', '.')
+    : value.trim()
   const match = amountPattern.exec(normalized)
-  if (!match) throw new Error('請輸入有效金額，最多兩位小數')
+  if (!match) throw new Error('Enter a valid amount with no more than two decimal places')
 
   const [major, fraction = ''] = normalized.split('.')
   const minor = Number(`${major}${fraction.padEnd(2, '0')}`)
-  if (!Number.isSafeInteger(minor) || minor <= 0) throw new Error('金額必須大於 HK$0.00')
+  if (!Number.isSafeInteger(minor) || minor <= 0) throw new Error('Amount must be greater than zero')
   return minor
 }

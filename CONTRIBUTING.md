@@ -58,3 +58,24 @@ proxied to the local Worker at `http://localhost:8787`.
    limitations in the pull request description.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Translations
+
+HushLedger supports Traditional Chinese (`zh-Hant`), English (`en`), Japanese
+(`ja`), and French (`fr`). User-facing copy belongs in
+`src/i18n/messages.ts`; avoid adding hard-coded interface text to components.
+
+When changing translated copy:
+
+- Update every locale for each new or changed message key.
+- Preserve interpolation placeholders and their meaning across all languages.
+- Keep finance terminology short, unambiguous, and consistent within a locale.
+- Do not translate custom user data such as account, category, payee, note, or
+  recurring-rule names.
+- Verify long English and French labels at the supported responsive widths, as
+  well as keyboard navigation, focus visibility, and screen-reader labels.
+- Include screenshots only with fictional or thoroughly anonymized data.
+
+Translation corrections and accessibility improvements are welcome as focused
+issues or pull requests, including changes from fluent speakers who are not
+developers.

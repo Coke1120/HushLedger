@@ -40,9 +40,34 @@ export const transactionQuerySchema = z
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 
+export const accountLocalizationKeys = [
+  'account.cash',
+  'account.bank',
+  'account.credit_card',
+  'account.wallet',
+] as const
+export type AccountLocalizationKey = (typeof accountLocalizationKeys)[number]
+
+export const categoryLocalizationKeys = [
+  'category.salary',
+  'category.other_income',
+  'category.food',
+  'category.transport',
+  'category.living',
+  'category.entertainment',
+  'category.shopping',
+  'category.housing',
+  'category.bills',
+  'category.healthcare',
+  'category.other_expense',
+] as const
+export type CategoryLocalizationKey = (typeof categoryLocalizationKeys)[number]
+
 export type Transaction = TransactionInput & {
   accountName: string
+  accountLocalizationKey: AccountLocalizationKey | null
   categoryName: string
+  categoryLocalizationKey: CategoryLocalizationKey | null
   categoryIcon: string
   categoryColor: string
   createdAt: string
@@ -116,6 +141,7 @@ export type Account = {
   currency: 'HKD'
   isActive: boolean
   sortOrder: number
+  localizationKey: AccountLocalizationKey | null
 }
 
 export type Category = {
@@ -126,6 +152,7 @@ export type Category = {
   color: string
   isActive: boolean
   sortOrder: number
+  localizationKey: CategoryLocalizationKey | null
 }
 
 export type Lookup = {

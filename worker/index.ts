@@ -3,6 +3,8 @@ import { secureHeaders } from 'hono/secure-headers'
 import { z } from 'zod'
 import { isValidCalendarDate, monthRangeDates } from '../src/lib/date'
 import {
+  type AccountLocalizationKey,
+  type CategoryLocalizationKey,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
   recurringRuleStatusSchema,
@@ -47,6 +49,7 @@ type AccountRow = {
   currency: 'HKD'
   isActive: number
   sortOrder: number
+  localizationKey: AccountLocalizationKey | null
 }
 
 type CategoryRow = {
@@ -57,6 +60,7 @@ type CategoryRow = {
   color: string
   isActive: number
   sortOrder: number
+  localizationKey: CategoryLocalizationKey | null
 }
 
 type TransactionRow = {
@@ -70,7 +74,9 @@ type TransactionRow = {
   payee: string
   note: string
   accountName: string
+  accountLocalizationKey: AccountLocalizationKey | null
   categoryName: string
+  categoryLocalizationKey: CategoryLocalizationKey | null
   categoryIcon: string
   categoryColor: string
   recurringRuleId: string | null
@@ -112,7 +118,9 @@ const transactionSelect = `
     t.payee,
     t.note,
     a.name AS accountName,
+    a.localization_key AS accountLocalizationKey,
     category.name AS categoryName,
+    category.localization_key AS categoryLocalizationKey,
     category.icon AS categoryIcon,
     category.color AS categoryColor,
     t.recurring_rule_id AS recurringRuleId,
@@ -191,7 +199,14 @@ app.get('/api/health', async (c) => {
 
 app.get('/api/accounts', async (c) => {
   const result = await c.env.DB.prepare(`
-    SELECT id, name, type, currency, is_active AS isActive, sort_order AS sortOrder
+    SELECT
+      id,
+      name,
+      type,
+      currency,
+      is_active AS isActive,
+      sort_order AS sortOrder,
+      localization_key AS localizationKey
     FROM accounts
     ORDER BY is_active DESC, sort_order ASC, id ASC
   `).all<AccountRow>()
@@ -204,7 +219,15 @@ app.get('/api/accounts', async (c) => {
 
 app.get('/api/categories', async (c) => {
   const result = await c.env.DB.prepare(`
-    SELECT id, name, type, icon, color, is_active AS isActive, sort_order AS sortOrder
+    SELECT
+      id,
+      name,
+      type,
+      icon,
+      color,
+      is_active AS isActive,
+      sort_order AS sortOrder,
+      localization_key AS localizationKey
     FROM categories
     ORDER BY type DESC, is_active DESC, sort_order ASC, id ASC
   `).all<CategoryRow>()

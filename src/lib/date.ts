@@ -4,10 +4,10 @@ const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/
 
 function parseMonth(month: string) {
   const match = monthPattern.exec(month)
-  if (!match) throw new Error('月份格式必須為 YYYY-MM')
+  if (!match) throw new Error('Month must use YYYY-MM format')
   const year = Number(match[1])
   const monthIndex = Number(match[2]) - 1
-  if (monthIndex < 0 || monthIndex > 11) throw new Error('月份不正確')
+  if (monthIndex < 0 || monthIndex > 11) throw new Error('Month is outside the valid range')
   return { year, monthIndex }
 }
 
@@ -51,18 +51,18 @@ export function currentHongKongDate(now = new Date()) {
   }
 }
 
-export function formatMonthLabel(month: string) {
+export function formatMonthLabel(month: string, locale = 'zh-Hant') {
   const { year, monthIndex } = parseMonth(month)
-  return new Intl.DateTimeFormat('zh-HK', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     timeZone: HONG_KONG_TIME_ZONE,
   }).format(new Date(Date.UTC(year, monthIndex, 15)))
 }
 
-export function formatHongKongDate(value: string) {
-  if (!isValidCalendarDate(value)) throw new Error('交易日期必須是有效的 YYYY-MM-DD')
-  return new Intl.DateTimeFormat('zh-HK', {
+export function formatHongKongDate(value: string, locale = 'zh-Hant') {
+  if (!isValidCalendarDate(value)) throw new Error('Date must be a valid YYYY-MM-DD calendar date')
+  return new Intl.DateTimeFormat(locale, {
     month: 'long',
     day: 'numeric',
     timeZone: 'UTC',

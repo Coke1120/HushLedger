@@ -105,7 +105,9 @@ async function verifyUpgradeMigration() {
     '--config',
     upgradeConfig,
     '--command',
-    `INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note) VALUES ('${sentinelId}','expense',123,'HKD',1,3,'2026-07-10','upgrade sentinel','');`,
+    `INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note) VALUES ('${sentinelId}','expense',123,'HKD',1,3,'2026-07-10','upgrade sentinel','');
+     INSERT INTO accounts(name,type,currency,is_active,sort_order) VALUES ('Integration custom account','bank','HKD',1,900);
+     INSERT INTO categories(name,type,icon,color,is_active,sort_order) VALUES ('Integration custom category','expense','circle-ellipsis','#64748B',1,900);`,
     '--yes',
   ])
 
@@ -127,13 +129,24 @@ async function verifyUpgradeMigration() {
     '--persist-to',
     upgradeState,
     '--command',
-    `SELECT id, occurred_on AS occurredOn FROM transactions WHERE id = '${sentinelId}'; PRAGMA foreign_key_check;`,
+    `SELECT id, occurred_on AS occurredOn FROM transactions WHERE id = '${sentinelId}';
+     SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
+     SELECT name, localization_key AS localizationKey FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
+     PRAGMA foreign_key_check;`,
     '--json',
   ])
   const statements = JSON.parse(verification.stdout)
   assert.equal(statements[0].results[0].id, sentinelId)
   assert.equal(statements[0].results[0].occurredOn, '2026-07-10')
-  assert.deepEqual(statements[1].results, [])
+  assert.deepEqual(statements[1].results, [
+    { name: 'Integration custom account', localizationKey: null },
+    { name: '日常帳戶', localizationKey: 'account.bank' },
+  ])
+  assert.deepEqual(statements[2].results, [
+    { name: 'Integration custom category', localizationKey: null },
+    { name: '生活', localizationKey: 'category.living' },
+  ])
+  assert.deepEqual(statements[3].results, [])
 }
 
 function startWorker(port, inspectorPort) {
@@ -209,6 +222,31 @@ async function verifyWorkerApi() {
   const categoriesResult = await api(baseUrl, '/api/categories')
   assert.equal(accountsResult.response.status, 200)
   assert.equal(categoriesResult.response.status, 200)
+  assert.deepEqual(
+    Object.fromEntries(accountsResult.payload.data.map(({ name, localizationKey }) => [name, localizationKey])),
+    {
+      '日常帳戶': 'account.bank',
+      '現金': 'account.cash',
+      '信用卡': 'account.credit_card',
+      '八達通': 'account.wallet',
+    },
+  )
+  assert.deepEqual(
+    Object.fromEntries(categoriesResult.payload.data.map(({ name, localizationKey }) => [name, localizationKey])),
+    {
+      '薪資': 'category.salary',
+      '其他收入': 'category.other_income',
+      '餐飲': 'category.food',
+      '交通': 'category.transport',
+      '生活': 'category.living',
+      '娛樂': 'category.entertainment',
+      '購物': 'category.shopping',
+      '住屋': 'category.housing',
+      '帳單': 'category.bills',
+      '醫療': 'category.healthcare',
+      '其他支出': 'category.other_expense',
+    },
+  )
   const account = accountsResult.payload.data.find((item) => item.isActive)
   const expenseCategory = categoriesResult.payload.data.find((item) => item.isActive && item.type === 'expense')
   assert(account)
@@ -341,6 +379,15 @@ async function verifyWorkerApi() {
   const beforeDelete = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(beforeDelete.response.status, 200)
   assert.equal(beforeDelete.payload.data.filter((item) => item.recurrenceDueOn === today).length, 3)
+  assert(
+    beforeDelete.payload.data
+      .filter((item) => item.recurrenceDueOn === today)
+      .every(
+        (item) =>
+          item.accountLocalizationKey === account.localizationKey &&
+          item.categoryLocalizationKey === expenseCategory.localizationKey,
+      ),
+  )
 
   const deleted = await api(baseUrl, `/api/recurring-rules/${ruleIds.daily}`, {
     method: 'DELETE',
@@ -413,8 +460,8 @@ try {
   console.log(
     JSON.stringify({
       ok: true,
-      freshMigrations: '0001-0005',
-      upgradeMigration: '0004-to-0005-preserved-sentinel',
+      freshMigrations: '0001-0006',
+      upgradeMigration: '0004-to-0006-preserved-data-and-custom-names',
       ...apiEvidence,
     }),
   )

@@ -1,4 +1,5 @@
-import { House, List, Plus, Repeat } from 'lucide-react'
+import { House, List, Plus, Repeat, Settings } from 'lucide-react'
+import { useI18n } from '../i18n'
 import type { AppView } from './MobileNavigation'
 
 type AppHeaderProps = {
@@ -17,19 +18,21 @@ function HushLedgerMark() {
 }
 
 export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
+  const { t } = useI18n()
+
   return (
     <header className="app-header">
-      <div className="brand" aria-label="HushLedger 私人收支管理">
+      <div className="brand" aria-label={t('appTitle')}>
         <span className="brand-mark" aria-hidden="true">
           <HushLedgerMark />
         </span>
         <span className="brand-copy">
           <strong>HushLedger</strong>
-          <small>私人收支管理</small>
+          <small>{t('appTagline')}</small>
         </span>
       </div>
       <div className="header-actions">
-        <nav className="desktop-navigation" aria-label="主要導覽">
+        <nav className="desktop-navigation" aria-label={t('mainNavigation')}>
           <button
             type="button"
             className={view === 'overview' ? 'is-active' : undefined}
@@ -37,7 +40,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             onClick={() => onViewChange('overview')}
           >
             <House aria-hidden="true" />
-            總覽
+            <span className="nav-label">{t('overview')}</span>
           </button>
           <button
             type="button"
@@ -46,7 +49,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             onClick={() => onViewChange('transactions')}
           >
             <List aria-hidden="true" />
-            交易
+            <span className="nav-label">{t('transactions')}</span>
           </button>
           <button
             type="button"
@@ -55,12 +58,21 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             onClick={() => onViewChange('recurring')}
           >
             <Repeat aria-hidden="true" />
-            週期交易
+            <span className="nav-label">{t('recurring')}</span>
+          </button>
+          <button
+            type="button"
+            className={view === 'settings' ? 'is-active' : undefined}
+            aria-current={view === 'settings' ? 'page' : undefined}
+            onClick={() => onViewChange('settings')}
+          >
+            <Settings aria-hidden="true" />
+            <span className="nav-label">{t('settings')}</span>
           </button>
         </nav>
         <button className="button button-primary add-button" type="button" onClick={onAdd}>
           <Plus aria-hidden="true" />
-          <span>新增交易</span>
+          <span>{t('addTransaction')}</span>
         </button>
       </div>
     </header>

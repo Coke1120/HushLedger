@@ -7,8 +7,8 @@ The accepted visual references are:
 
 They define the layout, density, palette, typography character, control geometry,
 and responsive behavior. All product text and controls remain code-native. Where
-generated Chinese text differs from the product brief, the brief and the copy
-inventory below are authoritative.
+generated text differs from the product brief or locale dictionaries, the brief
+and current translations are authoritative.
 
 ## Direction
 
@@ -18,7 +18,7 @@ full-width transaction surface. The mobile layout puts the balance first,
 places income and expense side by side, keeps transaction dates visible, and
 uses a rounded bottom sheet for quick entry.
 
-No sidebar, charts, gradients, marketing hero, English eyebrow text, badges,
+No sidebar, charts, gradients, marketing hero, decorative eyebrow text, badges,
 decorative illustration, nested card grid, or remote font request.
 
 ## Tokens
@@ -38,19 +38,20 @@ decorative illustration, nested card grid, or remote font request.
 | Radius | `10 / 14 / 18px` |
 | Minimum target | `44px` |
 
-Typography uses the local system Traditional Chinese stack with tabular
-numerals for money. Controls define their own size and weight instead of using
-browser defaults.
+Typography uses a local system font stack with coverage for Traditional Chinese,
+English, Japanese, and French, plus tabular numerals for money. Controls define
+their own size and weight instead of using browser defaults.
 
 ## Component inventory
 
-- `AppHeader`: wallet mark, HushLedger, 私人收支管理, primary navigation, and 新增交易.
-- `MonthNavigator`: previous, month label, next, and 回到本月.
+- `AppHeader`: wallet mark, HushLedger, localized product descriptor, primary
+  navigation, and localized add-transaction action.
+- `MonthNavigator`: previous, localized month label, next, and return-to-current-month.
 - `SummaryCards`: balance, income, and expense with one prominent balance card.
 - `ConnectionBanner`: loading, offline, demo, error, and retry states.
 - `TransactionToolbar`: search and 全部 / 支出 / 收入 filters.
 - `TransactionList`: merchant or category, category/account metadata, visible
-  Hong Kong calendar date, and signed HKD amount.
+  calendar date, and signed HKD amount.
 - `TransactionDialog`: expense/income segmented control, amount, account,
   filtered category, date, payee, note, validation, and sticky save action. There
   is no transaction time field.
@@ -58,13 +59,18 @@ browser defaults.
   category, generated count, edit, pause/resume, and protected deletion.
 - `RecurringRuleDialog`: date-only schedule anchor, monthly short-month guidance,
   active state, validation, and future-only edit explanation.
-- `MobileNavigation`: 總覽, 交易, and 週期; all controls change the visible view.
+- `SettingsPage`: one clear language selector for Traditional Chinese, English,
+  Japanese, and French, with immediate feedback and local-only persistence note.
+- `MobileNavigation`: overview, transactions, recurring rules, and settings; all
+  labels are localized and every control changes the visible view.
 
 ## Allowed first-viewport copy
 
-`HushLedger`, `私人收支管理`, the selected Chinese month, `回到本月`, `新增交易`,
-`本月結餘`, `本月收入`, `本月支出`, `交易紀錄`, `搜尋商戶或備註`, `全部`,
-`支出`, `收入`, and `本月交易`. Status copy may appear only when its state is active.
+`HushLedger`, the localized product descriptor, selected localized month,
+return-to-current-month action, add-transaction action, balance, income, expense,
+transaction list, search, filters, and current-month summary. Status copy may
+appear only when its state is active. The same information hierarchy applies to
+all supported languages; no locale receives extra first-viewport marketing copy.
 
 ## Responsive contract
 
@@ -87,5 +93,5 @@ The app is online-first and must never claim an offline write succeeded.
 
 Semantic headings and lists/tables, 44px interactive targets, visible
 `:focus-visible`, sufficient contrast, `aria-live` status, field-linked errors,
-and a labelled modal dialog that supports Escape, initial focus, focus restore,
-and scroll locking.
+language changes announced without moving focus, and a labelled modal dialog
+that supports Escape, initial focus, focus restore, and scroll locking.

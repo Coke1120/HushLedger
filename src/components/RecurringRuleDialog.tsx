@@ -1,7 +1,8 @@
 import { ArrowDownRight, ArrowUpRight, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { currentHongKongDate, formatHongKongDate, isValidCalendarDate } from '../lib/date'
-import { formatMoney, parseAmount } from '../lib/money'
+import { useI18n } from '../i18n'
+import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
+import { parseAmount } from '../lib/money'
 import {
   recurringRuleCreateSchema,
   recurringRuleUpdateSchema,
@@ -26,20 +27,6 @@ type RecurringRuleDialogProps = {
   onEdit: (id: string, input: RecurringRuleUpdateInput) => Promise<boolean>
 }
 
-function validationMessage(error: unknown) {
-  if (typeof error === 'object' && error !== null && 'issues' in error) {
-    const issues = (error as { issues?: Array<{ message?: string }> }).issues
-    if (issues?.[0]?.message) return issues[0].message
-  }
-  return error instanceof Error ? error.message : '資料不正確，請檢查後再試。'
-}
-
-const frequencyLabels: Record<RecurrenceFrequency, string> = {
-  daily: '每日',
-  weekly: '每週',
-  monthly: '每月',
-}
-
 export function RecurringRuleDialog({
   rule,
   accounts,
@@ -51,6 +38,7 @@ export function RecurringRuleDialog({
   onCreate,
   onEdit,
 }: RecurringRuleDialogProps) {
+  const { formatDate, formatMoney, locale, localizeEntityName, t } = useI18n()
   const editing = Boolean(rule)
   const [type, setType] = useState<TransactionType>(rule?.type ?? 'expense')
   const [accountId, setAccountId] = useState(rule?.accountId ?? accounts[0]?.id ?? 0)
@@ -68,6 +56,11 @@ export function RecurringRuleDialog({
   const savingRef = useRef(saving)
 
   const matchingCategories = useMemo(() => categories.filter((category) => category.type === type), [categories, type])
+  const frequencyLabels: Record<RecurrenceFrequency, string> = {
+    daily: t('daily'),
+    weekly: t('weekly'),
+    monthly: t('monthly'),
+  }
 
   useEffect(() => {
     savingRef.current = saving
@@ -123,12 +116,23 @@ export function RecurringRuleDialog({
     setLocalError('')
     const data = new FormData(event.currentTarget)
 
+    if (!isValidCalendarDate(scheduleDate)) {
+      setLocalError(t('invalidDate'))
+      return
+    }
+
+    let amountMinor: number
     try {
-      if (!isValidCalendarDate(scheduleDate)) throw new Error('請輸入有效日期。')
-      const fields = {
+      amountMinor = parseAmount(String(data.get('amount') ?? ''), locale)
+    } catch {
+      setLocalError(t('invalidAmount'))
+      return
+    }
+
+    const fields = {
         name: String(data.get('name') ?? ''),
         type,
-        amountMinor: parseAmount(String(data.get('amount') ?? '')),
+        amountMinor,
         currency: 'HKD' as const,
         accountId,
         categoryId: matchingCategories.some((category) => category.id === categoryId)
@@ -140,14 +144,18 @@ export function RecurringRuleDialog({
         payee: String(data.get('payee') ?? ''),
         note: String(data.get('note') ?? ''),
       }
-
-      const saved = rule
-        ? await onEdit(rule.id, recurringRuleUpdateSchema.parse({ ...fields, revision: rule.revision }))
-        : await onCreate(recurringRuleCreateSchema.parse({ id: draftIdRef.current, ...fields }))
-      if (saved) onClose()
-    } catch (error) {
-      setLocalError(validationMessage(error))
+    const parsed = rule
+      ? recurringRuleUpdateSchema.safeParse({ ...fields, revision: rule.revision })
+      : recurringRuleCreateSchema.safeParse({ id: draftIdRef.current, ...fields })
+    if (!parsed.success) {
+      setLocalError(t('invalidForm'))
+      return
     }
+
+    const saved = rule
+      ? await onEdit(rule.id, parsed.data as RecurringRuleUpdateInput)
+      : await onCreate(parsed.data as RecurringRuleCreateInput)
+    if (saved) onClose()
   }
 
   const error = localError || serverError
@@ -175,26 +183,26 @@ export function RecurringRuleDialog({
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
-          <h2 id="recurring-dialog-title">{editing ? '修改週期交易' : '新增週期交易'}</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label="關閉">
+          <h2 id="recurring-dialog-title">{editing ? t('editRecurringRule') : t('addRecurringRule')}</h2>
+          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
         <form onSubmit={handleSubmit} noValidate>
           <label>
-            <span>名稱</span>
+            <span>{t('name')}</span>
             <input
               ref={nameRef}
               name="name"
               maxLength={80}
               defaultValue={rule?.name ?? ''}
-              placeholder="例如：每月租金"
+              placeholder={t('recurringNameExample')}
               required
             />
           </label>
 
-          <div className="type-switch" role="group" aria-label="交易類型">
+          <div className="type-switch" role="group" aria-label={t('transactionType')}>
             <button
               type="button"
               className={type === 'expense' ? 'is-active expense' : undefined}
@@ -202,7 +210,7 @@ export function RecurringRuleDialog({
               onClick={() => selectType('expense')}
             >
               <ArrowDownRight aria-hidden="true" />
-              支出
+              {t('expense')}
             </button>
             <button
               type="button"
@@ -211,51 +219,51 @@ export function RecurringRuleDialog({
               onClick={() => selectType('income')}
             >
               <ArrowUpRight aria-hidden="true" />
-              收入
+              {t('income')}
             </button>
           </div>
 
           <label className="amount-field recurring-amount-field">
-            <span>每次金額</span>
+            <span>{t('recurringAmount')}</span>
             <span className="amount-input-wrap">
               <span>HK$</span>
               <input
                 name="amount"
                 inputMode="decimal"
                 autoComplete="off"
-                defaultValue={rule ? (rule.amountMinor / 100).toFixed(2) : ''}
-                placeholder="0.00"
-                pattern="[0-9]+([.][0-9]{1,2})?"
+                defaultValue={rule ? (rule.amountMinor / 100).toFixed(2).replace('.', locale === 'fr' ? ',' : '.') : ''}
+                placeholder={locale === 'fr' ? '0,00' : '0.00'}
+                pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
                 aria-invalid={Boolean(error)}
                 required
               />
             </span>
-            {rule ? <small>目前：{formatMoney(rule.amountMinor)}</small> : null}
+            {rule ? <small>{t('currentAmount', { amount: formatMoney(rule.amountMinor) })}</small> : null}
           </label>
 
           <div className="form-grid recurring-form-grid">
             <label>
-              <span>帳戶</span>
+              <span>{t('account')}</span>
               <select value={accountId} onChange={(event) => setAccountId(Number(event.target.value))} required>
                 {accounts.map((account) => (
                   <option value={account.id} key={account.id}>
-                    {account.name}
+                    {localizeEntityName(account.name, account.localizationKey)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              <span>分類</span>
+              <span>{t('category')}</span>
               <select value={categoryId} onChange={(event) => setCategoryId(Number(event.target.value))} required>
                 {matchingCategories.map((category) => (
                   <option value={category.id} key={category.id}>
-                    {category.name}
+                    {localizeEntityName(category.name, category.localizationKey)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              <span>頻率</span>
+              <span>{t('frequency')}</span>
               <select value={frequency} onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}>
                 {Object.entries(frequencyLabels).map(([value, label]) => (
                   <option value={value} key={value}>
@@ -265,7 +273,7 @@ export function RecurringRuleDialog({
               </select>
             </label>
             <label>
-              <span>{editing ? '週期基準日期' : '首次產生日期'}</span>
+              <span>{editing ? t('scheduleBaseDate') : t('firstGenerationDate')}</span>
               <input
                 type="date"
                 value={scheduleDate}
@@ -277,35 +285,33 @@ export function RecurringRuleDialog({
 
           {frequency === 'monthly' ? (
             <p className="schedule-note" id="recurring-monthly-note">
-              選擇每月 29–31 日時，較短月份會在該月最後一日產生，之後仍回到原本日期。
+              {t('monthlyAnchorHelp')}
             </p>
           ) : null}
 
           {rule ? (
-            <p className="schedule-note">
-              目前下次產生日期：{formatHongKongDate(rule.nextOccurrenceOn)}。儲存後會按新的基準日期重新計算未來排程。
-            </p>
+            <p className="schedule-note">{t('nextGenerationHelp', { date: formatDate(rule.nextOccurrenceOn) })}</p>
           ) : null}
 
           <label>
-            <span>商戶／對象</span>
-            <input name="payee" maxLength={80} defaultValue={rule?.payee ?? ''} placeholder="例如：業主或僱主" />
+            <span>{t('payee')}</span>
+            <input name="payee" maxLength={80} defaultValue={rule?.payee ?? ''} placeholder={t('recurringPayeeExample')} />
           </label>
           <label>
-            <span>備註（選填）</span>
-            <textarea name="note" maxLength={200} rows={2} defaultValue={rule?.note ?? ''} placeholder="加入簡短備註" />
+            <span>{t('noteOptional')}</span>
+            <textarea name="note" maxLength={200} rows={2} defaultValue={rule?.note ?? ''} placeholder={t('notePlaceholder')} />
           </label>
 
           <label className="active-toggle">
             <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />
             <span>
-              <strong>啟用自動產生</strong>
-              <small>關閉後會保留設定，但不會產生新交易。</small>
+              <strong>{t('enableAutomaticGeneration')}</strong>
+              <small>{t('automaticGenerationHelp')}</small>
             </span>
           </label>
 
           <p className="schedule-note" id="recurring-future-note">
-            系統只記錄日期，不設時間欄位。修改只影響尚未產生的交易，歷史交易不會改動。
+            {t('recurringHistoryHelp')}
           </p>
 
           {error ? (
@@ -314,12 +320,12 @@ export function RecurringRuleDialog({
             </p>
           ) : null}
 
-          {!online ? <p className="offline-form-note">離線時不會提交或儲存週期交易。</p> : null}
+          {!online ? <p className="offline-form-note">{t('offlineRecurringForm')}</p> : null}
 
           <div className="dialog-actions">
             <button className="button button-primary save-button" type="submit" disabled={saving || !online}>
               {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
-              {saving ? '正在儲存…' : editing ? '儲存修改' : '建立週期交易'}
+              {saving ? t('saving') : editing ? t('saveChanges') : t('createRecurringRule')}
             </button>
           </div>
         </form>

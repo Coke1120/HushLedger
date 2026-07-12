@@ -14,6 +14,8 @@ D1 data and contain no private financial records.
 - `qa/recurring-desktop-1440.png` — recurring rules at 1440 × 900.
 - `qa/recurring-mobile-390.png` — recurring rules at 390 × 844.
 - `qa/recurring-mobile-dialog-390.png` — recurring-rule form at 390 × 844.
+- `qa/settings-en-desktop-1440.png` — English settings at 1440 × 900.
+- `qa/settings-fr-mobile-320.png` — French settings at 320 × 844.
 
 Browser interactions and DOM assertions used the Codex in-app Browser. Its raster
 capture timed out, so the final PNG evidence was captured from the same local route
@@ -32,6 +34,20 @@ through Chromium DevTools Protocol with exact device metrics.
 - Expense/income switching immediately limits categories to the matching type.
 - Empty, validation, saving, success, demo and offline states were exercised.
 - Offline copy explicitly says mutations will not be saved.
+
+## Multilingual settings evidence
+
+- Traditional Chinese, English, Japanese and French can be selected immediately
+  from the settings page; the choice survives reload through browser-local storage.
+- Browser-language matching and unsupported stored-locale recovery were exercised.
+- Page title, document language, description metadata, navigation, forms, status
+  messages, ARIA labels, dates, month names and HKD formatting update with the locale.
+- French decimal-comma input was created and displayed as `123,45`; recurring-rule
+  create, edit, pause, resume and delete flows remained localized end to end.
+- Built-in account and category labels localize through stable keys. User-created
+  names, payees, notes and rule names remain verbatim.
+- English, French and Japanese screens were exercised at 320, 390, 768, 1024 and
+  1440 px with no horizontal document overflow and 44 px minimum visible targets.
 
 ## Recurring automation workflow evidence
 

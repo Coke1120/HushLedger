@@ -1,6 +1,6 @@
 # HushLedger
 
-> 一個安靜、可信、以私隱為先的私人收支 PWA。
+> A calm, trustworthy, privacy-first personal finance PWA.
 
 [![CI](https://github.com/Coke1120/HushLedger/actions/workflows/ci.yml/badge.svg)](https://github.com/Coke1120/HushLedger/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-17483c.svg)](LICENSE)
@@ -8,12 +8,13 @@
 
 ![HushLedger ledger-and-flow brand artwork](design/brand/hushledger-social-preview.png)
 
-HushLedger 是繁體中文、single-user、online-first 的私人收支管理工具。它使用
-React PWA、Cloudflare Workers 與 D1，專注快速記帳、清楚的月份總覽，以及可靠
-的每日／每週／每月週期交易。Production 必須由 Cloudflare Access 保護。
+HushLedger 是支援繁體中文、English、日本語及 Français 的 single-user、
+online-first 私人收支管理工具。它使用 React PWA、Cloudflare Workers 與 D1，
+專注快速記帳、清楚的月份總覽，以及可靠的每日／每週／每月週期交易。
+Production 必須由 Cloudflare Access 保護。
 
-Open-source privacy-first personal finance PWA and expense tracker for Hong Kong,
-with income tracking, recurring transactions, React, TypeScript, Cloudflare Workers
+Open-source, privacy-first, multilingual personal finance PWA and expense tracker
+with income tracking, recurring transactions, React, TypeScript, Cloudflare Workers,
 and D1.
 
 ![HushLedger desktop dashboard](design/qa/desktop-1440-live.png)
@@ -29,6 +30,7 @@ and D1.
 - 月底錨點不漂移，例如 1 月 31 日會依次落在 2 月最後一日及 3 月 31 日。
 - PWA app shell、手機 bottom sheet、tablet／desktop responsive layout。
 - 明確的 loading、demo、offline、success 及 error 狀態。
+- 設定頁面可即時切換繁體中文、英文、日文及法文；選擇只儲存在目前 browser。
 
 目前帳戶及分類由 D1 seed 提供，包括現金、銀行、信用卡、電子錢包、收入及支出
 分類。完整的自訂銀行／付款帳戶／收入及支出分類管理屬下一階段；現有 schema
@@ -41,7 +43,7 @@ transaction type。
 - 預設貨幣為 HKD。
 - HK$123.45 以 `12345` 儲存在 `amount_minor`。
 - 交易使用 client-generated UUID，安全重試不會建立重複資料。
-- 交易只記錄香港曆日 `YYYY-MM-DD`，沒有 transaction time field。
+- 交易只記錄曆日 `YYYY-MM-DD`，沒有 transaction time field。
 - `created_at`／`updated_at` 是內部 UTC audit timestamps，不是使用者交易時間。
 - 週期規則的 occurrence date 是 immutable idempotency key；修改只影響未產生的
   未來交易，暫停或刪除規則不會刪除歷史交易。
@@ -61,6 +63,20 @@ React 19 + Vite 8 + TypeScript PWA
 
 沒有獨立 database server、Docker database、第三方字型或 application-level login。
 Cloudflare Access 是 production authentication boundary。
+
+## 語言及設定
+
+HushLedger 內建以下介面語言：
+
+- 繁體中文（`zh-Hant`）
+- English（`en`）
+- 日本語（`ja`）
+- Français（`fr`）
+
+第一次開啟時，app 會從 browser 語言選擇最接近的支援語言；之後可在「設定」
+頁面隨時切換。語言偏好只使用 browser local storage，不會寫入 D1、傳送至
+Worker，或建立額外的使用者 profile。日期、月份、金額、導覽、表單、狀態及
+錯誤訊息會依目前語言顯示；自訂帳戶、分類、商戶、備註及規則名稱則保留原文。
 
 ## 本機開始
 
@@ -121,8 +137,9 @@ npm run types:worker
 | `0001_schema.sql` | 初始 tables |
 | `0002_seed.sql` | 初始 seed |
 | `0003_phase1_hardening.sql` | constraints、indexes、UUID 交易及完整 seed |
-| `0004_transaction_date_only.sql` | 把舊交易時間轉為香港曆日並移除 time field |
+| `0004_transaction_date_only.sql` | 把舊交易時間轉為曆日並移除 time field |
 | `0005_recurring_rules.sql` | 週期規則、generation cursor 及 transaction provenance |
+| `0006_reference_localization_keys.sql` | 為內建帳戶及分類加入穩定的語言 key；自訂名稱保持原文 |
 
 Local：
 

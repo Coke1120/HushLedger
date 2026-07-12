@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, LoaderCircle, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useI18n } from '../i18n'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
 import { parseAmount } from '../lib/money'
 import { transactionInputSchema, type Account, type Category, type TransactionInput, type TransactionType } from '../lib/schema'
@@ -14,14 +15,6 @@ type TransactionDialogProps = {
   onSubmit: (input: TransactionInput) => Promise<boolean>
 }
 
-function validationMessage(error: unknown) {
-  if (typeof error === 'object' && error !== null && 'issues' in error) {
-    const issues = (error as { issues?: Array<{ message?: string }> }).issues
-    if (issues?.[0]?.message) return issues[0].message
-  }
-  return error instanceof Error ? error.message : '資料不正確，請檢查後再試。'
-}
-
 export function TransactionDialog({
   accounts,
   categories,
@@ -31,6 +24,7 @@ export function TransactionDialog({
   onClose,
   onSubmit,
 }: TransactionDialogProps) {
+  const { locale, localizeEntityName, t } = useI18n()
   const [type, setType] = useState<TransactionType>('expense')
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState(categories.find((category) => category.type === 'expense')?.id ?? 0)
@@ -101,12 +95,23 @@ export function TransactionDialog({
     event.preventDefault()
     setLocalError('')
     const data = new FormData(event.currentTarget)
+    if (!isValidCalendarDate(date)) {
+      setLocalError(t('invalidDate'))
+      return
+    }
+
+    let amountMinor: number
     try {
-      if (!isValidCalendarDate(date)) throw new Error('請輸入有效日期。')
-      const input = transactionInputSchema.parse({
+      amountMinor = parseAmount(String(data.get('amount') ?? ''), locale)
+    } catch {
+      setLocalError(t('invalidAmount'))
+      return
+    }
+
+    const parsed = transactionInputSchema.safeParse({
         id: draftIdRef.current,
         type,
-        amountMinor: parseAmount(String(data.get('amount') ?? '')),
+        amountMinor,
         currency: 'HKD',
         accountId,
         categoryId: matchingCategories.some((category) => category.id === categoryId)
@@ -116,11 +121,13 @@ export function TransactionDialog({
         payee: String(data.get('payee') ?? ''),
         note: String(data.get('note') ?? ''),
       })
-      const saved = await onSubmit(input)
-      if (saved) onClose()
-    } catch (error) {
-      setLocalError(validationMessage(error))
+    if (!parsed.success) {
+      setLocalError(t('invalidForm'))
+      return
     }
+
+    const saved = await onSubmit(parsed.data)
+    if (saved) onClose()
   }
 
   const error = localError || serverError
@@ -142,26 +149,26 @@ export function TransactionDialog({
       >
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
-          <h2 id="transaction-dialog-title">新增交易</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label="關閉">
+          <h2 id="transaction-dialog-title">{t('addTransaction')}</h2>
+          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
         <form onSubmit={handleSubmit} noValidate>
-          <div className="type-switch" role="group" aria-label="交易類型">
+          <div className="type-switch" role="group" aria-label={t('transactionType')}>
             <button type="button" className={type === 'expense' ? 'is-active expense' : undefined} aria-pressed={type === 'expense'} onClick={() => selectType('expense')}>
               <ArrowDownRight aria-hidden="true" />
-              支出
+              {t('expense')}
             </button>
             <button type="button" className={type === 'income' ? 'is-active income' : undefined} aria-pressed={type === 'income'} onClick={() => selectType('income')}>
               <ArrowUpRight aria-hidden="true" />
-              收入
+              {t('income')}
             </button>
           </div>
 
           <label className="amount-field">
-            <span>金額</span>
+            <span>{t('amount')}</span>
             <span className="amount-input-wrap">
               <span>HK$</span>
               <input
@@ -169,8 +176,8 @@ export function TransactionDialog({
                 name="amount"
                 inputMode="decimal"
                 autoComplete="off"
-                placeholder="0.00"
-                pattern="[0-9]+([.][0-9]{1,2})?"
+                placeholder={locale === 'fr' ? '0,00' : '0.00'}
+                pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
                 aria-invalid={Boolean(error)}
                 required
               />
@@ -179,38 +186,38 @@ export function TransactionDialog({
 
           <div className="form-grid">
             <label>
-              <span>帳戶</span>
+              <span>{t('account')}</span>
               <select value={accountId} onChange={(event) => setAccountId(Number(event.target.value))} required>
                 {accounts.map((account) => (
                   <option value={account.id} key={account.id}>
-                    {account.name}
+                    {localizeEntityName(account.name, account.localizationKey)}
                   </option>
                 ))}
               </select>
             </label>
             <label>
-              <span>分類</span>
+              <span>{t('category')}</span>
               <select value={categoryId} onChange={(event) => setCategoryId(Number(event.target.value))} required>
                 {matchingCategories.map((category) => (
                   <option value={category.id} key={category.id}>
-                    {category.name}
+                    {localizeEntityName(category.name, category.localizationKey)}
                   </option>
                 ))}
               </select>
             </label>
             <label className="form-date-field">
-              <span>日期</span>
+              <span>{t('date')}</span>
               <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
             </label>
           </div>
 
           <label>
-            <span>商戶／對象</span>
-            <input name="payee" maxLength={80} placeholder={type === 'expense' ? '例如：百佳超級市場' : '例如：公司薪金'} />
+            <span>{t('payee')}</span>
+            <input name="payee" maxLength={80} placeholder={type === 'expense' ? t('expensePayeeExample') : t('incomePayeeExample')} />
           </label>
           <label>
-            <span>備註（選填）</span>
-            <textarea name="note" maxLength={200} rows={2} placeholder="加入簡短備註" />
+            <span>{t('noteOptional')}</span>
+            <textarea name="note" maxLength={200} rows={2} placeholder={t('notePlaceholder')} />
           </label>
 
           {error ? (
@@ -219,12 +226,12 @@ export function TransactionDialog({
             </p>
           ) : null}
 
-          {!online ? <p className="offline-form-note">離線時不會提交或儲存交易。</p> : null}
+          {!online ? <p className="offline-form-note">{t('offlineTransactionForm')}</p> : null}
 
           <div className="dialog-actions">
             <button className="button button-primary save-button" type="submit" disabled={saving || !online}>
               {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
-              {saving ? '正在儲存…' : '儲存交易'}
+              {saving ? t('saving') : t('saveTransaction')}
             </button>
           </div>
         </form>

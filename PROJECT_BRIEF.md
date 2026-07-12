@@ -4,7 +4,8 @@
 >
 > Status: core transaction and recurring-rule release implemented locally
 >
-> Product language: Traditional Chinese (`zh-Hant-HK`)
+> Product languages: Traditional Chinese (`zh-Hant`), English (`en`), Japanese
+> (`ja`), and French (`fr`)
 
 ## Goal
 
@@ -34,13 +35,15 @@ not operate an independent database server or a multi-user identity system.
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
 - Filter income and expense.
+- Switch the interface language in Settings; keep the preference in the current
+  browser only.
 
 ### Record money
 
 - Add income or expense in a short responsive form.
 - Choose an active account and a matching income or expense category.
 - Add a custom payee or note.
-- Select a Hong Kong calendar date only; no transaction-time field exists.
+- Select a calendar date only; no transaction-time field exists.
 - Receive explicit success, error, demo, and offline feedback.
 
 ### Automate predictable entries
@@ -64,7 +67,7 @@ amount_minor          positive integer minor units
 currency              HKD in the current release
 account_id            active compatible account
 category_id           active matching category
-occurred_on           YYYY-MM-DD Hong Kong calendar date
+occurred_on           YYYY-MM-DD calendar date
 payee                 optional custom text
 note                  optional custom text
 recurring_rule_id     nullable provenance
@@ -98,8 +101,8 @@ account type in the current data model.
 - A schedule retains its original numeric day anchor. A January 31 monthly rule
   clamps to February's last day and returns to March 31.
 - Creating a rule with a past start does not create historical entries; its
-  first due date is the first matching date on or after the Hong Kong current
-  date.
+  first due date is the first matching date on or after the current date in the
+  application's configured timezone.
 - Existing active rules catch up missed Cron dates with a bounded batch.
 - Paused dates are skipped when a rule resumes.
 - Generated occurrences use a database unique key, user-facing revision, and
@@ -146,8 +149,10 @@ Database and stack errors are never returned to the client.
 ## UX direction
 
 - Calm warm-white canvas, forest-green identity, restrained income and expense
-  colors, and system Traditional Chinese typography.
+  colors, and a system font stack that supports all four product languages.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
+- A Settings page with immediate language switching and local-only preference
+  persistence.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
   targets, sufficient contrast, and field-linked errors.
 - No fake navigation, decorative charts, remote fonts, marketing hero, or
@@ -159,7 +164,8 @@ Database and stack errors are never returned to the client.
 
 - D1 schema, seed, constraints, indexes, and date-only migration.
 - Accounts, categories, transactions, summary, and recurring-rule APIs.
-- Responsive dashboard, transaction form/list, and recurring-rule management.
+- Responsive dashboard, transaction form/list, recurring-rule management, and
+  language settings.
 - Daily 00:05 HKT Cron plus manual due generation.
 - Unit tests, typecheck, two linters, production PWA build, fresh migration, and
   upgrade migration validation.

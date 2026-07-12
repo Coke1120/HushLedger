@@ -38,6 +38,9 @@ describe('Hong Kong date helpers', () => {
 
   it('formats a transaction date without a time', () => {
     expect(formatHongKongDate('2026-07-11')).toBe('7月11日')
+    expect(formatHongKongDate('2026-07-11', 'en')).toBe('July 11')
+    expect(formatHongKongDate('2026-07-11', 'ja')).toBe('7月11日')
+    expect(formatHongKongDate('2026-07-11', 'fr')).toBe('11 juillet')
   })
 
   it('rejects an invalid month query', () => {

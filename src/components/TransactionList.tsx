@@ -12,8 +12,7 @@ import {
   Utensils,
   type LucideIcon,
 } from 'lucide-react'
-import { formatHongKongDate } from '../lib/date'
-import { formatMoney } from '../lib/money'
+import { useI18n } from '../i18n'
 import type { Transaction } from '../lib/schema'
 
 const iconMap: Record<string, LucideIcon> = {
@@ -35,10 +34,12 @@ type TransactionListProps = {
 }
 
 export function TransactionList({ transactions, loading }: TransactionListProps) {
+  const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
+
   if (loading) {
     return (
       <div className="transaction-empty" role="status">
-        正在整理交易紀錄…
+        {t('organizingTransactions')}
       </div>
     )
   }
@@ -46,17 +47,20 @@ export function TransactionList({ transactions, loading }: TransactionListProps)
   if (transactions.length === 0) {
     return (
       <div className="transaction-empty">
-        <strong>找不到交易</strong>
-        <span>可調整月份、類型或搜尋字詞。</span>
+        <strong>{t('noTransactions')}</strong>
+        <span>{t('noTransactionsHelp')}</span>
       </div>
     )
   }
 
   return (
-    <ul className="transaction-list" aria-label="交易紀錄">
+    <ul className="transaction-list" aria-label={t('transactionList')}>
       {transactions.map((transaction) => {
         const Icon = iconMap[transaction.categoryIcon] ?? CircleEllipsis
-        const title = transaction.payee || transaction.categoryName
+        const categoryName = localizeEntityName(transaction.categoryName, transaction.categoryLocalizationKey)
+        const accountName = localizeEntityName(transaction.accountName, transaction.accountLocalizationKey)
+        const title = transaction.payee || categoryName
+        const generatedLabel = t('generatedByRule', { name: transaction.recurringRuleName ?? t('unnamedRule') })
         return (
           <li className="transaction-row" key={transaction.id}>
             <span
@@ -70,21 +74,19 @@ export function TransactionList({ transactions, loading }: TransactionListProps)
               <strong className="transaction-title">
                 <span>{title}</span>
                 {transaction.recurringRuleId ? (
-                  <span className="auto-generated-badge" title={`由週期交易「${transaction.recurringRuleName ?? '未命名'}」自動產生`}>
+                  <span className="auto-generated-badge" title={generatedLabel}>
                     <Repeat aria-hidden="true" />
-                    <span className="sr-only">
-                      由週期交易「{transaction.recurringRuleName ?? '未命名'}」自動產生
-                    </span>
+                    <span className="sr-only">{generatedLabel}</span>
                   </span>
                 ) : null}
               </strong>
               <small>
-                {transaction.categoryName} · {transaction.accountName}
+                {categoryName} · {accountName}
               </small>
             </span>
-            <time dateTime={transaction.occurredOn}>{formatHongKongDate(transaction.occurredOn)}</time>
+            <time dateTime={transaction.occurredOn}>{formatDate(transaction.occurredOn)}</time>
             <strong className={`transaction-amount ${transaction.type}`}>
-              <span className="sr-only">{transaction.type === 'income' ? '收入' : '支出'}</span>
+              <span className="sr-only">{transaction.type === 'income' ? t('income') : t('expense')}</span>
               {transaction.type === 'income' ? '+' : '−'}
               {formatMoney(transaction.amountMinor)}
             </strong>

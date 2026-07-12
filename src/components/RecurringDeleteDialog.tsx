@@ -1,5 +1,6 @@
 import { LoaderCircle, Trash2, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { useI18n } from '../i18n'
 import type { RecurringRule } from '../lib/schema'
 
 type RecurringDeleteDialogProps = {
@@ -10,6 +11,7 @@ type RecurringDeleteDialogProps = {
 }
 
 export function RecurringDeleteDialog({ rule, deleting, onClose, onConfirm }: RecurringDeleteDialogProps) {
+  const { t } = useI18n()
   const dialogRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -72,23 +74,21 @@ export function RecurringDeleteDialog({ rule, deleting, onClose, onConfirm }: Re
         aria-labelledby="delete-recurring-title"
         aria-describedby="delete-recurring-description"
       >
-        <button className="icon-button confirmation-close" type="button" onClick={onClose} disabled={deleting} aria-label="關閉">
+        <button className="icon-button confirmation-close" type="button" onClick={onClose} disabled={deleting} aria-label={t('close')}>
           <X aria-hidden="true" />
         </button>
         <span className="confirmation-icon" aria-hidden="true">
           <Trash2 />
         </span>
-        <h2 id="delete-recurring-title">刪除「{rule.name}」？</h2>
-        <p id="delete-recurring-description">
-          此設定會停止並永久刪除，但過往由它自動產生的 {rule.generatedCount} 筆交易仍會保留，不會一併刪除。
-        </p>
+        <h2 id="delete-recurring-title">{t('deleteRecurringTitle', { name: rule.name })}</h2>
+        <p id="delete-recurring-description">{t('deleteRecurringDescription', { count: rule.generatedCount })}</p>
         <div className="confirmation-actions">
           <button ref={cancelRef} className="button button-secondary" type="button" onClick={onClose} disabled={deleting}>
-            取消
+            {t('cancel')}
           </button>
           <button className="button button-danger" type="button" onClick={() => void confirm()} disabled={deleting}>
             {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
-            {deleting ? '正在刪除…' : '確認刪除'}
+            {deleting ? t('deleting') : t('confirmDelete')}
           </button>
         </div>
       </div>

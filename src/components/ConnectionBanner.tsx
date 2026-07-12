@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, CloudOff, LoaderCircle, RefreshCw } from 'lucide-react'
 import type { DataSource } from '../hooks/useMoneyData'
+import { useI18n } from '../i18n'
 
 type ConnectionBannerProps = {
   source: DataSource
@@ -9,6 +10,8 @@ type ConnectionBannerProps = {
 }
 
 export function ConnectionBanner({ source, online, actionMessage, onRetry }: ConnectionBannerProps) {
+  const { t } = useI18n()
+
   if (actionMessage) {
     return (
       <div className="status-banner status-success" role="status">
@@ -22,7 +25,7 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
     return (
       <div className="status-banner status-loading" role="status">
         <LoaderCircle className="spin" aria-hidden="true" />
-        <span>正在載入你的收支資料…</span>
+        <span>{t('loadingMoneyData')}</span>
       </div>
     )
   }
@@ -31,7 +34,7 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
     return (
       <div className="status-banner status-warning" role="alert">
         <CloudOff aria-hidden="true" />
-        <span>目前離線。只可查看展示資料，離線時不會儲存交易。</span>
+        <span>{t('offlineMoneyData')}</span>
       </div>
     )
   }
@@ -41,11 +44,11 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
       <div className="status-banner status-warning" role="alert">
         <AlertTriangle aria-hidden="true" />
         <span>
-          <strong>展示模式：</strong> API 暫時無法連線；新增資料只保留在本次頁面，不會儲存到 Cloudflare。
+          <strong>{t('demoMode')}</strong> {t('demoMoneyData')}
         </span>
         <button type="button" onClick={onRetry}>
           <RefreshCw aria-hidden="true" />
-          重試
+          {t('retry')}
         </button>
       </div>
     )
@@ -55,10 +58,10 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
     return (
       <div className="status-banner status-error" role="alert">
         <AlertTriangle aria-hidden="true" />
-        <span>資料已儲存，但畫面未能重新整理。</span>
+        <span>{t('savedRefreshFailed')}</span>
         <button type="button" onClick={onRetry}>
           <RefreshCw aria-hidden="true" />
-          重新整理
+          {t('refresh')}
         </button>
       </div>
     )

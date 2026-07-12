@@ -1,0 +1,83 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { formatHongKongDate, formatMonthLabel } from '../lib/date'
+import { formatMoney as formatCurrency } from '../lib/money'
+import { I18nContext, type I18nContextValue } from './context'
+import {
+  LOCALE_STORAGE_KEY,
+  localizeEntity,
+  resolveLocale,
+  translate,
+  type Locale,
+  type Translator,
+} from './core'
+
+function readInitialLocale() {
+  let storedLocale: string | null = null
+  try {
+    storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
+  } catch {
+    // Storage can be unavailable in hardened or private browser contexts.
+  }
+
+  const browserLanguages = navigator.languages?.length
+    ? navigator.languages
+    : navigator.language
+      ? [navigator.language]
+      : []
+  return resolveLocale(storedLocale, browserLanguages)
+}
+
+function setMetaContent(selector: string, value: string) {
+  document.querySelector<HTMLMetaElement>(selector)?.setAttribute('content', value)
+}
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [locale, setLocale] = useState<Locale>(readInitialLocale)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+    } catch {
+      // The selected locale still applies for this session if persistence is unavailable.
+    }
+
+    const title = translate(locale, 'appTitle')
+    const description = translate(locale, 'metaDescription')
+    document.documentElement.lang = locale
+    document.title = title
+    setMetaContent('meta[name="description"]', description)
+    setMetaContent('meta[property="og:title"]', title)
+    setMetaContent('meta[property="og:description"]', description)
+    setMetaContent('meta[name="twitter:title"]', title)
+    setMetaContent('meta[name="twitter:description"]', description)
+  }, [locale])
+
+  const t = useCallback<Translator>((key, values) => translate(locale, key, values), [locale])
+  const formatMoney = useCallback(
+    (minor: number, currency = 'HKD') => formatCurrency(minor, currency, locale),
+    [locale],
+  )
+  const formatMonth = useCallback((month: string) => formatMonthLabel(month, locale), [locale])
+  const formatDate = useCallback((date: string) => formatHongKongDate(date, locale), [locale])
+  const formatNumber = useCallback((value: number) => new Intl.NumberFormat(locale).format(value), [locale])
+  const localizeEntityName = useCallback(
+    (name: string, localizationKey?: string | null) => localizeEntity(locale, name, localizationKey),
+    [locale],
+  )
+
+  const value = useMemo<I18nContextValue>(
+    () => ({
+      locale,
+      setLocale,
+      t,
+      formatMoney,
+      formatMonth,
+      formatDate,
+      formatNumber,
+      localizeEntityName,
+    }),
+    [formatDate, formatMoney, formatMonth, formatNumber, locale, localizeEntityName, t],
+  )
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+}

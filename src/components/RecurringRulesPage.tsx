@@ -15,12 +15,10 @@ import {
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
-import { formatHongKongDate } from '../lib/date'
-import { formatMoney } from '../lib/money'
+import { useI18n } from '../i18n'
 import type {
   Account,
   Category,
-  RecurrenceFrequency,
   RecurringRule,
   RecurringRuleCreateInput,
   RecurringRuleUpdateInput,
@@ -34,20 +32,20 @@ type RecurringRulesPageProps = {
   onMoneyRefresh: () => Promise<boolean>
 }
 
-const frequencyLabels: Record<RecurrenceFrequency, string> = {
-  daily: '每日',
-  weekly: '每週',
-  monthly: '每月',
-}
-
 export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: RecurringRulesPageProps) {
+  const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const recurring = useRecurringRules(onMoneyRefresh)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
 
-  const accountNames = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts])
-  const categoryNames = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories])
+  const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts])
+  const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
+  const frequencyLabels = {
+    daily: t('daily'),
+    weekly: t('weekly'),
+    monthly: t('monthly'),
+  }
 
   const closeEditor = useCallback(() => {
     setEditorOpen(false)
@@ -81,21 +79,21 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
       return {
         className: 'recurring-status status-warning',
         icon: <CloudOff aria-hidden="true" />,
-        text: '目前離線：可查看示範設定，但不能建立、修改、暫停或刪除。',
+        text: t('recurringOfflineStatus'),
       }
     }
     if (recurring.source === 'loading') {
       return {
         className: 'recurring-status',
         icon: <LoaderCircle className="spin" aria-hidden="true" />,
-        text: '正在載入週期交易…',
+        text: t('recurringLoadingStatus'),
       }
     }
     if (recurring.source === 'error' || recurring.error) {
       return {
         className: 'recurring-status status-error',
         icon: <CircleAlert aria-hidden="true" />,
-        text: recurring.error || '未能載入週期交易。',
+        text: recurring.error || t('recurringLoadFailed'),
       }
     }
     if (recurring.actionMessage) {
@@ -109,7 +107,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
       return {
         className: 'recurring-status status-warning',
         icon: <Sparkles aria-hidden="true" />,
-        text: '現正顯示示範資料；變更只保留在本次頁面，不會寫入 Cloudflare。',
+        text: t('recurringDemoStatus'),
       }
     }
     return null
@@ -121,8 +119,8 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
     <section className="recurring-page" aria-labelledby="recurring-page-title">
       <div className="recurring-hero">
         <div className="recurring-hero-copy">
-          <h2 id="recurring-page-title">週期交易</h2>
-          <p>設定每日、每週或每月自動建立收入與支出。只需選日期，不需要填寫時間。</p>
+          <h2 id="recurring-page-title">{t('recurring')}</h2>
+          <p>{t('recurringPageDescription')}</p>
         </div>
         <div className="recurring-hero-actions">
           <button
@@ -132,11 +130,11 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
             disabled={!recurring.online || recurring.running || loading}
           >
             {recurring.running ? <LoaderCircle className="spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
-            {recurring.running ? '正在檢查…' : '產生到期交易'}
+            {recurring.running ? t('checking') : t('generateDueTransactions')}
           </button>
           <button className="button button-primary" type="button" onClick={openCreate} disabled={!recurring.online}>
             <Plus aria-hidden="true" />
-            新增週期交易
+            {t('addRecurringRule')}
           </button>
         </div>
       </div>
@@ -148,7 +146,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
           {recurring.source === 'error' ? (
             <button type="button" onClick={() => void recurring.refresh()}>
               <RefreshCw aria-hidden="true" />
-              重試
+              {t('retry')}
             </button>
           ) : null}
         </div>
@@ -157,38 +155,44 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
       <div className="recurring-panel">
         <div className="recurring-panel-heading">
           <div>
-            <h3>你的自動設定</h3>
-            <p>{loading ? '正在載入' : `${recurring.rules.length} 項設定`}</p>
+            <h3>{t('automationSettings')}</h3>
+            <p>{loading ? t('loading') : t('recurringRuleCount', { count: recurring.rules.length })}</p>
           </div>
           <span className="date-only-note">
             <CalendarClock aria-hidden="true" />
-            日期制，不記錄時間
+            {t('dateOnlyNote')}
           </span>
         </div>
 
         {loading ? (
           <div className="recurring-empty" role="status">
             <LoaderCircle className="spin" aria-hidden="true" />
-            正在整理週期交易…
+            {t('organizingRecurring')}
           </div>
         ) : recurring.rules.length === 0 ? (
           <div className="recurring-empty">
             <span className="recurring-empty-icon" aria-hidden="true">
               <Repeat />
             </span>
-            <strong>尚未建立週期交易</strong>
-            <span>可先加入租金、薪金或日常固定支出。</span>
+            <strong>{t('noRecurringRules')}</strong>
+            <span>{t('noRecurringRulesHelp')}</span>
             <button className="button button-primary" type="button" onClick={openCreate} disabled={!recurring.online}>
               <Plus aria-hidden="true" />
-              建立第一項設定
+              {t('createFirstRule')}
             </button>
           </div>
         ) : (
-          <ul className="recurring-list" aria-label="週期交易設定">
+          <ul className="recurring-list" aria-label={t('recurringRuleList')}>
             {recurring.rules.map((rule) => {
               const busy = recurring.mutatingId === rule.id
-              const accountName = accountNames.get(rule.accountId) ?? '未知帳戶'
-              const categoryName = categoryNames.get(rule.categoryId) ?? '未知分類'
+              const account = accountsById.get(rule.accountId)
+              const category = categoriesById.get(rule.categoryId)
+              const accountName = account
+                ? localizeEntityName(account.name, account.localizationKey)
+                : t('unknownAccount')
+              const categoryName = category
+                ? localizeEntityName(category.name, category.localizationKey)
+                : t('unknownCategory')
               return (
                 <li className={`recurring-rule ${rule.isActive ? '' : 'is-paused'}`} key={rule.id}>
                   <div className="recurring-rule-main">
@@ -197,7 +201,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
                     </span>
                     <div className="recurring-rule-title">
                       <span className={`rule-status ${rule.isActive ? 'is-active' : 'is-paused'}`}>
-                        {rule.isActive ? '運作中' : '已暫停'}
+                        {rule.isActive ? t('active') : t('paused')}
                       </span>
                       <strong>{rule.name}</strong>
                       <small>{rule.payee || `${categoryName} · ${accountName}`}</small>
@@ -205,9 +209,9 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
                   </div>
 
                   <div className="recurring-rule-amount">
-                    <span>每次</span>
+                    <span>{t('eachTime')}</span>
                     <strong className={rule.type}>
-                      <span className="sr-only">{rule.type === 'income' ? '收入' : '支出'}</span>
+                      <span className="sr-only">{rule.type === 'income' ? t('income') : t('expense')}</span>
                       {rule.type === 'income' ? '+' : '−'}
                       {formatMoney(rule.amountMinor)}
                     </strong>
@@ -215,29 +219,29 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
 
                   <dl className="recurring-rule-details">
                     <div>
-                      <dt>頻率</dt>
+                      <dt>{t('frequency')}</dt>
                       <dd>{frequencyLabels[rule.frequency]}</dd>
                     </div>
                     <div>
-                      <dt>下次日期</dt>
-                      <dd>{formatHongKongDate(rule.nextOccurrenceOn)}</dd>
+                      <dt>{t('nextDate')}</dt>
+                      <dd>{formatDate(rule.nextOccurrenceOn)}</dd>
                     </div>
                     <div>
-                      <dt>帳戶／分類</dt>
+                      <dt>{t('accountAndCategory')}</dt>
                       <dd>
                         {accountName} · {categoryName}
                       </dd>
                     </div>
                     <div>
-                      <dt>已產生</dt>
-                      <dd>{rule.generatedCount} 筆</dd>
+                      <dt>{t('generated')}</dt>
+                      <dd>{t('generatedCount', { count: rule.generatedCount })}</dd>
                     </div>
                   </dl>
 
                   {rule.lastErrorCode ? (
                     <p className="rule-error" role="status">
                       <CircleAlert aria-hidden="true" />
-                      上次產生未完成，請檢查帳戶及分類後重試。
+                      {t('recurringGenerationFailed')}
                     </p>
                   ) : null}
 
@@ -249,7 +253,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
                       disabled={!recurring.online || busy}
                     >
                       <Pencil aria-hidden="true" />
-                      修改
+                      {t('edit')}
                     </button>
                     <button
                       className="button button-secondary"
@@ -264,7 +268,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
                       ) : (
                         <Play aria-hidden="true" />
                       )}
-                      {rule.isActive ? '暫停' : '恢復'}
+                      {rule.isActive ? t('pause') : t('resume')}
                     </button>
                     <button
                       className="button recurring-delete-button"
@@ -273,7 +277,7 @@ export function RecurringRulesPage({ accounts, categories, onMoneyRefresh }: Rec
                       disabled={!recurring.online || busy}
                     >
                       <Trash2 aria-hidden="true" />
-                      刪除
+                      {t('delete')}
                     </button>
                   </div>
                 </li>
