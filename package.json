@@ -1,7 +1,7 @@
 {
   "name": "hushledger",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Open-source privacy-first multilingual personal finance PWA and expense tracker with recurring transactions on Cloudflare Workers and D1.",
   "keywords": [
     "personal-finance",
@@ -72,6 +72,7 @@
     "wrangler": "^4.110.0"
   },
   "overrides": {
-    "postcss": "8.5.17"
+    "postcss": "8.5.17",
+    "workerd": "1.20260712.1"
   }
 }
