@@ -6,6 +6,7 @@ import type {
   AccountLocalizationKey,
   Category,
   CategoryLocalizationKey,
+  PayeeSuggestion,
   Summary,
   Transaction,
   TransactionInput,
@@ -146,6 +147,35 @@ export async function listCategories(database: D1Database): Promise<Category[]> 
   `).all<CategoryRow>()
 
   return result.results.map((row) => ({ ...row, isActive: row.isActive === 1 }))
+}
+
+export async function listPayeeSuggestions(database: D1Database): Promise<PayeeSuggestion[]> {
+  const result = await database.prepare(`
+    WITH ranked AS (
+      SELECT
+        trim(payee) AS payee,
+        type,
+        account_id AS accountId,
+        category_id AS categoryId,
+        occurred_on AS lastUsedOn,
+        COUNT(*) OVER (
+          PARTITION BY lower(trim(payee)), type
+        ) AS useCount,
+        ROW_NUMBER() OVER (
+          PARTITION BY lower(trim(payee)), type
+          ORDER BY occurred_on DESC, created_at DESC, id DESC
+        ) AS recency
+      FROM transactions
+      WHERE trim(payee) <> ''
+    )
+    SELECT payee, type, accountId, categoryId, lastUsedOn, useCount
+    FROM ranked
+    WHERE recency = 1
+    ORDER BY lastUsedOn DESC, payee COLLATE NOCASE ASC
+    LIMIT 100
+  `).all<PayeeSuggestion>()
+
+  return result.results
 }
 
 export async function listTransactions(

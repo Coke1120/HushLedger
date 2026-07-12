@@ -61,6 +61,16 @@ explicitly selected transactional commit. Bank source IDs are hashed before they
 become import tombstones. A CSV may still contain plaintext financial data, so
 store and dispose of the source file with the same care as a ledger backup.
 
+## Payee suggestions
+
+Payee suggestions are computed inside the private HushLedger server from saved
+transactions. They are not stored in a new profile, browser storage, log, or
+external service, and they are never sent to an AI provider. The response is
+private and `no-store`, capped at 100 payees, and contains only the latest account
+and category references needed for the new-transaction convenience. The browser
+applies a remembered reference only while it remains active and the user can
+override every suggested value before saving.
+
 ## User-provided AI credentials
 
 The optional AI draft feature accepts an OpenAI-compatible base URL, API key, and

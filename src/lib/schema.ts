@@ -199,6 +199,15 @@ export type Summary = {
   balance: number
 }
 
+export type PayeeSuggestion = {
+  payee: string
+  type: TransactionType
+  accountId: number
+  categoryId: number
+  lastUsedOn: string
+  useCount: number
+}
+
 export type Account = {
   id: number
   name: string

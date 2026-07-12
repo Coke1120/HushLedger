@@ -57,7 +57,8 @@ not operate an independent database server or a multi-user identity system.
 - Choose an active account and a matching income or expense category.
 - Create, rename, disable, re-enable, and reorder accounts and categories in
   Settings without deleting historical references.
-- Add a custom payee or note.
+- Add a custom payee or note; choose a previous payee to reuse its latest active
+  account and category without an external service.
 - Select a calendar date only; no transaction-time field exists.
 - Receive explicit success, error, demo, and offline feedback.
 
@@ -147,6 +148,7 @@ PATCH  /api/categories
 GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
+GET    /api/payee-suggestions
 GET    /api/transactions?month=YYYY-MM&type=...&search=...  (latest 200)
 POST   /api/transactions
 GET    /api/transactions/:id
@@ -240,7 +242,7 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   filtered transaction CSV export, deterministic preview-first HushLedger and
-  generic bank CSV import,
+  generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
 - Versioned five-table JSON backup, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.

@@ -457,6 +457,18 @@ async function verifyWorkerApi() {
   assert(accountsResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
   assert(categoriesResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
 
+  const payeeSuggestions = await api(baseUrl, '/api/payee-suggestions')
+  assert.equal(payeeSuggestions.response.status, 200)
+  assert.match(payeeSuggestions.response.headers.get('cache-control') ?? '', /no-store/)
+  assert.deepEqual(payeeSuggestions.payload.data, [{
+    payee: 'export bulk',
+    type: 'expense',
+    accountId: 1,
+    categoryId: 3,
+    lastUsedOn: today,
+    useCount: 205,
+  }])
+
   const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
   assert.equal(duplicateMonth.response.status, 400)
   assert.equal(duplicateMonth.payload.error.code, 'INVALID_QUERY')
@@ -1416,6 +1428,7 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
+    payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,
     referenceConflictChecks: 4,

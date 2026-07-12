@@ -52,7 +52,9 @@ knowledge and explains every command and dashboard click.
   accounts within the same status and categories within the same type/status.
   Active recurring rules and the last usable account/category are protected
   from accidental disabling.
-- Custom payees and notes.
+- Custom payees and notes, with private suggestions that can reuse a known
+  payee's latest still-active account and category without sending ledger data
+  to a third party.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
   paused, resumed, and deleted.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
@@ -376,6 +378,7 @@ PATCH  /api/categories  (reorder one complete type/status group)
 GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
+GET    /api/payee-suggestions  (latest references for up to 100 known payees)
 GET    /api/transactions?month=YYYY-MM&type=expense|income&search=...
 POST   /api/transactions
 GET    /api/transactions/:id
@@ -411,6 +414,13 @@ Transactions are ordered from newest to oldest by transaction date. A response
 contains at most 200 transactions. When that limit is reached, the UI explicitly
 states that it is showing the 200 most recent transactions instead of describing
 the truncated result as complete.
+
+Payee suggestions are derived on demand from existing transactions and are never
+sent to an AI provider or another service. Suggestions are separated by income
+and expense, ordered by recent use, and capped at 100. A new transaction only
+reuses the latest account or category when that reference is still active; the
+user can always replace either choice before saving. No payee rule or additional
+tracking table is created.
 
 The transaction export route returns a downloadable UTF-8 CSV rather than the
 JSON success envelope. It applies the same month, type, and search filters, is
