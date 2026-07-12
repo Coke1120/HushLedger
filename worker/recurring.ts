@@ -800,6 +800,20 @@ async function executeGenerationPlan(
     database.prepare(`
       WITH planned AS (
         SELECT
+          json_extract(value, '$.ruleId') AS ruleId,
+          json_extract(value, '$.occurrenceKey') AS occurrenceKey
+        FROM json_each(?)
+      )
+      SELECT
+        planned.ruleId,
+        planned.occurrenceKey,
+        t.id AS transactionId
+      FROM planned
+      LEFT JOIN transactions t ON t.recurring_occurrence_key = planned.occurrenceKey
+    `).bind(selectedJson),
+    database.prepare(`
+      WITH planned AS (
+        SELECT
           json_extract(value, '$.transactionId') AS transaction_id,
           json_extract(value, '$.ruleId') AS rule_id,
           json_extract(value, '$.revision') AS revision,
@@ -918,10 +932,12 @@ async function executeGenerationPlan(
     `).bind(selectedJson),
   ])
 
-  const [insertResult, , presenceResult] = results
-  const created = Number(insertResult?.meta.changes ?? 0)
+  const [beforePresenceResult, , , presenceResult] = results
+  const existingBefore = beforePresenceResult?.results
+    .filter((row) => row.transactionId !== null).length ?? 0
   const presence = presenceResult?.results ?? []
   const existingAfter = presence.filter((row) => row.transactionId !== null).length
+  const created = Math.max(0, existingAfter - existingBefore)
   const absentRuleIds = new Set(
     presence.filter((row) => row.transactionId === null).map((row) => row.ruleId),
   )
@@ -953,8 +969,9 @@ async function executeGenerationPlan(
 }
 
 async function recordRuleErrors(database: D1Database, errors: RuleError[]) {
-  const result = await database
-    .prepare(`
+  const payload = JSON.stringify(errors)
+  const [, verification] = await database.batch<{ count: number }>([
+    database.prepare(`
       WITH errors AS (
         SELECT
           json_extract(value, '$.id') AS id,
@@ -983,9 +1000,23 @@ async function recordRuleErrors(database: D1Database, errors: RuleError[]) {
             AND errors.cursor_version = r.cursor_version
             AND errors.expected_next_on = r.next_occurrence_on
         )
-    `)
-    .bind(JSON.stringify(errors))
-    .run()
+    `).bind(payload),
+    database.prepare(`
+      WITH errors AS (
+        SELECT
+          json_extract(value, '$.id') AS id,
+          json_extract(value, '$.cursorVersion') AS cursor_version,
+          json_extract(value, '$.code') AS code
+        FROM json_each(?)
+      )
+      SELECT COUNT(*) AS count
+      FROM recurring_rules r
+      INNER JOIN errors ON errors.id = r.id
+      WHERE
+        r.cursor_version = errors.cursor_version + 1
+        AND r.last_error_code = errors.code
+    `).bind(payload),
+  ])
 
-  return Number(result.meta.changes)
+  return verification?.results[0]?.count ?? 0
 }

@@ -30,6 +30,22 @@ keep secrets out of client bundles and the repository, enable strong authenticat
 on their Cloudflare account, and maintain encrypted off-platform backups. See
 [docs/CLOUDFLARE_SETUP.md](docs/CLOUDFLARE_SETUP.md).
 
+## Ledger backups and restore
+
+The Settings JSON backup contains plaintext financial data. Its SHA-256 value is
+an integrity check, not encryption, a signature, or proof of origin. Keep backup
+files only in encrypted storage and never attach them to public issues, logs, test
+fixtures, or pull requests. AI provider credentials and browser preferences are
+not included.
+
+Restore accepts only the current versioned HushLedger format, enforces the same-
+origin and body-size boundary, validates table relationships and the checksum,
+shows a no-write replacement report, and requires the literal `RESTORE` before a
+transactional replacement. A trigger-maintained ledger revision is checked again
+inside that D1 transaction so a stale preview cannot overwrite intervening writes.
+The in-app flow is not a substitute for encrypted D1 exports, Time Travel, and
+periodic recovery drills.
+
 ## User-provided AI credentials
 
 The optional AI draft feature accepts an OpenAI-compatible base URL, API key, and
@@ -61,5 +77,6 @@ Cloudflare D1 for multi-device access.
 Pasted bank text is disclosed to the configured provider after the user selects
 Analyze. It is kept in UI memory, is not logged or stored in D1, and model output
 is treated as untrusted. Strict server validation and deterministic minor-unit
-parsing occur before editable drafts are returned. The current draft feature has
-no D1 write path.
+parsing occur before editable drafts are returned. Only rows explicitly reviewed
+and selected by the user can enter the transactional import path; raw text and
+provider credentials are never written to D1.

@@ -36,6 +36,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
+  const [ledgerGeneration, setLedgerGeneration] = useState(0)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiImportButtonRef = useRef<HTMLButtonElement>(null)
@@ -45,6 +46,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const data = useMoneyData(month, filter, deferredSearch)
   const {
     clearActionMessage,
+    refresh: refreshMoneyData,
     removeTransaction,
     saveTransaction: saveMoneyTransaction,
   } = data
@@ -87,6 +89,12 @@ function App({ initialMonth }: { initialMonth: string }) {
     setImportMode(null)
     requestAnimationFrame(() => button.current?.focus())
   }, [importMode])
+
+  const handleLedgerRestored = useCallback(async () => {
+    const refreshed = await refreshMoneyData(false)
+    setLedgerGeneration((generation) => generation + 1)
+    return refreshed
+  }, [refreshMoneyData])
 
   useEffect(() => {
     if (initialViewRef.current) {
@@ -198,7 +206,12 @@ function App({ initialMonth }: { initialMonth: string }) {
           </section>
         </div>
         <div hidden={view !== 'recurring'}>
-          <RecurringRulesPage accounts={data.accounts} categories={data.categories} onMoneyRefresh={data.refresh} />
+          <RecurringRulesPage
+            key={ledgerGeneration}
+            accounts={data.accounts}
+            categories={data.categories}
+            onMoneyRefresh={data.refresh}
+          />
         </div>
         <div hidden={view !== 'settings'}>
           <SettingsPage
@@ -208,6 +221,7 @@ function App({ initialMonth }: { initialMonth: string }) {
             categories={data.categories}
             canManageReferences={data.source === 'live' && data.online}
             onReferenceRefresh={() => data.refresh(false)}
+            onLedgerRestored={handleLedgerRestored}
           />
         </div>
       </main>

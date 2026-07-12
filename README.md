@@ -40,6 +40,9 @@ knowledge and explains every command and dashboard click.
 - Re-import HushLedger CSV files through a browser-side preview. New rows are
   selected automatically, exact matches are flagged, and import tombstones stop
   the same source row from returning after deletion.
+- Download a versioned full-ledger JSON backup from Settings. Restore first shows
+  a checksum-verified replacement report, then requires an explicit destructive
+  confirmation before one transactional D1 replacement.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Create and rename accounts and categories from Settings, and disable or
@@ -96,6 +99,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Selected CSV rows are committed with a D1 transactional batch. Possible
   duplicates require an explicit checkbox; invalid or archived references are
   never silently substituted.
+- Full-ledger backups cover accounts, categories, recurring rules, transactions,
+  and import tombstones. A SHA-256 checksum detects modification, and a monotonic
+  ledger revision rejects restore previews that became stale before commit.
 
 ## Architecture
 
@@ -160,6 +166,33 @@ it when you are ready. Automatic mode applies a detected version immediately and
 restarts the app, so unsaved form input can be lost. This preference is stored only
 in browser local storage. The updater refreshes the web app served by the current
 deployment; it does not pull or replace a Docker or Apple Container image.
+
+## Ledger backup and restore
+
+Settings can download one versioned JSON file containing every account, category,
+recurring rule (including soft-deleted rule history), transaction, and import
+tombstone. AI provider credentials, pasted bank text, language preferences, update
+preferences, and screen privacy state are intentionally excluded.
+
+The JSON file is plaintext financial data. Store it only in encrypted storage and
+do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
+or modification; it is an integrity check, not encryption or authentication.
+
+Restore is preview-first:
+
+1. Choose a HushLedger JSON backup of at most 7 MiB.
+2. HushLedger validates the format and schema version, checksum, unique keys,
+   account/category references, recurring provenance, and active reference minimums.
+3. Review the current-versus-backup row counts for all five tables.
+4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
+5. HushLedger rechecks the live ledger revision and replaces every table in one D1
+   transaction. A stale preview or any constraint failure writes nothing.
+
+The in-app format is for practical personal-ledger portability and restores only
+the schema version supported by the running build. For a backup larger than 7 MiB,
+long-term disaster recovery, or a database-level archive, use the encrypted Wrangler
+D1 export, restore, and recovery process in
+[the advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery).
 
 ## Local development
 
@@ -283,6 +316,9 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
+The same gate exports and restores a complete five-table JSON ledger, rejects a
+modified checksum and a stale preview, and proves that the final re-export exactly
+matches the pre-restore data.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -301,6 +337,7 @@ npm run types:worker
 | `0005_recurring_rules.sql` | Adds recurring rules, the generation cursor, and transaction provenance. |
 | `0006_reference_localization_keys.sql` | Adds stable localization keys for built-in accounts and categories while preserving custom names verbatim. |
 | `0007_transaction_import_keys.sql` | Adds source-key tombstones for duplicate-safe CSV and reviewed AI imports; keys deliberately survive transaction deletion. |
+| `0008_ledger_revision.sql` | Adds a monotonic ledger revision maintained by table triggers so restore previews cannot overwrite newer writes. |
 
 Apply migrations locally:
 
@@ -335,6 +372,8 @@ GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&search=...
+GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
+POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -366,10 +405,16 @@ JSON success envelope. It applies the same month, type, and search filters, is
 not restricted to 200 rows, and appends `Transaction ID` for deterministic
 round trips. Import parses the file in the browser, previews server-side
 duplicate/reference checks, and writes only explicitly selected rows. This
-convenience round trip is not a complete database backup: use the encrypted D1
-export and restore process in the
+convenience round trip is not a complete database backup. Use the Settings JSON
+backup for app-level full-ledger portability, and the encrypted D1 export and
+restore process in the
 [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
-for disaster recovery.
+for database-level disaster recovery.
+
+The ledger backup `GET` is the other successful response without the normal JSON
+envelope. The restore `POST` uses the normal envelope, a separate 8 MiB request
+ceiling, strict same-origin validation, a dry-run report, checksum verification,
+typed `RESTORE` confirmation, and a revision guard inside the D1 transaction.
 
 The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
 mutation routes remain available and require a same-origin request, a JSON content
@@ -442,6 +487,8 @@ duplicate-review, idempotency, and atomic-commit boundary.
 
 - Never commit `.dev.vars*`, `.env*`, `.wrangler/`, local SQLite files, exports,
   backups, API keys, or real financial data.
+- Treat downloaded JSON backups as plaintext financial data even when their
+  SHA-256 integrity check passes; keep them in encrypted storage.
 - Never record complete amounts, payees, notes, bank records, account identifiers,
   or request bodies in logs, screenshots, issues, or pull requests.
 - Never persist an AI provider key in browser storage. Reload the tab to clear the

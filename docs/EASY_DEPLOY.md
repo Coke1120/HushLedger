@@ -291,6 +291,10 @@ the tab reloads or closes. Never paste banking records, API keys, passwords, or
 Cloudflare tokens into GitHub issues or screenshots. Wrangler's browser sign-in
 authorizes deployment; HushLedger itself does not need an application API key.
 
+After the private ledger is working, open Settings and download a full-ledger
+JSON backup. It is plaintext financial data: keep it in encrypted storage and
+download a fresh copy before migrations or an in-app restore.
+
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).
 

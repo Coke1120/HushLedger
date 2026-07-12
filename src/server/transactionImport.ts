@@ -193,11 +193,8 @@ export async function commitTransactionImport(
     ),
     insertImportKey.bind(row.importKey, row.id),
   ])
-  const results = await database.batch(statements)
-  const imported = eligible.reduce(
-    (count, _row, index) => count + Number(results[index * 2].meta.changes ?? 0),
-    0,
-  )
+  await database.batch(statements)
+  const imported = eligible.length
 
   return {
     kind: 'committed',

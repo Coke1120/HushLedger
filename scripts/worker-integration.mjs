@@ -205,6 +205,7 @@ async function verifyUpgradeMigration() {
      SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
+     SELECT revision FROM ledger_state WHERE id = 1;
      PRAGMA foreign_key_check;`,
     '--json',
   ])
@@ -220,7 +221,8 @@ async function verifyUpgradeMigration() {
     { name: '生活', localizationKey: 'category.living' },
   ])
   assert.equal(statements[3].results[0].importKeys, 0)
-  assert.deepEqual(statements[4].results, [])
+  assert.equal(statements[4].results[0].revision, 1)
+  assert.deepEqual(statements[5].results, [])
 }
 
 async function seedCsvExportRows() {
@@ -1222,6 +1224,101 @@ async function verifyWorkerApi() {
   const afterRepeatedCron = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterRepeatedCron.payload.data.filter((item) => item.recurringRuleId === ruleIds.cron).length, 1)
 
+  const backupDownload = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(backupDownload.response.status, 200)
+  assert.match(backupDownload.response.headers.get('cache-control') ?? '', /no-store/)
+  assert.match(backupDownload.response.headers.get('content-disposition') ?? '', /hushledger-ledger-.*\.json/)
+  const backup = backupDownload.payload
+  assert.equal(backup.format, 'hushledger-ledger-backup')
+  assert.equal(backup.version, 1)
+  assert.equal(backup.schemaVersion, 8)
+  assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
+  assert(backup.data.transactions.length > 200)
+  assert(backup.data.transactionImportKeys.length > 0)
+
+  const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: { mode: 'preview', backup },
+  })
+  assert.equal(crossOriginRestorePreview.response.status, 403)
+  assert.equal(crossOriginRestorePreview.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const tamperedBackup = structuredClone(backup)
+  tamperedBackup.data.transactions[0].amountMinor += 1
+  const tamperedPreview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: tamperedBackup },
+  })
+  assert.equal(tamperedPreview.response.status, 400)
+  assert.equal(tamperedPreview.payload.error.code, 'BACKUP_CHECKSUM_MISMATCH')
+
+  const originalPreview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup },
+  })
+  assert.equal(originalPreview.response.status, 200, JSON.stringify(originalPreview.payload))
+  assert.equal(originalPreview.payload.data.backupCounts.transactions, backup.data.transactions.length)
+  assert.equal(originalPreview.payload.data.currentDigest, originalPreview.payload.data.backupDigest)
+
+  const restoreSentinelId = '50000000-0000-4000-8000-000000000001'
+  const restoreSentinel = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: {
+      id: restoreSentinelId,
+      type: 'expense',
+      amountMinor: 321,
+      currency: 'HKD',
+      accountId: account.id,
+      categoryId: expenseCategory.id,
+      occurredOn: today,
+      payee: 'restore stale sentinel',
+      note: '',
+    },
+  })
+  assert.equal(restoreSentinel.response.status, 201)
+
+  const staleRestore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup,
+      expectedCurrentDigest: originalPreview.payload.data.currentDigest,
+      expectedRevision: originalPreview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(staleRestore.response.status, 409)
+  assert.equal(staleRestore.payload.error.code, 'BACKUP_PREVIEW_STALE')
+  assert.equal((await api(baseUrl, `/api/transactions/${restoreSentinelId}`)).response.status, 200)
+
+  const replacementPreview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup },
+  })
+  assert.equal(replacementPreview.response.status, 200)
+  assert(replacementPreview.payload.data.currentRevision > originalPreview.payload.data.currentRevision)
+  assert.equal(
+    replacementPreview.payload.data.currentCounts.transactions,
+    replacementPreview.payload.data.backupCounts.transactions + 1,
+  )
+
+  const restored = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup,
+      expectedCurrentDigest: replacementPreview.payload.data.currentDigest,
+      expectedRevision: replacementPreview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(restored.response.status, 200, JSON.stringify(restored.payload))
+  assert.deepEqual(restored.payload.data.counts, replacementPreview.payload.data.backupCounts)
+  assert.equal((await api(baseUrl, `/api/transactions/${restoreSentinelId}`)).response.status, 404)
+  const restoredBackup = await api(baseUrl, '/api/backups/ledger')
+  assert.deepEqual(restoredBackup.payload.data, backup.data)
+
   return {
     createdRules: createdRules.length,
     firstRunCreated: firstRun.payload.data.created,
@@ -1234,6 +1331,9 @@ async function verifyWorkerApi() {
     csvImportWrites: 2,
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
+    ledgerBackupTables: 5,
+    ledgerRestoreStaleGuards: 1,
+    ledgerRestoreTransactions: 1,
   }
 }
 
@@ -1427,8 +1527,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0007',
-      upgradeMigration: '0004-to-0007-preserved-data-and-custom-names',
+      freshMigrations: '0001-0008',
+      upgradeMigration: '0004-to-0008-preserved-data-and-custom-names',
       ...apiEvidence,
       ...nextAiEvidence,
     }),

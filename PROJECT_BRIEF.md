@@ -39,6 +39,9 @@ not operate an independent database server or a multi-user identity system.
   the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV through local parsing, duplicate preview, explicit row
   selection, and a transactional commit of at most 200 rows.
+- Download a complete versioned JSON ledger, validate a restore without writing,
+  compare replacement counts, and require a typed confirmation before one atomic
+  replacement.
 - Mask formatted amounts, editable amount fields, and pasted bank text with a
   current-tab screen privacy control before sharing the screen.
 - Switch the interface language in Settings; keep the preference in the current
@@ -147,6 +150,8 @@ POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
 POST   /api/imports/ai  (preview or commit reviewed drafts, 200 rows maximum)
+GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
+POST   /api/backups/ledger  (preview or confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -158,7 +163,8 @@ DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
 ```
 
-Responses use one success/error envelope. API input is strict Zod-validated;
+Responses use one success/error envelope except the CSV and ledger-backup download
+attachments. API input is strict Zod-validated;
 the server independently validates amount, currency, account state, category
 state, category type, content type, body size, and same-origin mutation.
 Database and stack errors are never returned to the client.
@@ -172,6 +178,14 @@ keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
+The ledger JSON format covers accounts, categories, recurring rules, transactions,
+and import tombstones while excluding browser preferences and AI credentials. Its
+SHA-256 checksum detects modification. Restore validates internal references,
+returns a no-write current-versus-backup report, requires `RESTORE`, and rechecks a
+trigger-maintained ledger revision inside the same D1 transaction before replacing
+all five tables. The in-app file limit is 7 MiB; larger or database-level recovery
+uses Wrangler D1 export and restore.
+
 ## Reliability and privacy
 
 - Cloudflare Access protects every production UI and API hostname, and the custom
@@ -182,6 +196,8 @@ restore format.
 - `.wrangler/`, local databases, exports, and backups are ignored by Git.
 - D1 is not the only copy: maintain encrypted off-platform backups and periodic
   restore drills.
+- In-app JSON backups are plaintext. Their checksum proves integrity only, not
+  confidentiality or authenticity.
 - Only the non-sensitive offline/demo shell and fingerprinted static assets may be
   cached. API, Server Action, RSC, personalized navigation, and financial responses
   are never cached. Offline writes and multi-device conflict sync are not claimed.
@@ -201,6 +217,8 @@ restore format.
   no destructive delete affordance.
 - Preview-first CSV import that defaults possible duplicates to unselected and
   never sends the source file to an AI provider.
+- Preview-first full-ledger restore with visible replacement counts, typed
+  destructive confirmation, and no partial-write path.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
   targets, sufficient contrast, and field-linked errors.
 - No fake navigation, decorative charts, remote fonts, marketing hero, or
@@ -216,6 +234,8 @@ restore format.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   filtered transaction CSV export, deterministic preview-first CSV import,
   recurring-rule management, and language settings.
+- Versioned five-table JSON backup, SHA-256 integrity checking, preview-only
+  restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only
   user-confirmed atomic D1 writes.
@@ -227,8 +247,7 @@ restore format.
 ### Next: deeper portability and organization
 
 1. Add optional account/category reordering.
-2. Add full-ledger JSON portability with an explicit dry-run restore report.
-3. Add generic bank CSV column mapping after the HushLedger round-trip format has
+2. Add generic bank CSV column mapping after the HushLedger round-trip format has
    accumulated real-world fixtures.
 
 ### Implemented: user-configured AI bank-text parser
@@ -246,7 +265,6 @@ database IDs. See
 
 - IndexedDB outbox and explicit sync/conflict policy.
 - Automated encrypted external backups.
-- Restore verification automation.
 - Browser-level end-to-end test suite in CI.
 
 ## Core release definition of done

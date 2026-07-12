@@ -4,6 +4,7 @@ import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
 import type { Account, Category } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
+import { LedgerBackupSettings } from './LedgerBackupSettings'
 import { ReferenceDataSettings } from './ReferenceDataSettings'
 import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
 
@@ -27,6 +28,7 @@ type SettingsPageProps = {
   categories: Category[]
   canManageReferences: boolean
   onReferenceRefresh: () => Promise<boolean>
+  onLedgerRestored: () => Promise<boolean>
 }
 
 export function SettingsPage({
@@ -36,6 +38,7 @@ export function SettingsPage({
   categories,
   canManageReferences,
   onReferenceRefresh,
+  onLedgerRestored,
 }: SettingsPageProps) {
   const { locale, privacyMode, setLocale, setPrivacyMode, t } = useI18n()
   const { mode, status, setMode, checkForUpdate, installUpdate } = useAppUpdate()
@@ -66,6 +69,11 @@ export function SettingsPage({
         categories={categories}
         enabled={canManageReferences}
         onRefresh={onReferenceRefresh}
+      />
+
+      <LedgerBackupSettings
+        available={canManageReferences}
+        onRestored={onLedgerRestored}
       />
 
       <div className="settings-panel">

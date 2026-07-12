@@ -1,0 +1,178 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import {
+  LEDGER_BACKUP_FORMAT,
+  LEDGER_BACKUP_VERSION,
+  LEDGER_SCHEMA_VERSION,
+  canonicalJson,
+  checksumLedgerBackupPayload,
+  countLedgerData,
+  digestLedgerData,
+  ledgerBackupTransactionSchema,
+  validateLedgerDataRelations,
+  type LedgerBackupData,
+  type LedgerBackupPayload,
+} from './ledgerBackup'
+
+const timestamp = '2026-07-13T00:00:00.000Z'
+
+function ledgerData(): LedgerBackupData {
+  return {
+    accounts: [{
+      id: 1,
+      name: 'Daily account',
+      type: 'bank',
+      currency: 'HKD',
+      isActive: true,
+      sortOrder: 10,
+      localizationKey: 'account.bank',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    categories: [
+      {
+        id: 1,
+        name: 'Food',
+        type: 'expense',
+        icon: 'utensils',
+        color: '#C16B4B',
+        isActive: true,
+        sortOrder: 10,
+        localizationKey: 'category.food',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 2,
+        name: 'Salary',
+        type: 'income',
+        icon: 'banknote',
+        color: '#2F766D',
+        isActive: true,
+        sortOrder: 10,
+        localizationKey: 'category.salary',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
+    recurringRules: [{
+      id: '20000000-0000-4000-8000-000000000001',
+      name: 'Lunch',
+      type: 'expense',
+      amountMinor: 1_000,
+      currency: 'HKD',
+      accountId: 1,
+      categoryId: 1,
+      frequency: 'daily',
+      scheduleStartsOn: '2026-07-01',
+      nextOccurrenceOn: '2026-07-14',
+      lastOccurrenceOn: '2026-07-13',
+      anchorDay: 1,
+      isActive: true,
+      payee: 'Cafe',
+      note: '',
+      generatedCount: 1,
+      lastErrorCode: null,
+      lastErrorAt: null,
+      revision: 1,
+      cursorVersion: 2,
+      deletedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    transactions: [{
+      id: '10000000-0000-4000-8000-000000000001',
+      type: 'expense',
+      amountMinor: 1_000,
+      currency: 'HKD',
+      accountId: 1,
+      categoryId: 1,
+      occurredOn: '2026-07-13',
+      payee: 'Cafe',
+      note: '',
+      recurringRuleId: '20000000-0000-4000-8000-000000000001',
+      recurringRuleName: 'Lunch',
+      recurrenceDueOn: '2026-07-13',
+      recurringOccurrenceKey: '20000000-0000-4000-8000-000000000001:2026-07-13',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    transactionImportKeys: [{
+      importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
+      transactionId: '10000000-0000-4000-8000-000000000099',
+      importedAt: timestamp,
+    }],
+  }
+}
+
+describe('ledger backups', () => {
+  it('hashes canonical content independently of object property order', async () => {
+    assert.equal(
+      canonicalJson({ beta: 2, alpha: { delta: 4, charlie: 3 } }),
+      canonicalJson({ alpha: { charlie: 3, delta: 4 }, beta: 2 }),
+    )
+
+    const payload: LedgerBackupPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: LEDGER_SCHEMA_VERSION,
+      data: ledgerData(),
+    }
+    const checksum = await checksumLedgerBackupPayload(payload)
+    assert.match(checksum, /^[0-9a-f]{64}$/)
+    assert.notEqual(
+      checksum,
+      await checksumLedgerBackupPayload({
+        ...payload,
+        data: {
+          ...payload.data,
+          transactions: [{ ...payload.data.transactions[0], amountMinor: 1_001 }],
+        },
+      }),
+    )
+  })
+
+  it('accepts a complete ledger and counts every restorable table', async () => {
+    const data = ledgerData()
+    assert.deepEqual(validateLedgerDataRelations(data), [])
+    assert.deepEqual(countLedgerData(data), {
+      accounts: 1,
+      categories: 2,
+      recurringRules: 1,
+      transactions: 1,
+      transactionImportKeys: 1,
+    })
+    assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
+  })
+
+  it('rejects broken references, duplicate tombstones, and unusable reference data', () => {
+    const data = ledgerData()
+    data.accounts[0].isActive = false
+    data.categories[0].isActive = false
+    data.transactions[0].categoryId = 999
+    data.transactionImportKeys.push({ ...data.transactionImportKeys[0] })
+
+    const issues = validateLedgerDataRelations(data)
+    assert(issues.some(({ message }) => message === 'At least one active account is required'))
+    assert(issues.some(({ message }) => message === 'At least one active expense category is required'))
+    assert(issues.some(({ message }) => message === 'Referenced category is missing'))
+    assert(issues.some(({ path }) => path.endsWith('.importKey')))
+  })
+
+  it('requires recurring transaction metadata to be complete and derived consistently', () => {
+    const transaction = ledgerData().transactions[0]
+    assert.equal(ledgerBackupTransactionSchema.safeParse(transaction).success, true)
+    assert.equal(
+      ledgerBackupTransactionSchema.safeParse({ ...transaction, recurringRuleName: null }).success,
+      false,
+    )
+    assert.equal(
+      ledgerBackupTransactionSchema.safeParse({
+        ...transaction,
+        recurringOccurrenceKey: `${transaction.recurringRuleId}:2026-07-12`,
+      }).success,
+      false,
+    )
+  })
+})

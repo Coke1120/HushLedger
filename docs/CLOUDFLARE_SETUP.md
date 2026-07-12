@@ -207,8 +207,15 @@ records while diagnosing a production issue.
 
 ## 7. Back up and test recovery
 
+For routine app-level portability, Settings can download a versioned JSON file
+covering all five HushLedger ledger tables. The file is plaintext even though it
+has a SHA-256 integrity check, so move it immediately to encrypted storage. The
+in-app restore validates and previews first, but it still replaces the current
+ledger; use a separate test deployment for restore drills.
+
 Create an encrypted, off-platform backup before migrations and on a regular
-schedule:
+schedule. This database-level SQL export remains the recovery path for backups
+larger than the 7 MiB in-app limit and for complete operational archives:
 
 ```bash
 mkdir -p backups
@@ -220,6 +227,11 @@ the export and copy it to storage outside Cloudflare. Periodically restore into
 a separate test database and compare table counts, monthly summaries, and a
 small sample of fictional or redacted records. Never test a restore by
 overwriting the only production database.
+
+Cloudflare D1 Time Travel is an additional recovery layer, not a replacement for
+off-platform backups. Record the current bookmark before any production restore
+so the restore itself can be reversed if necessary. See Cloudflare's
+[Time Travel documentation](https://developers.cloudflare.com/d1/reference/time-travel/).
 
 ## 8. Use AI drafts safely
 
