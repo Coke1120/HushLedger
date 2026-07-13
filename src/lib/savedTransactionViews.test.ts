@@ -17,12 +17,15 @@ const validView: SavedTransactionView = {
   categoryId: null,
   search: '',
   tag: null,
+  sort: 'date_desc',
 }
 
 describe('saved transaction views', () => {
   it('normalizes valid browser data and drops malformed or duplicate entries', () => {
+    const { sort: legacySort, ...legacyView } = validView
+    assert.equal(legacySort, 'date_desc')
     const parsed = parseSavedTransactionViews(JSON.stringify([
-      { ...validView, name: '  Uncleared card  ' },
+      { ...legacyView, name: '  Uncleared card  ' },
       { ...validView, id: '86192038-dc31-4672-ab86-d750adee2095', name: 'UNCLEARED CARD' },
       { ...validView, id: 'not-a-uuid', name: 'Broken' },
       { ...validView, id: 'c329b96d-1a1a-4108-8fbb-d3f69ced761b', name: 'Trip', tag: '#Trip' },
@@ -53,6 +56,17 @@ describe('saved transaction views', () => {
       accountId: null,
       search: '',
     }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], {
+      ...validView,
+      name: 'Largest first',
+      type: 'all',
+      status: 'all',
+      accountId: null,
+      categoryId: null,
+      search: '',
+      tag: null,
+      sort: 'amount_desc',
+    }).kind, 'saved')
 
     const full = Array.from({ length: MAX_SAVED_TRANSACTION_VIEWS }, (_, index) => ({
       ...validView,

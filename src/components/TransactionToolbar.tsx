@@ -1,7 +1,13 @@
 import { Download, FileUp, Search, Sparkles, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useI18n } from '../i18n'
-import type { Account, Category, TransactionClearingStatus, TransactionType } from '../lib/schema'
+import type {
+  Account,
+  Category,
+  TransactionClearingStatus,
+  TransactionSort,
+  TransactionType,
+} from '../lib/schema'
 
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
@@ -11,6 +17,8 @@ type TransactionToolbarProps = {
   tagFilter: string | null
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
+  sort: TransactionSort
+  showSort: boolean
   month: string
   accounts: Account[]
   categories: Category[]
@@ -22,6 +30,7 @@ type TransactionToolbarProps = {
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
+  onSortChange: (value: TransactionSort) => void
   onAccountFilterChange: (value: number | null) => void
   onCategoryFilterChange: (value: number | null) => void
   onClearReferenceFilters: () => void
@@ -38,6 +47,8 @@ export function TransactionToolbar({
   tagFilter,
   filter,
   clearingFilter,
+  sort,
+  showSort,
   month,
   accounts,
   categories,
@@ -49,6 +60,7 @@ export function TransactionToolbar({
   onTagFilterChange,
   onFilterChange,
   onClearingFilterChange,
+  onSortChange,
   onAccountFilterChange,
   onCategoryFilterChange,
   onClearReferenceFilters,
@@ -72,6 +84,7 @@ export function TransactionToolbar({
   if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
   if (search.trim()) exportQuery.set('search', search.trim())
   if (tagFilter) exportQuery.set('tag', tagFilter.slice(1))
+  if (showSort && sort !== 'date_desc') exportQuery.set('sort', sort)
   const exportHref = `/api/exports/transactions?${exportQuery}`
   const visibleCategories = filter === 'all'
     ? categories
@@ -119,6 +132,22 @@ export function TransactionToolbar({
         ))}
       </div>
       <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
+        {showSort ? (
+          <label className="transaction-reference-filter">
+            <span className="sr-only">{t('sortTransactions')}</span>
+            <select
+              value={sort}
+              onChange={(event) => onSortChange(event.target.value as TransactionSort)}
+            >
+              <option value="date_desc">{t('sortDateNewest')}</option>
+              <option value="date_asc">{t('sortDateOldest')}</option>
+              <option value="amount_desc">{t('sortAmountLargest')}</option>
+              <option value="amount_asc">{t('sortAmountSmallest')}</option>
+              <option value="payee_asc">{t('sortPayeeAscending')}</option>
+              <option value="payee_desc">{t('sortPayeeDescending')}</option>
+            </select>
+          </label>
+        ) : null}
         <label className="transaction-reference-filter">
           <span className="sr-only">{t('filterByClearingStatus')}</span>
           <select

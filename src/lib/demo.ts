@@ -12,6 +12,7 @@ import type {
   TransactionClearingStatus,
   TransactionFilterSummary,
   TransactionInput,
+  TransactionSort,
   TransactionType,
 } from './schema'
 
@@ -239,10 +240,33 @@ export function getDemoTransactions(
   categoryId: number | null = null,
   tag: string | null = null,
   status: TransactionClearingStatus | 'all' = 'all',
+  sort: TransactionSort = 'date_desc',
 ) {
   return demoTransactions
     .map((transaction) => localizeDemoTransaction(transaction, t))
     .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag, status))
+    .sort((left, right) => compareDemoTransactions(left, right, sort))
+}
+
+function compareDemoTransactions(left: Transaction, right: Transaction, sort: TransactionSort) {
+  const dateDescending = right.occurredOn.localeCompare(left.occurredOn)
+    || right.createdAt.localeCompare(left.createdAt)
+    || right.id.localeCompare(left.id)
+  if (sort === 'date_desc') return dateDescending
+  if (sort === 'date_asc') {
+    return left.occurredOn.localeCompare(right.occurredOn)
+      || left.createdAt.localeCompare(right.createdAt)
+      || left.id.localeCompare(right.id)
+  }
+  if (sort === 'amount_desc') return right.amountMinor - left.amountMinor || dateDescending
+  if (sort === 'amount_asc') return left.amountMinor - right.amountMinor || dateDescending
+
+  const leftPayee = left.payee.trim()
+  const rightPayee = right.payee.trim()
+  if (!leftPayee && rightPayee) return 1
+  if (leftPayee && !rightPayee) return -1
+  const payeeOrder = leftPayee.localeCompare(rightPayee, undefined, { sensitivity: 'base' })
+  return (sort === 'payee_asc' ? payeeOrder : -payeeOrder) || dateDescending
 }
 
 export function summarizeDemoTransactions(

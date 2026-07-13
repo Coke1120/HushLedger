@@ -6,6 +6,15 @@ export const transactionTypeSchema = z.enum(['expense', 'income'])
 export type TransactionType = z.infer<typeof transactionTypeSchema>
 export const transactionClearingStatusSchema = z.enum(['cleared', 'uncleared'])
 export type TransactionClearingStatus = z.infer<typeof transactionClearingStatusSchema>
+export const transactionSortSchema = z.enum([
+  'date_desc',
+  'date_asc',
+  'amount_desc',
+  'amount_asc',
+  'payee_asc',
+  'payee_desc',
+])
+export type TransactionSort = z.infer<typeof transactionSortSchema>
 export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
 export type AccountType = z.infer<typeof accountTypeSchema>
 export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly'])
@@ -55,6 +64,7 @@ export const transactionQuerySchema = z
     categoryId: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).max(80).optional(),
     tag: z.string().refine(isTransactionTagName, '標籤格式不正確').optional(),
+    sort: transactionSortSchema.optional(),
   })
   .strict()
 

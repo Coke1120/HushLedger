@@ -49,9 +49,11 @@ not operate an independent database server or a multi-user identity system.
 - Stack income/expense, cleared/uncleared, account, and category filters; retain
   inactive references as historical filter choices and clear incompatible
   category filters when the selected transaction type changes.
+- Order the current month by date, amount, or payee in either direction while
+  keeping the default newest-first overview and blank payees last.
 - Show exact count, income, expense, and signed net for every transaction matching
   the current filters, independently of the interactive 200-row display cap.
-- Save up to eight validated, named filter combinations in the current browser
+- Save up to eight validated, named filter and ordering combinations in the current browser
   and reapply them to any selected month without storing transaction amounts or
   adding cloud metadata.
 - Export all transactions matching the selected month and filters as CSV without
@@ -188,13 +190,13 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
-GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...  (latest 200)
+GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (ordered 200)
 GET    /api/transactions/summary?month=YYYY-MM&type=...&status=...&search=...  (uncapped aggregate)
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=...&status=...&search=...  (uncapped CSV)
+GET    /api/exports/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
@@ -287,8 +289,9 @@ uses Wrangler D1 export and restore.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
-  account/category/type/clearing/search filters, matching filtered transaction
-  aggregate and CSV export, browser-local saved filter views,
+  account/category/type/clearing/search filters, deterministic date/amount/payee
+  ordering, matching filtered transaction aggregate and ordered CSV export,
+  browser-local saved review views,
   ranked category-spending drilldown, monthly plan-versus-actual review,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,

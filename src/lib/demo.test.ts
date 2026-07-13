@@ -57,6 +57,18 @@ describe('localized demo data', () => {
     assert.equal(uncleared[0]?.cleared, false)
   })
 
+  it('sorts demo transactions with the same bounded ordering choices as the live ledger', () => {
+    const largestFirst = getDemoTransactions(
+      '2026-07', 'all', '', undefined, null, null, null, 'all', 'amount_desc',
+    )
+    const oldestFirst = getDemoTransactions(
+      '2026-07', 'all', '', undefined, null, null, null, 'all', 'date_asc',
+    )
+
+    assert(largestFirst.every((row, index) => index === 0 || largestFirst[index - 1]!.amountMinor >= row.amountMinor))
+    assert(oldestFirst.every((row, index) => index === 0 || oldestFirst[index - 1]!.occurredOn <= row.occurredOn))
+  })
+
   it('summarizes the complete filtered demo result with signed net money', () => {
     assert.deepEqual(
       summarizeDemoTransactions(

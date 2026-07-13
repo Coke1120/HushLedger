@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { transactionClearingStatusSchema, transactionTypeSchema } from './schema'
+import {
+  transactionClearingStatusSchema,
+  transactionSortSchema,
+  transactionTypeSchema,
+} from './schema'
 import { isTransactionTagName } from './transactionTags'
 
 export const SAVED_TRANSACTION_VIEWS_STORAGE_KEY = 'hushledger:transaction-views:v1'
@@ -16,6 +20,7 @@ const savedTransactionViewSchema = z.object({
   tag: z.string()
     .refine((value) => value.startsWith('#') && isTransactionTagName(value.slice(1)))
     .nullable(),
+  sort: transactionSortSchema.default('date_desc'),
 }).strict().refine((view) => (
   view.type !== 'all'
   || view.status !== 'all'
@@ -23,7 +28,8 @@ const savedTransactionViewSchema = z.object({
   || view.categoryId !== null
   || view.search.length > 0
   || view.tag !== null
-), 'A saved view must contain at least one filter')
+  || view.sort !== 'date_desc'
+), 'A saved view must contain at least one filter or a non-default sort')
 
 export type SavedTransactionView = z.infer<typeof savedTransactionViewSchema>
 

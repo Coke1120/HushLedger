@@ -50,12 +50,15 @@ knowledge and explains every command and dashboard click.
   across the 200 most recent matching transactions in each month, with inactive
   references still available for historical review and an explicit notice at the
   result limit.
+- Order a monthly review by newest or oldest date, largest or smallest amount,
+  or payee name. The order is strictly validated and also applies to the complete
+  CSV export; blank payees remain last.
 - Review the exact match count, income, expense, and net amount for the current
   transaction filters. These totals cover every match, not only the 200 rows kept
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
-  their type, clearing, account, category, search, and tag filters in any month.
-  Saved views contain filter criteria only and do not sync to Cloudflare.
+  their type, clearing, account, category, search, tag, and ordering in any month.
+  Saved views contain review criteria only and do not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state.
@@ -118,8 +121,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 
 - The default currency is HKD.
 - HK$123.45 is stored as `12345` in `amount_minor`.
-- Named transaction views live only in browser storage. They exclude the selected
-  month, transactions, and amounts, are validated before reuse, and are not
+- Named transaction views live only in browser storage. They include a bounded
+  ordering choice but exclude the selected month, transactions, and amounts,
+  are validated before reuse, and are not
   included in CSV exports or full-ledger backups.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
@@ -432,13 +436,13 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
 GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)
@@ -465,10 +469,11 @@ statement, so a stale or partial list writes nothing. There is no account/catego
 `DELETE`: disabling preserves historical foreign-key links, and the server rejects
 disabling the last active choice or a choice used by an active recurring rule.
 
-Transactions are ordered from newest to oldest by transaction date. A response
-contains at most 200 transactions. When more rows match, the UI states exactly
+Transactions default to newest-first and accept only the documented date,
+amount, or payee ordering values. A response contains at most 200 transactions.
+When more rows match, the UI states exactly
 how many are visible out of the complete result. The adjacent filtered summary
-uses a separate aggregate query over every match, so its count, income, expense,
+uses a separate order-independent aggregate query over every match, so its count, income, expense,
 and signed net are not truncated by the list limit. The optional `status` filter
 is shared by the aggregate and uncapped CSV export.
 
@@ -480,7 +485,7 @@ user can always replace either choice before saving. No payee rule or additional
 tracking table is created.
 
 The transaction export route returns a downloadable UTF-8 CSV rather than the
-JSON success envelope. It applies the same month, type, and search filters, is
+JSON success envelope. It applies the same month, filters, and ordering, is
 not restricted to 200 rows, and appends `Transaction ID` plus `Cleared` for
 deterministic round trips. Import parses the file in the browser. HushLedger exports open
 directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,

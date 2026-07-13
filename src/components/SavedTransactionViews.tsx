@@ -7,6 +7,15 @@ import {
 } from '../lib/savedTransactionViews'
 import type { Account, Category } from '../lib/schema'
 
+const sortMessageKeys = {
+  date_desc: 'sortDateNewest',
+  date_asc: 'sortDateOldest',
+  amount_desc: 'sortAmountLargest',
+  amount_asc: 'sortAmountSmallest',
+  payee_asc: 'sortPayeeAscending',
+  payee_desc: 'sortPayeeDescending',
+} satisfies Record<SavedTransactionView['sort'], MessageKey>
+
 type SavedTransactionViewsProps = {
   views: SavedTransactionView[]
   accounts: Account[]
@@ -51,6 +60,7 @@ export function SavedTransactionViews({
     }
     if (view.search) parts.push(t('savedViewSearch', { search: view.search }))
     if (view.tag) parts.push(view.tag)
+    if (view.sort !== 'date_desc') parts.push(t(sortMessageKeys[view.sort]))
     return parts.join(' · ')
   }
 

@@ -20,6 +20,7 @@ import type {
   TransactionClearingStatus,
   TransactionFilterSummary,
   TransactionInput,
+  TransactionSort,
   TransactionUpdateInput,
   TransactionType,
 } from '../lib/schema'
@@ -80,6 +81,7 @@ export type TransactionQuery = {
   search?: string
   tag?: string
   status?: TransactionClearingStatus
+  sort?: TransactionSort
 }
 
 export type CreateTransactionResult =
@@ -288,11 +290,19 @@ async function selectTransactions(
   limited: boolean,
 ): Promise<TransactionView[]> {
   const { clause, values } = transactionQueryWhere(query)
+  const orderBy: Record<TransactionSort, string> = {
+    date_desc: 't.occurred_on DESC, t.created_at DESC, t.id DESC',
+    date_asc: 't.occurred_on ASC, t.created_at ASC, t.id ASC',
+    amount_desc: 't.amount_minor DESC, t.occurred_on DESC, t.created_at DESC, t.id DESC',
+    amount_asc: 't.amount_minor ASC, t.occurred_on DESC, t.created_at DESC, t.id DESC',
+    payee_asc: "(trim(t.payee) = '') ASC, t.payee COLLATE NOCASE ASC, t.occurred_on DESC, t.created_at DESC, t.id DESC",
+    payee_desc: "(trim(t.payee) = '') ASC, t.payee COLLATE NOCASE DESC, t.occurred_on DESC, t.created_at DESC, t.id DESC",
+  }
 
   const result = await database.prepare(`
     ${transactionSelect}
     WHERE ${clause}
-    ORDER BY t.occurred_on DESC, t.created_at DESC, t.id DESC
+    ORDER BY ${orderBy[query.sort ?? 'date_desc']}
     ${limited ? 'LIMIT 200' : ''}
   `)
     .bind(...values)

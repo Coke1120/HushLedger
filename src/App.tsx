@@ -36,7 +36,12 @@ import {
   serializeSavedTransactionViews,
   type SavedTransactionView,
 } from './lib/savedTransactionViews'
-import type { RecurringRuleCreateInput, Transaction, TransactionInput } from './lib/schema'
+import type {
+  RecurringRuleCreateInput,
+  Transaction,
+  TransactionInput,
+  TransactionSort,
+} from './lib/schema'
 import { duplicateTransactionDraft } from './lib/transactionDraft'
 
 const initialAiSettings: AiProviderSettings = {
@@ -54,6 +59,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
+  const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
@@ -77,6 +83,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     categoryFilterId,
     tagFilter,
     clearingFilter,
+    view === 'transactions' ? transactionSort : 'date_desc',
   )
   const {
     clearActionMessage,
@@ -219,9 +226,10 @@ function App({ initialMonth }: { initialMonth: string }) {
       categoryId: categoryFilterId,
       search: search.trim(),
       tag: tagFilter,
+      sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, filter, search, storeSavedTransactionViews, tagFilter])
+  }, [accountFilterId, categoryFilterId, clearingFilter, filter, search, storeSavedTransactionViews, tagFilter, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -240,6 +248,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(categoryId)
     setSearch(savedView.search)
     setTagFilter(savedView.tag)
+    setTransactionSort(savedView.sort)
     setImportMode(null)
   }, [data.accounts, data.categories])
 
@@ -250,6 +259,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(null)
     setSearch('')
     setTagFilter(null)
+    setTransactionSort('date_desc')
     setImportMode(null)
   }, [])
 
@@ -366,6 +376,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                 tagFilter={tagFilter}
                 filter={filter}
                 clearingFilter={clearingFilter}
+                sort={transactionSort}
+                showSort={view === 'transactions'}
                 month={month}
                 accounts={data.accounts}
                 categories={data.categories}
@@ -377,6 +389,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
+                onSortChange={setTransactionSort}
                 onAccountFilterChange={setAccountFilterId}
                 onCategoryFilterChange={setCategoryFilterId}
                 onClearReferenceFilters={clearReferenceFilters}
@@ -404,6 +417,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                       || categoryFilterId !== null
                       || search.trim().length > 0
                       || tagFilter !== null
+                      || transactionSort !== 'date_desc'
                     }
                     onSave={saveTransactionView}
                     onApply={applySavedTransactionView}

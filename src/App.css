@@ -4271,7 +4271,7 @@ textarea:focus-visible {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 
-  .transaction-reference-filter:first-child {
+  .transaction-reference-filter:nth-child(-n + 2) {
     grid-column: 1 / -1;
   }
 

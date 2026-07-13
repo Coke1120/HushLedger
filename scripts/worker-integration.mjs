@@ -1013,6 +1013,35 @@ async function verifyWorkerApi() {
   const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
   assert.equal(uncappedCsvRows, 205)
 
+  const largestFirst = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&search=export%20bulk&sort=amount_desc`,
+  )
+  assert.equal(largestFirst.response.status, 200)
+  assert.equal(largestFirst.payload.data.length, 200)
+  assert.equal(largestFirst.payload.data[0].amountMinor, 305)
+  assert.equal(largestFirst.payload.data.at(-1).amountMinor, 106)
+  const smallestFirst = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&search=export%20bulk&sort=amount_asc`,
+  )
+  assert.equal(smallestFirst.response.status, 200)
+  assert.equal(smallestFirst.payload.data[0].amountMinor, 101)
+  assert.equal(smallestFirst.payload.data.at(-1).amountMinor, 300)
+  const rejectedSort = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&sort=amount_desc%3BDELETE`,
+  )
+  assert.equal(rejectedSort.response.status, 400)
+  assert.equal(rejectedSort.payload.error.code, 'INVALID_QUERY')
+
+  const sortedCsvExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&search=export%20bulk&sort=amount_desc`,
+  )
+  assert.equal(sortedCsvExport.response.status, 200)
+  assert.equal(sortedCsvExport.payload.split('\r\n')[1].split(',')[2], '-3.05')
+
   const taggedCsvExport = await api(
     baseUrl,
     `/api/exports/transactions?month=${month}&tag=Summer2026`,
@@ -1728,6 +1757,7 @@ async function verifyWorkerApi() {
     transactionFilterGuards: 4,
     transactionFilterQueries: 4,
     transactionFilterSummaries: 3,
+    transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,
     spendingTrendQueries: 1,
