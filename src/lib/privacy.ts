@@ -1,5 +1,12 @@
 import { formatMoney } from './money'
 
+export function shouldAutomaticallyMaskScreen(
+  visibilityState: DocumentVisibilityState,
+  hasFocus: boolean,
+) {
+  return visibilityState !== 'visible' || !hasFocus
+}
+
 export function formatPrivateMoney(currency = 'HKD', locale = 'zh-Hant') {
   let maskInserted = false
   return new Intl.NumberFormat(locale, {

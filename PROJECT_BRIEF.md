@@ -74,7 +74,8 @@ not operate an independent database server or a multi-user identity system.
   replacement.
 - Mask formatted amounts, category proportions, editable amount fields, pasted
   bank text, and raw mapped CSV samples with a current-tab screen privacy control
-  before sharing the screen.
+  before sharing the screen; force the mask while the app is hidden or unfocused,
+  then restore the user's prior in-memory choice.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
 

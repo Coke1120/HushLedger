@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { formatHongKongDate, formatMonthLabel } from '../lib/date'
-import { formatMoneyForDisplay } from '../lib/privacy'
+import { formatMoneyForDisplay, shouldAutomaticallyMaskScreen } from '../lib/privacy'
 import { I18nContext, type I18nContextValue } from './context'
 import {
   LOCALE_STORAGE_KEY,
@@ -35,12 +35,35 @@ function setMetaContent(selector: string, value: string) {
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>('zh-Hant')
-  const [privacyMode, setPrivacyMode] = useState(false)
+  const [requestedPrivacyMode, setPrivacyMode] = useState(false)
+  // Conceal the initial render until browser visibility and focus are known.
+  const [automaticPrivacyMode, setAutomaticPrivacyMode] = useState(true)
+  const privacyMode = requestedPrivacyMode || automaticPrivacyMode
 
   useEffect(() => {
     const browserLocale = readBrowserLocale()
     const timeout = window.setTimeout(() => setLocale(browserLocale), 0)
     return () => window.clearTimeout(timeout)
+  }, [])
+
+  useEffect(() => {
+    const syncAutomaticPrivacyMode = () => {
+      setAutomaticPrivacyMode(shouldAutomaticallyMaskScreen(
+        document.visibilityState,
+        document.hasFocus(),
+      ))
+    }
+    const concealWhileUnfocused = () => setAutomaticPrivacyMode(true)
+
+    syncAutomaticPrivacyMode()
+    document.addEventListener('visibilitychange', syncAutomaticPrivacyMode)
+    window.addEventListener('blur', concealWhileUnfocused)
+    window.addEventListener('focus', syncAutomaticPrivacyMode)
+    return () => {
+      document.removeEventListener('visibilitychange', syncAutomaticPrivacyMode)
+      window.removeEventListener('blur', concealWhileUnfocused)
+      window.removeEventListener('focus', syncAutomaticPrivacyMode)
+    }
   }, [])
 
   useEffect(() => {

@@ -148,7 +148,8 @@ knowledge and explains every command and dashboard click.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
 - A one-tap screen privacy mode that masks every formatted amount, category-share
   bar, editable amount field, pasted AI bank text, and raw mapped-CSV sample for
-  safer screen sharing.
+  safer screen sharing, and turns on automatically while the app is hidden or
+  unfocused without changing the user's prior choice.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
@@ -312,8 +313,9 @@ and recurring-rule names are always preserved exactly as entered.
 The eye button in the header and the matching Settings control enable screen
 privacy mode for the current tab. It replaces displayed amounts with a stable
 currency mask, removes spending-breakdown proportions, masks editable amount
-fields, and covers pasted bank text without hover-to-reveal behavior. Reloading
-turns the mode off. This is a visual screen-
+fields, and covers pasted bank text without hover-to-reveal behavior. It turns on
+automatically when the tab is hidden or the app loses focus, then restores the
+user's prior choice on return. Reloading clears the manual choice. This is a visual screen-
 sharing aid only: it does not encrypt, delete, or alter D1 data, API responses, CSV
 exports, browser memory, or text already sent to a configured AI provider.
 
