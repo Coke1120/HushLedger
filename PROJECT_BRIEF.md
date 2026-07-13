@@ -32,8 +32,9 @@ not operate an independent database server or a multi-user identity system.
 
 - View income, expense, and balance in the ledger's selected currency for a
   selected month.
-- Compare a zero-filled six-month expense trend and select any bar to review that
-  calendar month; hide relative bar heights when privacy mode is enabled.
+- Compare a zero-filled six-month recorded cash-flow trend across income,
+  expenses, and net movement, then select any month to review that calendar
+  month; hide relative bar heights when privacy mode is enabled.
 - Review the top five expense categories or named payees by exact total and
   transaction count; select one to open the corresponding exact transaction
   filter without turning a payee into a broad text search.

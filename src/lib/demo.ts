@@ -1,7 +1,12 @@
+import {
+  buildLegacySpendingTrendRows,
+  buildMonthlyCashFlowTrend,
+  type MonthlyCashFlowQueryRow,
+} from './cashFlowTrend'
 import { monthRangeDates } from './date'
-import { buildMonthlySpendingTrend } from './spendingTrend'
 import { buildNetWorthTrend, netWorthTrendMonths } from './netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from './payeeMemory'
+import { buildMonthlySpendingTrend } from './spendingTrend'
 import { noteHasTransactionTag } from './transactionTags'
 import { supportedLocales, translate, type MessageKey, type Translator } from '../i18n'
 import type {
@@ -10,7 +15,6 @@ import type {
   NetWorthTrendPoint,
   Category,
   ExpenseCategorySummary,
-  MonthlySpendingSummary,
   Summary,
   Transaction,
   TransactionCategoryBatchInput,
@@ -538,28 +542,39 @@ export function demoSummary(month: string, t?: Translator): Summary {
       amountMinor: transaction.amountMinor,
       transactionCount: 1,
     })))
-  const spendingTrendRows = [...demoTransactions.reduce((months, transaction) => {
-    if (transaction.type !== 'expense') return months
+  const cashFlowTrendRows = [...demoTransactions.reduce((months, transaction) => {
     const transactionMonth = transaction.occurredOn.slice(0, 7)
     const existing = months.get(transactionMonth)
     if (existing) {
-      existing.amountMinor += transaction.amountMinor
+      if (transaction.type === 'income') {
+        existing.incomeMinor += transaction.amountMinor
+      } else {
+        existing.expenseMinor += transaction.amountMinor
+        existing.expenseTransactionCount += 1
+      }
       existing.transactionCount += 1
       return months
     }
     months.set(transactionMonth, {
       month: transactionMonth,
-      amountMinor: transaction.amountMinor,
+      incomeMinor: transaction.type === 'income' ? transaction.amountMinor : 0,
+      expenseMinor: transaction.type === 'expense' ? transaction.amountMinor : 0,
       transactionCount: 1,
+      expenseTransactionCount: transaction.type === 'expense' ? 1 : 0,
     })
     return months
-  }, new Map<string, MonthlySpendingSummary>()).values()]
+  }, new Map<string, MonthlyCashFlowQueryRow>()).values()]
+  const cashFlowTrend = buildMonthlyCashFlowTrend(month, cashFlowTrendRows)
   return {
     month,
     income,
     expense,
     balance: income - expense,
-    spendingTrend: buildMonthlySpendingTrend(month, spendingTrendRows),
+    cashFlowTrend,
+    spendingTrend: buildMonthlySpendingTrend(
+      month,
+      buildLegacySpendingTrendRows(cashFlowTrendRows),
+    ),
     expenseByCategory,
     expenseByPayee,
     monthlySpendingPlans: demoCategories

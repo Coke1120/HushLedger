@@ -310,6 +310,20 @@ describe('localized demo data', () => {
         { categoryId: 4, amountMinor: 4_210, transactionCount: 1 },
       ],
     )
+    assert.deepEqual(summary.cashFlowTrend, [
+      { month: '2026-02', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+      { month: '2026-03', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+      { month: '2026-04', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+      { month: '2026-05', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+      { month: '2026-06', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+      {
+        month: '2026-07',
+        incomeMinor: 5_200_000,
+        expenseMinor: 1_717_950,
+        netMinor: 3_482_050,
+        transactionCount: 7,
+      },
+    ])
     assert.deepEqual(summary.spendingTrend, [
       { month: '2026-02', amountMinor: 0, transactionCount: 0 },
       { month: '2026-03', amountMinor: 0, transactionCount: 0 },

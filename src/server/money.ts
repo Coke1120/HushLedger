@@ -1,6 +1,11 @@
 import 'server-only'
 
 import type { SupportedCurrency } from '../lib/currency'
+import {
+  buildLegacySpendingTrendRows,
+  buildMonthlyCashFlowTrend,
+  type MonthlyCashFlowQueryRow,
+} from '../lib/cashFlowTrend'
 import { monthRangeDates, shiftMonth } from '../lib/date'
 import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
@@ -17,7 +22,6 @@ import type {
   CategoryLocalizationKey,
   ExpenseCategorySummary,
   ExpensePayeeSummary,
-  MonthlySpendingSummary,
   MonthlySpendingPlanSummary,
   NetWorthTrendPoint,
   PayeeSuggestion,
@@ -808,7 +812,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
   const trendStart = `${shiftMonth(month, -5)}-01`
   const [
     row,
-    spendingTrendResult,
+    cashFlowTrendResult,
     expenseByCategoryResult,
     expenseByPayeeResult,
     monthlySpendingPlansResult,
@@ -826,15 +830,17 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     database.prepare(`
       SELECT
         substr(occurred_on, 1, 7) AS month,
-        SUM(amount_minor) AS amountMinor,
-        COUNT(*) AS transactionCount
+        TOTAL(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END) AS incomeMinor,
+        TOTAL(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END) AS expenseMinor,
+        COUNT(*) AS transactionCount,
+        SUM(CASE WHEN type = 'expense' THEN 1 ELSE 0 END) AS expenseTransactionCount
       FROM transactions
-      WHERE type = 'expense' AND occurred_on >= ? AND occurred_on < ?
+      WHERE occurred_on >= ? AND occurred_on < ?
       GROUP BY month
       ORDER BY month ASC
     `)
       .bind(trendStart, end)
-      .all<MonthlySpendingSummary>(),
+      .all<MonthlyCashFlowQueryRow>(),
     database.prepare(`
       SELECT
         category.id AS categoryId,
@@ -926,12 +932,17 @@ export async function getSummary(database: D1Database, month: string): Promise<S
 
   const income = row?.income ?? 0
   const expense = row?.expense ?? 0
+  const cashFlowTrend = buildMonthlyCashFlowTrend(month, cashFlowTrendResult.results)
   return {
     month,
     income,
     expense,
     balance: income - expense,
-    spendingTrend: buildMonthlySpendingTrend(month, spendingTrendResult.results),
+    cashFlowTrend,
+    spendingTrend: buildMonthlySpendingTrend(
+      month,
+      buildLegacySpendingTrendRows(cashFlowTrendResult.results),
+    ),
     expenseByCategory: expenseByCategoryResult.results,
     expenseByPayee: mergePayeeSummaries(expenseByPayeeResult.results),
     monthlySpendingPlans: monthlySpendingPlansResult.results,

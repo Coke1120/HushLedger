@@ -21,7 +21,7 @@ import { RecurringForecast } from './components/RecurringForecast'
 import { SavedTransactionViews } from './components/SavedTransactionViews'
 import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
-import { SpendingTrend } from './components/SpendingTrend'
+import { CashFlowTrend } from './components/CashFlowTrend'
 import { TransactionDialog } from './components/TransactionDialog'
 import { TransactionFilterSummary } from './components/TransactionFilterSummary'
 import { TransactionList } from './components/TransactionList'
@@ -523,7 +523,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                   loading={loading}
                   onSelectMonth={setMonth}
                 />
-                <SpendingTrend
+                <CashFlowTrend
                   summary={data.summary}
                   loading={loading}
                   onSelectMonth={setMonth}

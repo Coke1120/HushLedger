@@ -99,7 +99,12 @@ export function translate(
     singularKey && count === 1
       ? singularKey
       : key
-  return dictionaries[locale][resolvedKey].replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (token, name: string) =>
+  const template = dictionaries[locale][resolvedKey]
+    ?? dictionaries[locale][key]
+    ?? dictionaries['zh-Hant'][resolvedKey]
+    ?? dictionaries['zh-Hant'][key]
+  if (typeof template !== 'string') return key
+  return template.replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (token, name: string) =>
     Object.hasOwn(values, name) ? formatValue(locale, values[name]) : token,
   )
 }

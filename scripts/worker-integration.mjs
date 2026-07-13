@@ -929,7 +929,23 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(reenabledPlannedCategory.response.status, 200)
-  assert.equal(categorySummary.payload.data.spendingTrend.length, 6)
+  assert.equal(categorySummary.payload.data.cashFlowTrend.length, 6)
+  assert.deepEqual(categorySummary.payload.data.cashFlowTrend.slice(-2), [
+    {
+      month: previousMonth,
+      incomeMinor: 0,
+      expenseMinor: 12_345,
+      netMinor: -12_345,
+      transactionCount: 1,
+    },
+    {
+      month,
+      incomeMinor: 0,
+      expenseMinor: 41_615,
+      netMinor: -41_615,
+      transactionCount: 205,
+    },
+  ])
   assert.deepEqual(categorySummary.payload.data.spendingTrend.slice(-2), [
     { month: previousMonth, amountMinor: 12_345, transactionCount: 1 },
     { month, amountMinor: 41_615, transactionCount: 205 },
@@ -2364,6 +2380,10 @@ async function verifyWorkerApi() {
   assert.equal(mismatchedBulkCategory.response.status, 400)
   assert.equal(mismatchedBulkCategory.payload.error.code, 'CATEGORY_TYPE_MISMATCH')
 
+  const cashFlowBeforeMixed = await api(baseUrl, `/api/summary?month=${month}`)
+  const cashFlowBeforeMixedPoint = cashFlowBeforeMixed.payload.data.cashFlowTrend.at(-1)
+  assert(cashFlowBeforeMixedPoint)
+
   const mixedIncomeTransaction = {
     id: '53000000-0000-4000-8000-000000000001',
     type: 'income',
@@ -2381,6 +2401,15 @@ async function verifyWorkerApi() {
     body: mixedIncomeTransaction,
   })
   assert.equal(createdMixedIncome.response.status, 201)
+  const cashFlowWithMixedIncome = await api(baseUrl, `/api/summary?month=${month}`)
+  const cashFlowWithMixedIncomePoint = cashFlowWithMixedIncome.payload.data.cashFlowTrend.at(-1)
+  assert(cashFlowWithMixedIncomePoint)
+  assert.deepEqual(cashFlowWithMixedIncomePoint, {
+    ...cashFlowBeforeMixedPoint,
+    incomeMinor: cashFlowBeforeMixedPoint.incomeMinor + mixedIncomeTransaction.amountMinor,
+    netMinor: cashFlowBeforeMixedPoint.netMinor + mixedIncomeTransaction.amountMinor,
+    transactionCount: cashFlowBeforeMixedPoint.transactionCount + 1,
+  })
   const partiallyCompatibleBulkCategory = await api(baseUrl, '/api/transactions/category', {
     method: 'PATCH',
     body: {
@@ -2402,6 +2431,11 @@ async function verifyWorkerApi() {
     body: { updatedAt: bulkIncomeAfterMixedGuard.payload.data.updatedAt },
   })
   assert.equal(deletedMixedIncome.response.status, 200)
+  const cashFlowAfterMixedDelete = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.deepEqual(
+    cashFlowAfterMixedDelete.payload.data.cashFlowTrend.at(-1),
+    cashFlowBeforeMixedPoint,
+  )
 
   const recategorizedBulk = await api(baseUrl, '/api/transactions/category', {
     method: 'PATCH',
@@ -3563,7 +3597,7 @@ async function verifyWorkerApi() {
     categorySummaries: 1,
     payeeSummaries: 2,
     payeeExports: 1,
-    spendingTrendQueries: 1,
+    cashFlowTrendQueries: 4,
     recurringForecasts: 5,
     recurringSkips: 1,
     payeeSuggestions: 1,

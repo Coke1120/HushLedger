@@ -465,11 +465,21 @@ export type Summary = {
   income: number
   expense: number
   balance: number
+  cashFlowTrend: MonthlyCashFlowSummary[]
+  /** @deprecated Retained temporarily so an older cached app shell can read a newer API response. */
   spendingTrend: MonthlySpendingSummary[]
   expenseByCategory: ExpenseCategorySummary[]
   expenseByPayee: ExpensePayeeSummary[]
   monthlySpendingPlans: MonthlySpendingPlanSummary[]
   recurringForecast: ScheduledRecurringSummary[]
+}
+
+export type MonthlyCashFlowSummary = {
+  month: string
+  incomeMinor: number | null
+  expenseMinor: number | null
+  netMinor: number | null
+  transactionCount: number
 }
 
 export type MonthlySpendingSummary = {

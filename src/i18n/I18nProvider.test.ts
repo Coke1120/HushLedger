@@ -77,4 +77,12 @@ describe('message catalogs', () => {
   it('keeps unknown interpolation tokens visible for translation QA', () => {
     assert.ok(translate('en', 'generatedByRule').includes('{name}'))
   })
+
+  it('shows an unknown runtime key instead of crashing during app-shell version skew', () => {
+    const runtimeTranslate = translate as (locale: Locale, key: string) => string
+    assert.equal(
+      runtimeTranslate('en', 'cashFlowTrendFromNewerShell'),
+      'cashFlowTrendFromNewerShell',
+    )
+  })
 })

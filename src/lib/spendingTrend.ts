@@ -3,9 +3,10 @@ import type { MonthlySpendingSummary } from './schema'
 
 const spendingTrendMonthCount = 6
 
+/** @deprecated Retained temporarily for cached clients during the cash-flow trend transition. */
 export function buildMonthlySpendingTrend(
   selectedMonth: string,
-  rows: MonthlySpendingSummary[],
+  rows: readonly MonthlySpendingSummary[],
 ): MonthlySpendingSummary[] {
   const rowsByMonth = new Map(rows.map((row) => [row.month, row]))
 

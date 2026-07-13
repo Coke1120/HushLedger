@@ -31,7 +31,8 @@ knowledge and explains every command and dashboard click.
 ## Features
 
 - Monthly income, expenses, balance, and recent transactions.
-- A zero-filled six-month expense trend for the selected month and previous five,
+- A zero-filled six-month recorded cash-flow trend comparing income, expenses,
+  and net movement without treating transfers, opening balances, or forecasts as cash flow,
   with private-screen masking and one-tap navigation to any month in the chart.
 - A ranked top-five monthly expense breakdown switchable between categories and
   named payees, with exact totals, transaction counts, and one-tap drilldown into
@@ -621,7 +622,7 @@ POST   /api/exports/transactions  (primary private CSV export; JSON filters in t
 GET    /api/exports/transactions?...  (legacy compatibility; URL query filters)
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories/payees, and exact remaining recurring dates)
+GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id
