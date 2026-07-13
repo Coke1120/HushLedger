@@ -1,5 +1,5 @@
 import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
 import type { LedgerCurrencySettings } from '../lib/currency'
@@ -35,8 +35,12 @@ type SettingsPageProps = {
   emergencyFundGoal: EmergencyFundGoal | null
   ledgerSettings: LedgerCurrencySettings
   canManageReferences: boolean
+  ledgerRestoreInProgress: boolean
+  otherLedgerMutationInProgress: boolean
   onReferenceRefresh: () => Promise<boolean>
   onLedgerRestored: () => Promise<LedgerRestoredResult>
+  onLedgerMutationStateChange: (mutating: boolean) => void
+  onLedgerRestoreStateChange: (restoring: boolean) => boolean
 }
 
 export function SettingsPage({
@@ -47,12 +51,28 @@ export function SettingsPage({
   emergencyFundGoal,
   ledgerSettings,
   canManageReferences,
+  ledgerRestoreInProgress,
+  otherLedgerMutationInProgress,
   onReferenceRefresh,
   onLedgerRestored,
+  onLedgerMutationStateChange,
+  onLedgerRestoreStateChange,
 }: SettingsPageProps) {
   const { locale, privacyMode, setLocale, setPrivacyMode, t } = useI18n()
   const { mode, status, setMode, checkForUpdate, installUpdate } = useAppUpdate()
   const [saved, setSaved] = useState(false)
+  const [settingsMutationInProgress, setSettingsMutationInProgress] = useState(false)
+  const mutationCountsRef = useRef(new Map<string, number>())
+
+  const reportMutationState = useCallback((source: string, mutating: boolean) => {
+    const count = mutationCountsRef.current.get(source) ?? 0
+    if (mutating) mutationCountsRef.current.set(source, count + 1)
+    else if (count <= 1) mutationCountsRef.current.delete(source)
+    else mutationCountsRef.current.set(source, count - 1)
+    const next = mutationCountsRef.current.size > 0
+    setSettingsMutationInProgress(next)
+    onLedgerMutationStateChange(next)
+  }, [onLedgerMutationStateChange])
 
   const chooseLanguage = (nextLocale: Locale) => {
     setLocale(nextLocale)
@@ -61,6 +81,11 @@ export function SettingsPage({
 
   const updateStatusKey = updateStatusKeys[status]
   const updateStatus = updateStatusKey ? t(updateStatusKey) : ''
+  const ledgerSettingsEnabled = canManageReferences && !ledgerRestoreInProgress
+  const restoreAvailable = canManageReferences
+    && !otherLedgerMutationInProgress
+    && !settingsMutationInProgress
+    && status !== 'installing'
 
   return (
     <section className="settings-page" aria-labelledby="settings-page-title">
@@ -76,8 +101,9 @@ export function SettingsPage({
 
       <LedgerCurrencySettingsPanel
         settings={ledgerSettings}
-        enabled={canManageReferences}
+        enabled={ledgerSettingsEnabled}
         onRefresh={onReferenceRefresh}
+        onBusyChange={(busy) => reportMutationState('currency', busy)}
       />
 
       <EmergencyFundSettings
@@ -85,8 +111,9 @@ export function SettingsPage({
         goal={emergencyFundGoal}
         accounts={accounts}
         expectedCurrency={ledgerSettings.currency}
-        enabled={canManageReferences}
+        enabled={ledgerSettingsEnabled}
         onRefresh={onReferenceRefresh}
+        onBusyChange={(busy) => reportMutationState('emergency-fund', busy)}
       />
 
       <ReferenceDataSettings
@@ -94,13 +121,15 @@ export function SettingsPage({
         accounts={accounts}
         categories={categories}
         expectedCurrency={ledgerSettings.currency}
-        enabled={canManageReferences}
+        enabled={ledgerSettingsEnabled}
         onRefresh={onReferenceRefresh}
+        onBusyChange={(busy) => reportMutationState('references', busy)}
       />
 
       <LedgerBackupSettings
-        available={canManageReferences}
+        available={restoreAvailable}
         onRestored={onLedgerRestored}
+        onRestoreStateChange={onLedgerRestoreStateChange}
       />
 
       <div className="settings-panel">
@@ -124,6 +153,7 @@ export function SettingsPage({
                     name="interface-language"
                     value={option.locale}
                     checked={selected}
+                    disabled={ledgerRestoreInProgress}
                     onChange={() => chooseLanguage(option.locale)}
                   />
                   <span className="language-option-copy">
@@ -143,6 +173,7 @@ export function SettingsPage({
           <input
             type="checkbox"
             checked={privacyMode}
+            disabled={ledgerRestoreInProgress}
             onChange={(event) => setPrivacyMode(event.target.checked)}
           />
           <span className="privacy-mode-copy">
@@ -178,7 +209,7 @@ export function SettingsPage({
               onChange={(event) => {
                 setMode(event.target.value === 'automatic' ? 'automatic' : 'manual')
               }}
-              disabled={status === 'installing'}
+              disabled={ledgerRestoreInProgress || status === 'installing'}
             >
               <option value="manual">{t('updateManual')}</option>
               <option value="automatic">{t('updateAutomatic')}</option>
@@ -195,6 +226,7 @@ export function SettingsPage({
               onClick={() => void checkForUpdate()}
               disabled={
                 status === 'idle'
+                || ledgerRestoreInProgress
                 || status === 'checking'
                 || status === 'installing'
                 || status === 'restart-required'
@@ -205,7 +237,12 @@ export function SettingsPage({
               {status === 'checking' ? t('checkingForUpdates') : t('checkForUpdates')}
             </button>
             {(status === 'available' || status === 'restart-required') && (
-              <button type="button" className="button button-primary" onClick={installUpdate}>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={installUpdate}
+                disabled={ledgerRestoreInProgress}
+              >
                 {status === 'restart-required' ? t('restartNow') : t('installAndRestart')}
               </button>
             )}
@@ -226,18 +263,38 @@ export function SettingsPage({
         </div>
 
         <div className="settings-support-actions">
-          <a className="button button-primary settings-support-link" href={GITHUB_SPONSORS_URL}>
+          <a
+            className="button button-primary settings-support-link"
+            href={GITHUB_SPONSORS_URL}
+            aria-disabled={ledgerRestoreInProgress || undefined}
+            tabIndex={ledgerRestoreInProgress ? -1 : undefined}
+            onClick={(event) => {
+              if (ledgerRestoreInProgress) event.preventDefault()
+            }}
+          >
             <Heart aria-hidden="true" />
             {t('githubSponsors')}
           </a>
-          <a className="button button-secondary settings-support-link" href={BUY_ME_A_COFFEE_URL}>
+          <a
+            className="button button-secondary settings-support-link"
+            href={BUY_ME_A_COFFEE_URL}
+            aria-disabled={ledgerRestoreInProgress || undefined}
+            tabIndex={ledgerRestoreInProgress ? -1 : undefined}
+            onClick={(event) => {
+              if (ledgerRestoreInProgress) event.preventDefault()
+            }}
+          >
             <Coffee aria-hidden="true" />
             {t('buyMeACoffee')}
           </a>
         </div>
       </div>
 
-      <AiProviderSettingsForm settings={aiSettings} onChange={onAiSettingsChange} />
+      <AiProviderSettingsForm
+        settings={aiSettings}
+        disabled={ledgerRestoreInProgress}
+        onChange={onAiSettingsChange}
+      />
     </section>
   )
 }

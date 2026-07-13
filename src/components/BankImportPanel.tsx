@@ -36,6 +36,7 @@ type BankImportPanelProps = {
   onClose: () => void
   onConfigure: () => void
   onImported: () => Promise<unknown>
+  onMutationStateChange: (mutating: boolean) => void
 }
 
 export function BankImportPanel({
@@ -47,6 +48,7 @@ export function BankImportPanel({
   onClose,
   onConfigure,
   onImported,
+  onMutationStateChange,
 }: BankImportPanelProps) {
   const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const activeAccounts = accounts.filter(
@@ -75,7 +77,8 @@ export function BankImportPanel({
   useEffect(() => () => {
     requestIdRef.current += 1
     requestControllerRef.current?.abort()
-  }, [])
+    onMutationStateChange(false)
+  }, [onMutationStateChange])
 
   useEffect(() => {
     if (available) return
@@ -89,11 +92,12 @@ export function BankImportPanel({
       setAnalyzing(false)
       setPreviewing(false)
       setImporting(false)
+      onMutationStateChange(false)
       setStatus('')
       setError('')
     }, 0)
     return () => window.clearTimeout(timeout)
-  }, [available])
+  }, [available, onMutationStateChange])
 
   const cancelPendingRequest = () => {
     requestIdRef.current += 1
@@ -102,6 +106,7 @@ export function BankImportPanel({
     setAnalyzing(false)
     setPreviewing(false)
     setImporting(false)
+    onMutationStateChange(false)
   }
 
   const invalidateDrafts = () => {
@@ -296,6 +301,7 @@ export function BankImportPanel({
       return
     }
 
+    onMutationStateChange(true)
     setImporting(true)
     setError('')
     const requestId = ++requestIdRef.current
@@ -330,6 +336,7 @@ export function BankImportPanel({
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
       setError(renderMessage(t, messageForError(caught, 'errorAiImportFailed')))
     } finally {
+      onMutationStateChange(false)
       if (requestId === requestIdRef.current) {
         requestControllerRef.current = null
         setImporting(false)
@@ -350,7 +357,7 @@ export function BankImportPanel({
           <h3 id="bank-import-title">{t('aiImportTitle')}</h3>
           <p>{t('aiImportHelp')}</p>
         </div>
-        <button className="icon-button" type="button" onClick={onClose} aria-label={t('aiCloseImport')}>
+        <button className="icon-button" type="button" onClick={onClose} disabled={importing} aria-label={t('aiCloseImport')}>
           <X aria-hidden="true" />
         </button>
       </div>

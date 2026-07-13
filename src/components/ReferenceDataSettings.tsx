@@ -39,6 +39,7 @@ type ReferenceDataSettingsProps = {
   expectedCurrency: SupportedCurrency
   enabled: boolean
   onRefresh: () => Promise<boolean>
+  onBusyChange: (busy: boolean) => void
 }
 
 type Editor =
@@ -74,6 +75,7 @@ export function ReferenceDataSettings({
   expectedCurrency,
   enabled,
   onRefresh,
+  onBusyChange,
 }: ReferenceDataSettingsProps) {
   const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [accountName, setAccountName] = useState('')
@@ -95,6 +97,7 @@ export function ReferenceDataSettings({
   ) {
     if (!enabled || busy) return false
     setBusy(key)
+    onBusyChange(true)
     setFeedback(null)
     setFeedbackError(false)
     try {
@@ -108,6 +111,7 @@ export function ReferenceDataSettings({
       return false
     } finally {
       setBusy(null)
+      onBusyChange(false)
     }
   }
 

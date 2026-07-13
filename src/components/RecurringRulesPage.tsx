@@ -31,18 +31,22 @@ type RecurringRulesPageProps = {
   accounts: Account[]
   categories: Category[]
   draft: RecurringRuleCreateInput | null
+  ledgerContext: string
   mutable: boolean
   onMoneyRefresh: () => Promise<boolean>
   onDraftClose: () => void
+  onMutationStateChange: (mutating: boolean) => void
 }
 
 export function RecurringRulesPage({
   accounts,
   categories,
   draft,
+  ledgerContext,
   mutable,
   onMoneyRefresh,
   onDraftClose,
+  onMutationStateChange,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const recurring = useRecurringRules(onMoneyRefresh, mutable)
@@ -50,6 +54,7 @@ export function RecurringRulesPage({
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
   const mutationsEnabled = mutable && recurring.online && recurring.source === 'live'
+  const mutationInProgress = recurring.running || recurring.mutatingId !== null
 
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts])
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
@@ -68,14 +73,15 @@ export function RecurringRulesPage({
 
   useEffect(() => {
     if (mutationsEnabled) return
-    const timeout = window.setTimeout(() => {
-      setEditorOpen(false)
-      setEditingRule(null)
-      setDeletingRule(null)
-      onDraftClose()
-    }, 0)
+    const timeout = window.setTimeout(() => setDeletingRule(null), 0)
     return () => window.clearTimeout(timeout)
-  }, [mutationsEnabled, onDraftClose])
+  }, [mutationsEnabled])
+
+  useEffect(() => {
+    onMutationStateChange(mutationInProgress)
+  }, [mutationInProgress, onMutationStateChange])
+
+  useEffect(() => () => onMutationStateChange(false), [onMutationStateChange])
 
   const openCreate = () => {
     recurring.clearActionMessage()
@@ -124,8 +130,10 @@ export function RecurringRulesPage({
     }
     if (recurring.actionMessage) {
       return {
-        className: 'recurring-status status-success',
-        icon: <CalendarCheck aria-hidden="true" />,
+        className: `recurring-status ${recurring.actionWarning ? 'status-warning' : 'status-success'}`,
+        icon: recurring.actionWarning
+          ? <CircleAlert aria-hidden="true" />
+          : <CalendarCheck aria-hidden="true" />,
         text: recurring.actionMessage,
       }
     }
@@ -336,6 +344,7 @@ export function RecurringRulesPage({
           draft={draft}
           accounts={accounts}
           categories={categories}
+          ledgerContext={ledgerContext}
           saving={recurring.mutatingId === (editingRule?.id ?? 'new')}
           serverError={recurring.error}
           mutable={mutationsEnabled}

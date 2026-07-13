@@ -4,6 +4,7 @@ import {
   clearDevelopmentServiceWorkerState,
   isAppServiceWorkerEnabled,
   normalizeAppUpdateMode,
+  resolveAppRestart,
   resolveControllerChange,
 } from './appUpdate'
 
@@ -19,6 +20,11 @@ describe('app update preference', () => {
     assert.equal(resolveControllerChange(false, true, false), 'current')
     assert.equal(resolveControllerChange(true, true, false), 'restart-required')
     assert.equal(resolveControllerChange(true, true, true), 'reload')
+  })
+
+  it('defers every app restart while a ledger critical section is active', () => {
+    assert.equal(resolveAppRestart(true), 'defer')
+    assert.equal(resolveAppRestart(false), 'restart')
   })
 
   it('enables the offline worker only for production builds', () => {

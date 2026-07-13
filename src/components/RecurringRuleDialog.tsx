@@ -1,7 +1,8 @@
 import { ArrowDownRight, ArrowUpRight, LoaderCircle, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useI18n } from '../i18n'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
+import { confirmDiscardIfDirty, dialogLedgerContextChanged } from '../lib/dirtyDialog'
 import { formatAmountInput, parseAmount } from '../lib/money'
 import {
   recurringRuleCreateSchema,
@@ -20,6 +21,7 @@ type RecurringRuleDialogProps = {
   draft: RecurringRuleCreateInput | null
   accounts: Account[]
   categories: Category[]
+  ledgerContext: string
   saving: boolean
   serverError: string
   mutable: boolean
@@ -33,6 +35,7 @@ export function RecurringRuleDialog({
   draft,
   accounts,
   categories,
+  ledgerContext,
   saving,
   serverError,
   mutable,
@@ -68,11 +71,26 @@ export function RecurringRuleDialog({
   )
   const [isActive, setIsActive] = useState(initialRule?.isActive ?? true)
   const [localError, setLocalError] = useState('')
+  const [openingLedgerContext] = useState(ledgerContext)
+  const [draftCurrency] = useState(ledgerCurrency)
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const draftIdRef = useRef(draft?.id ?? crypto.randomUUID())
   const savingRef = useRef(saving)
+  const dirtyRef = useRef(false)
+  const ledgerContextChanged = mutable && dialogLedgerContextChanged(
+    openingLedgerContext,
+    ledgerContext,
+  )
+  const draftMutable = mutable && !ledgerContextChanged
+  const closeIfSafe = useCallback(() => {
+    confirmDiscardIfDirty(
+      dirtyRef.current,
+      () => window.confirm(t('discardUnsavedChangesConfirm')),
+      onClose,
+    )
+  }, [onClose, t])
 
   const matchingCategories = useMemo(
     () => categories.filter(
@@ -93,6 +111,16 @@ export function RecurringRuleDialog({
   }, [saving])
 
   useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  useEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     document.body.classList.add('dialog-open')
 
@@ -100,7 +128,7 @@ export function RecurringRuleDialog({
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !savingRef.current) {
         event.preventDefault()
-        onClose()
+        closeIfSafe()
         return
       }
 
@@ -129,9 +157,11 @@ export function RecurringRuleDialog({
       document.body.classList.remove('dialog-open')
       returnFocusRef.current?.focus()
     }
-  }, [onClose])
+  }, [closeIfSafe])
 
   const selectType = (nextType: TransactionType) => {
+    if (nextType === type) return
+    dirtyRef.current = true
     setType(nextType)
     setCategoryId(
       categories.find((category) => category.isActive && category.type === nextType)?.id ?? 0,
@@ -141,7 +171,7 @@ export function RecurringRuleDialog({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!mutable) return
+    if (!draftMutable) return
     setLocalError('')
     const data = new FormData(event.currentTarget)
 
@@ -162,7 +192,7 @@ export function RecurringRuleDialog({
         name: String(data.get('name') ?? ''),
         type,
         amountMinor,
-        currency: ledgerCurrency,
+        currency: draftCurrency,
         accountId,
         categoryId: matchingCategories.some((category) => category.id === categoryId)
           ? categoryId
@@ -191,7 +221,7 @@ export function RecurringRuleDialog({
     if (saved) onClose()
   }
 
-  const error = localError || serverError
+  const error = ledgerContextChanged ? t('draftLedgerChanged') : localError || serverError
   const describedBy = [
     'recurring-future-note',
     draft ? 'recurring-draft-note' : '',
@@ -205,7 +235,7 @@ export function RecurringRuleDialog({
     <div
       className="dialog-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
+      onMouseDown={(event) => event.target === event.currentTarget && !saving && closeIfSafe()}
     >
       <div
         className="transaction-dialog recurring-rule-dialog"
@@ -218,12 +248,13 @@ export function RecurringRuleDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="recurring-dialog-title">{editing ? t('editRecurringRule') : t('addRecurringRule')}</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
+          <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit} onChange={() => { dirtyRef.current = true }} noValidate>
+          <fieldset className="transaction-form-fields" disabled={saving || !draftMutable}>
           {draft ? (
             <p className="duplicate-form-note" id="recurring-draft-note">
               {t('recurringDraftReviewHelp')}
@@ -265,7 +296,7 @@ export function RecurringRuleDialog({
           <label className="amount-field recurring-amount-field">
             <span>{t('recurringAmount')}</span>
             <span className="amount-input-wrap">
-              <span>{ledgerCurrency}</span>
+              <span>{draftCurrency}</span>
               <input
                 type={privacyMode ? 'password' : 'text'}
                 name="amount"
@@ -385,11 +416,12 @@ export function RecurringRuleDialog({
           {!mutable ? <p className="offline-form-note">{t('offlineRecurringForm')}</p> : null}
 
           <div className="dialog-actions">
-            <button className="button button-primary save-button" type="submit" disabled={saving || !mutable}>
+            <button className="button button-primary save-button" type="submit" disabled={saving || !draftMutable}>
               {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
               {saving ? t('saving') : editing ? t('saveChanges') : t('createRecurringRule')}
             </button>
           </div>
+          </fieldset>
         </form>
       </div>
     </div>

@@ -37,6 +37,7 @@ type CsvImportPanelProps = {
   panelRef: RefObject<HTMLElement | null>
   onClose: () => void
   onImported: () => Promise<unknown>
+  onMutationStateChange: (mutating: boolean) => void
 }
 
 export function CsvImportPanel({
@@ -46,6 +47,7 @@ export function CsvImportPanel({
   panelRef,
   onClose,
   onImported,
+  onMutationStateChange,
 }: CsvImportPanelProps) {
   const { formatDate, formatMoney, ledgerCurrency, localizeEntityName, t } = useI18n()
   const [fileName, setFileName] = useState('')
@@ -66,7 +68,8 @@ export function CsvImportPanel({
   useEffect(() => () => {
     requestSequence.current += 1
     requestController.current?.abort()
-  }, [])
+    onMutationStateChange(false)
+  }, [onMutationStateChange])
 
   const resetPreview = () => {
     requestSequence.current += 1
@@ -227,6 +230,7 @@ export function CsvImportPanel({
 
   const importSelected = async () => {
     if (!available || busy || selected.size === 0) return
+    onMutationStateChange(true)
     setBusy(true)
     setError('')
     setStatus('')
@@ -263,6 +267,7 @@ export function CsvImportPanel({
       if (controller.signal.aborted || sequence !== requestSequence.current) return
       setError(renderMessage(t, messageForError(caught, 'csvImportFailed')))
     } finally {
+      onMutationStateChange(false)
       if (sequence === requestSequence.current) {
         requestController.current = null
         setBusy(false)
@@ -285,7 +290,7 @@ export function CsvImportPanel({
           <h3 id="csv-import-title">{t('csvImportTitle')}</h3>
           <p>{t('csvImportHelp')}</p>
         </div>
-        <button className="icon-button" type="button" onClick={onClose} aria-label={t('csvImportClose')}>
+        <button className="icon-button" type="button" onClick={onClose} disabled={busy} aria-label={t('csvImportClose')}>
           <X aria-hidden="true" />
         </button>
       </div>

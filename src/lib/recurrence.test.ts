@@ -5,6 +5,7 @@ import {
   dueOccurrences,
   firstOccurrenceOnOrAfter,
   recurrenceAnchorDay,
+  recurringGenerationNeedsAttention,
 } from './recurrence'
 
 describe('recurring transaction dates', () => {
@@ -41,6 +42,18 @@ describe('recurring transaction dates', () => {
       nextOccurrenceOn: '2026-07-03',
       truncated: true,
     })
+  })
+
+  it('requires attention when any due-rule work remains incomplete', () => {
+    assert.equal(recurringGenerationNeedsAttention({ blocked: 0, truncated: 0, failed: 0 }), false)
+    for (const field of ['blocked', 'truncated', 'failed'] as const) {
+      assert.equal(recurringGenerationNeedsAttention({
+        blocked: 0,
+        truncated: 0,
+        failed: 0,
+        [field]: 1,
+      }), true)
+    }
   })
 
   it('skips paused dates when resuming', () => {

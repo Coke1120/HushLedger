@@ -1,8 +1,9 @@
 import { ArrowDownRight, ArrowUpRight, CopyPlus, LoaderCircle, Repeat2, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useI18n } from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
+import { confirmDiscardIfDirty, dialogLedgerContextChanged } from '../lib/dirtyDialog'
 import { isTransactionSaveShortcut } from '../lib/keyboardShortcut'
 import { formatAmountInput, parseAmount } from '../lib/money'
 import { payeeOptions, rememberPayeeReferences } from '../lib/payeeMemory'
@@ -19,9 +20,11 @@ import {
 type TransactionDialogProps = {
   accounts: Account[]
   categories: Category[]
+  ledgerContext: string
   saving: boolean
   serverError: string
   online: boolean
+  source: 'loading' | 'live' | 'demo' | 'error'
   transaction: Transaction | null
   draft: TransactionInput | null
   onClose: () => void
@@ -41,9 +44,11 @@ const calculatorOperators = [
 export function TransactionDialog({
   accounts,
   categories,
+  ledgerContext,
   saving,
   serverError,
   online,
+  source,
   transaction,
   draft,
   onClose,
@@ -73,12 +78,18 @@ export function TransactionDialog({
   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
+  const [openingLedgerContext] = useState(ledgerContext)
+  const [draftCurrency] = useState(ledgerCurrency)
+  const [draftSource, setDraftSource] = useState<'live' | 'demo' | null>(() => (
+    source === 'live' || source === 'demo' ? source : null
+  ))
   const dialogRef = useRef<HTMLDivElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const draftIdRef = useRef(initialTransaction?.id ?? crypto.randomUUID())
   const busyRef = useRef(saving)
+  const dirtyRef = useRef(false)
   const duplicateCheckRef = useRef(false)
   const accountChangedRef = useRef(false)
   const categoryChangedRef = useRef(false)
@@ -102,6 +113,21 @@ export function TransactionDialog({
   const canDuplicate = hasActiveReferences
   const canMakeRecurring = hasActiveReferences && !transaction?.recurringRuleId
   const busy = saving || checkingDuplicate || deleting
+  const currentSource = source === 'live' || source === 'demo' ? source : null
+  const sourceAvailable = currentSource !== null && currentSource === (draftSource ?? currentSource)
+  const ledgerContextChanged = sourceAvailable && dialogLedgerContextChanged(
+    openingLedgerContext,
+    ledgerContext,
+  )
+  const mutable = online && sourceAvailable && !ledgerContextChanged
+  const leaveIfSafe = useCallback((leave: () => void) => confirmDiscardIfDirty(
+    dirtyRef.current,
+    () => window.confirm(t('discardUnsavedChangesConfirm')),
+    leave,
+  ), [t])
+  const closeIfSafe = useCallback(() => {
+    leaveIfSafe(onClose)
+  }, [leaveIfSafe, onClose])
 
   const applyPayeeMemory = useCallback((
     nextPayee: string,
@@ -133,6 +159,22 @@ export function TransactionDialog({
   }, [busy])
 
   useEffect(() => {
+    if (draftSource !== null || currentSource === null) return
+    const timeout = window.setTimeout(() => setDraftSource(currentSource), 0)
+    return () => window.clearTimeout(timeout)
+  }, [currentSource, draftSource])
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  useEffect(() => {
     if (transaction || draft || !online) return
     let active = true
     void api<PayeeSuggestion[]>('/api/payee-suggestions')
@@ -155,7 +197,7 @@ export function TransactionDialog({
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !busyRef.current) {
         event.preventDefault()
-        onClose()
+        closeIfSafe()
         return
       }
 
@@ -192,9 +234,11 @@ export function TransactionDialog({
       document.body.classList.remove('dialog-open')
       returnFocusRef.current?.focus()
     }
-  }, [onClose])
+  }, [closeIfSafe])
 
   const selectType = (nextType: TransactionType) => {
+    if (nextType === typeRef.current) return
+    dirtyRef.current = true
     typeRef.current = nextType
     setType(nextType)
     categoryChangedRef.current = false
@@ -204,10 +248,6 @@ export function TransactionDialog({
     setLocalError('')
     setPayeeMemoryApplied(false)
     applyPayeeMemory(payeeRef.current, nextType, suggestions)
-  }
-
-  const handleBackdropKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape' && !busy) onClose()
   }
 
   const normalizeAmountInput = (reportError: boolean) => {
@@ -226,6 +266,7 @@ export function TransactionDialog({
   const insertAmountToken = (token: string) => {
     const input = amountRef.current
     if (!input) return
+    dirtyRef.current = true
     const start = input.selectionStart ?? input.value.length
     const end = input.selectionEnd ?? start
     input.setRangeText(` ${token} `, start, end, 'end')
@@ -235,6 +276,7 @@ export function TransactionDialog({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!mutable) return
     setLocalError('')
     const data = new FormData(event.currentTarget)
     if (!isValidCalendarDate(date)) {
@@ -254,7 +296,7 @@ export function TransactionDialog({
       id: draftIdRef.current,
       type,
       amountMinor,
-      currency: ledgerCurrency,
+      currency: draftCurrency,
       accountId,
       categoryId: matchingCategories.some((category) => category.id === categoryId)
         ? categoryId
@@ -319,21 +361,20 @@ export function TransactionDialog({
   }
 
   const handleDelete = async () => {
-    if (!transaction || !window.confirm(t('deleteTransactionConfirm'))) return
+    if (!mutable || !transaction || !window.confirm(t('deleteTransactionConfirm'))) return
     setDeleting(true)
     const deleted = await onDelete(transaction)
     if (deleted) onClose()
     else setDeleting(false)
   }
 
-  const error = localError || serverError
+  const error = ledgerContextChanged ? t('draftLedgerChanged') : localError || serverError
 
   return (
     <div
       className="dialog-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}
-      onKeyDown={handleBackdropKeyDown}
+      onMouseDown={(event) => event.target === event.currentTarget && !busy && closeIfSafe()}
     >
       <div
         className="transaction-dialog"
@@ -346,13 +387,19 @@ export function TransactionDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={busy} aria-label={t('close')}>
+          <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={busy} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
-        <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={busy}>
-          <fieldset className="transaction-form-fields" disabled={busy}>
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          onChange={() => { dirtyRef.current = true }}
+          noValidate
+          aria-busy={busy}
+        >
+          <fieldset className="transaction-form-fields" disabled={busy || !mutable}>
           {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
           {transaction && !hasActiveReferences ? (
             <p className="duplicate-form-note">{t('duplicateUnavailableHelp')}</p>
@@ -376,7 +423,7 @@ export function TransactionDialog({
             <label htmlFor="transaction-amount">
               <span>{t('amount')}</span>
               <span className="amount-input-wrap">
-                <span>{ledgerCurrency}</span>
+                <span>{draftCurrency}</span>
                 <input
                   id="transaction-amount"
                   aria-label={t('amount')}
@@ -551,13 +598,16 @@ export function TransactionDialog({
           ) : null}
 
           {!online ? <p className="offline-form-note">{t('offlineTransactionForm')}</p> : null}
+          {online && !sourceAvailable ? (
+            <p className="offline-form-note">{t('transactionDraftSourceChanged')}</p>
+          ) : null}
 
           <div className="dialog-actions transaction-dialog-actions">
             {transaction ? (
               <button
                 className="button button-danger"
                 type="button"
-                disabled={saving || !online}
+                disabled={saving || !mutable}
                 onClick={() => void handleDelete()}
               >
                 {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
@@ -568,8 +618,8 @@ export function TransactionDialog({
               <button
                 className="button button-secondary"
                 type="button"
-                disabled={saving || !online || !canDuplicate}
-                onClick={() => onDuplicate(transaction)}
+                disabled={saving || !mutable || !canDuplicate}
+                onClick={() => leaveIfSafe(() => onDuplicate(transaction))}
               >
                 <CopyPlus aria-hidden="true" />
                 {t('duplicate')}
@@ -579,8 +629,8 @@ export function TransactionDialog({
               <button
                 className="button button-secondary"
                 type="button"
-                disabled={saving || !online || !canMakeRecurring}
-                onClick={() => onMakeRecurring(transaction)}
+                disabled={saving || !mutable || !canMakeRecurring}
+                onClick={() => leaveIfSafe(() => onMakeRecurring(transaction))}
               >
                 <Repeat2 aria-hidden="true" />
                 {t('makeRecurring')}
@@ -589,7 +639,7 @@ export function TransactionDialog({
             <button
               className="button button-primary save-button"
               type="submit"
-              disabled={busy || !online}
+              disabled={busy || !mutable}
               aria-keyshortcuts="Control+Enter Meta+Enter"
               title={t('saveTransactionShortcutHelp')}
             >

@@ -17,6 +17,7 @@ export type AppUpdateContextValue = {
   mode: AppUpdateMode
   status: AppUpdateStatus
   setMode: (mode: AppUpdateMode) => void
+  setRestartBlocked: (blocked: boolean) => void
   checkForUpdate: () => Promise<void>
   installUpdate: () => void
 }

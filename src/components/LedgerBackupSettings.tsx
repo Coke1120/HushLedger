@@ -38,6 +38,7 @@ export type LedgerRestoredResult = {
 type LedgerBackupSettingsProps = {
   available: boolean
   onRestored: () => Promise<LedgerRestoredResult>
+  onRestoreStateChange: (restoring: boolean) => boolean
 }
 
 type BusyAction = 'download' | 'preview' | 'restore' | null
@@ -52,7 +53,11 @@ const countRows: ReadonlyArray<{ key: keyof LedgerTableCounts; label: MessageKey
   { key: 'transactionImportKeys', label: 'ledgerTableImportKeys' },
 ]
 
-export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSettingsProps) {
+export function LedgerBackupSettings({
+  available,
+  onRestored,
+  onRestoreStateChange,
+}: LedgerBackupSettingsProps) {
   const { locale, t } = useI18n()
   const fileInput = useRef<HTMLInputElement>(null)
   const [backup, setBackup] = useState<unknown>(null)
@@ -229,6 +234,7 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
       busy
     ) return
 
+    if (!onRestoreStateChange(true)) return
     setBusy('restore')
     setErrorKey(null)
     setStatusKey(null)
@@ -260,6 +266,7 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
         setConfirmation('')
       }
     } finally {
+      onRestoreStateChange(false)
       setBusy(null)
     }
   }

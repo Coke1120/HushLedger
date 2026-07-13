@@ -6,10 +6,11 @@ import { api } from '../lib/api'
 
 type AiProviderSettingsFormProps = {
   settings: AiProviderSettings
+  disabled: boolean
   onChange: (settings: AiProviderSettings) => void
 }
 
-export function AiProviderSettingsForm({ settings, onChange }: AiProviderSettingsFormProps) {
+export function AiProviderSettingsForm({ settings, disabled, onChange }: AiProviderSettingsFormProps) {
   const { t } = useI18n()
   const [models, setModels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -24,6 +25,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
   }, [])
 
   const update = (patch: Partial<AiProviderSettings>) => {
+    if (disabled) return
     requestIdRef.current += 1
     requestControllerRef.current?.abort()
     requestControllerRef.current = null
@@ -36,6 +38,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
 
   const loadModels = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (disabled) return
     setStatus('')
     setError('')
 
@@ -103,7 +106,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
             autoComplete="url"
             spellCheck={false}
             required
-            disabled={loading}
+            disabled={loading || disabled}
           />
         </label>
 
@@ -119,7 +122,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
               autoComplete="off"
               spellCheck={false}
               required
-              disabled={loading}
+              disabled={loading || disabled}
             />
           </span>
           <small>{t('aiApiKeyHelp')}</small>
@@ -137,7 +140,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
             spellCheck={false}
             placeholder={t('aiModelPlaceholder')}
             required
-            disabled={loading}
+            disabled={loading || disabled}
           />
           <datalist id="ai-model-options">
             {models.map((model) => <option value={model} key={model} />)}
@@ -149,7 +152,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
         <p className="settings-save-status" aria-live="polite" aria-atomic="true">{status}</p>
 
         <div className="ai-settings-actions">
-          <button className="button button-primary" type="submit" disabled={loading}>
+          <button className="button button-primary" type="submit" disabled={loading || disabled}>
             {loading ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
             {loading ? t('aiLoadingModels') : t('aiLoadModels')}
           </button>
@@ -157,7 +160,7 @@ export function AiProviderSettingsForm({ settings, onChange }: AiProviderSetting
             className="button button-secondary"
             type="button"
             onClick={() => update({ apiKey: '' })}
-            disabled={!settings.apiKey || loading}
+            disabled={!settings.apiKey || loading || disabled}
           >
             <Trash2 aria-hidden="true" />
             {t('aiClearKey')}

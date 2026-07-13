@@ -85,6 +85,11 @@ knowledge and explains every command and dashboard click.
 - Save and close the transaction dialog from any field with `Ctrl+Enter` or
   `Command+Enter`. The existing Save button advertises the shortcut visually and
   to assistive technology; HushLedger does not capture global single-letter keys.
+- Closing or reloading a changed transaction, account transfer, or recurring rule
+  requires explicit discard confirmation. Draft values remain only in the open
+  dialog; HushLedger does not persist them to browser storage. If the ledger
+  changes in another tab, the preserved draft keeps its opening currency and
+  cannot be saved until the form is reopened against the new ledger state.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
   possible-duplicate filters across the 200 most recent matching transactions.
   Review the selected month, the seven Hong Kong calendar dates ending when the
@@ -141,7 +146,9 @@ knowledge and explains every command and dashboard click.
   same-origin action; direct `GET` navigation cannot start a plaintext download.
   Restore first shows a checksum-verified replacement report, then requires an
   explicit destructive confirmation before one transactional D1 replacement. A
-  browser-local health record shows the last prepared backup download and integrity
+  restore waits for in-flight ledger changes, then temporarily locks ledger
+  controls, navigation, restarts, and leave-without-warning paths through refresh.
+  A browser-local health record shows the last prepared backup download and integrity
   check, and warns after 30 days without a download.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
@@ -169,7 +176,8 @@ knowledge and explains every command and dashboard click.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
   paused, resumed, skipped once without creating a transaction, and deleted.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
-  duplicate occurrence for the same rule and date.
+  duplicate occurrence for the same rule and date. A manual run reports blocked,
+  failed, or safety-limited work as incomplete instead of presenting full success.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.

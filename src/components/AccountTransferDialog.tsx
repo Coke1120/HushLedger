@@ -1,7 +1,8 @@
 import { ArrowRightLeft, LoaderCircle, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useI18n } from '../i18n'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
+import { confirmDiscardIfDirty, dialogLedgerContextChanged } from '../lib/dirtyDialog'
 import { formatAmountInput, parseAmount } from '../lib/money'
 import {
   accountTransferInputSchema,
@@ -12,6 +13,7 @@ import {
 
 type AccountTransferDialogProps = {
   accounts: Account[]
+  ledgerContext: string
   saving: boolean
   serverError: string
   online: boolean
@@ -24,6 +26,7 @@ type AccountTransferDialogProps = {
 
 export function AccountTransferDialog({
   accounts,
+  ledgerContext,
   saving,
   serverError,
   online,
@@ -53,16 +56,41 @@ export function AccountTransferDialog({
   const [toCleared, setToCleared] = useState(transfer?.toCleared ?? false)
   const [localError, setLocalError] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [openingLedgerContext] = useState(ledgerContext)
+  const [draftCurrency] = useState(ledgerCurrency)
   const dialogRef = useRef<HTMLDivElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const draftIdRef = useRef(transfer?.id ?? crypto.randomUUID())
   const busyRef = useRef(saving)
+  const dirtyRef = useRef(false)
   const busy = saving || deleting
+  const ledgerContextChanged = available && online && dialogLedgerContextChanged(
+    openingLedgerContext,
+    ledgerContext,
+  )
+  const mutable = available && online && !ledgerContextChanged
+  const closeIfSafe = useCallback(() => {
+    confirmDiscardIfDirty(
+      dirtyRef.current,
+      () => window.confirm(t('discardUnsavedChangesConfirm')),
+      onClose,
+    )
+  }, [onClose, t])
 
   useEffect(() => {
     busyRef.current = busy
   }, [busy])
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -71,7 +99,7 @@ export function AccountTransferDialog({
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !busyRef.current) {
         event.preventDefault()
-        onClose()
+        closeIfSafe()
         return
       }
       if (event.key !== 'Tab' || !dialogRef.current) return
@@ -96,10 +124,11 @@ export function AccountTransferDialog({
       document.body.classList.remove('dialog-open')
       returnFocusRef.current?.focus()
     }
-  }, [onClose])
+  }, [closeIfSafe])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!mutable) return
     setLocalError('')
     const data = new FormData(event.currentTarget)
     if (!isValidCalendarDate(date)) {
@@ -118,7 +147,7 @@ export function AccountTransferDialog({
     const parsed = accountTransferInputSchema.safeParse({
       id: draftIdRef.current,
       amountMinor,
-      currency: ledgerCurrency,
+      currency: draftCurrency,
       fromAccountId,
       toAccountId,
       occurredOn: date,
@@ -135,7 +164,7 @@ export function AccountTransferDialog({
   }
 
   const handleDelete = async () => {
-    if (!transfer || !window.confirm(t('deleteTransferConfirm'))) return
+    if (!mutable || !transfer || !window.confirm(t('deleteTransferConfirm'))) return
     setDeleting(true)
     if (await onDelete(transfer)) onClose()
     else setDeleting(false)
@@ -148,13 +177,13 @@ export function AccountTransferDialog({
     }
     setLocalError('')
   }
-  const error = localError || serverError
+  const error = ledgerContextChanged ? t('draftLedgerChanged') : localError || serverError
 
   return (
     <div
       className="dialog-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}
+      onMouseDown={(event) => event.target === event.currentTarget && !busy && closeIfSafe()}
     >
       <div
         className="transaction-dialog transfer-dialog"
@@ -167,12 +196,17 @@ export function AccountTransferDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="transfer-dialog-title">{t(transfer ? 'editTransfer' : 'recordTransfer')}</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={busy} aria-label={t('close')}>
+          <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={busy} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
-        <form onSubmit={handleSubmit} noValidate aria-busy={busy}>
-          <fieldset className="transaction-form-fields" disabled={busy}>
+        <form
+          onSubmit={handleSubmit}
+          onChange={() => { dirtyRef.current = true }}
+          noValidate
+          aria-busy={busy}
+        >
+          <fieldset className="transaction-form-fields" disabled={busy || !mutable}>
             <p className="transfer-form-help" id="transfer-form-help">
               <ArrowRightLeft aria-hidden="true" />
               {t('transferNotInReports')}
@@ -181,7 +215,7 @@ export function AccountTransferDialog({
               <label htmlFor="transfer-amount">
                 <span>{t('amount')}</span>
                 <span className="amount-input-wrap">
-                  <span>{ledgerCurrency}</span>
+                  <span>{draftCurrency}</span>
                   <input
                     id="transfer-amount"
                     aria-label={t('amount')}
@@ -252,12 +286,12 @@ export function AccountTransferDialog({
             {!available ? <p className="offline-form-note">{t('transferUnavailable')}</p> : null}
             <div className="dialog-actions transfer-dialog-actions">
               {transfer ? (
-                <button className="button button-danger" type="button" disabled={!available || busy} onClick={() => void handleDelete()}>
+                <button className="button button-danger" type="button" disabled={!mutable || busy} onClick={() => void handleDelete()}>
                   {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
                   {deleting ? t('deleting') : t('delete')}
                 </button>
               ) : null}
-              <button className="button button-primary save-button" type="submit" disabled={!available || !online || busy || selectableAccounts.length < 2}>
+              <button className="button button-primary save-button" type="submit" disabled={!mutable || busy || selectableAccounts.length < 2}>
                 {saving && !deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {saving && !deleting ? t('saving') : t(transfer ? 'saveChanges' : 'saveTransfer')}
               </button>

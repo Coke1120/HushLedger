@@ -1,6 +1,13 @@
 import { isValidCalendarDate } from './date'
+import type { RecurringGenerationResult } from './schema'
 
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly'
+
+export function recurringGenerationNeedsAttention(
+  result: Pick<RecurringGenerationResult, 'blocked' | 'truncated' | 'failed'>,
+) {
+  return result.blocked > 0 || result.truncated > 0 || result.failed > 0
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000
 

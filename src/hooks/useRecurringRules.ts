@@ -19,6 +19,7 @@ import {
 } from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate } from '../lib/date'
+import { recurringGenerationNeedsAttention } from '../lib/recurrence'
 import type {
   RecurringGenerationResult,
   RecurringRule,
@@ -89,6 +90,7 @@ export function useRecurringRules(
   const [source, setSource] = useState<DataSource>('loading')
   const [online, setOnline] = useState(true)
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
+  const [actionWarning, setActionWarning] = useState(false)
   const [error, setError] = useState<LocalizedMessage | null>(null)
   const [mutatingId, setMutatingId] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -136,6 +138,8 @@ export function useRecurringRules(
   useEffect(() => {
     const handleOnline = () => {
       setOnline(true)
+      setActionMessage(null)
+      setActionWarning(false)
       void refresh()
     }
     const handleOffline = () => {
@@ -143,6 +147,7 @@ export function useRecurringRules(
       setRules(demoRules)
       setSource('demo')
       setActionMessage(message('recurringOfflineDemo'))
+      setActionWarning(true)
     }
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -162,6 +167,7 @@ export function useRecurringRules(
       submitting.current = true
       setError(null)
       setActionMessage(null)
+      setActionWarning(false)
 
       try {
         if (!navigator.onLine) {
@@ -257,10 +263,15 @@ export function useRecurringRules(
       successMessage: (requestResult) => {
         if (!requestResult) return message('recurringDemoRun')
         const generation = requestResult as RecurringGenerationResult
-        return message('recurringRunResult', {
+        const needsAttention = recurringGenerationNeedsAttention(generation)
+        setActionWarning(needsAttention)
+        return message(needsAttention ? 'recurringRunIncomplete' : 'recurringRunResult', {
           scanned: generation.scanned,
           created: generation.created,
           existing: generation.alreadyExisting,
+          blocked: generation.blocked,
+          truncated: generation.truncated,
+          failed: generation.failed,
         })
       },
       request: () => actionData(runDueRecurringRulesAction()),
@@ -272,6 +283,7 @@ export function useRecurringRules(
   const visibleRules = useMemo(() => rules.map((rule) => localizeDemoRule(rule, t)), [rules, t])
   const clearActionMessage = useCallback(() => {
     setActionMessage(null)
+    setActionWarning(false)
     setError(null)
   }, [])
 
@@ -280,6 +292,7 @@ export function useRecurringRules(
     source,
     online,
     actionMessage: renderMessage(t, actionMessage),
+    actionWarning,
     error: renderMessage(t, error),
     mutatingId,
     running,

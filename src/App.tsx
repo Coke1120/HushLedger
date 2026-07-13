@@ -22,6 +22,7 @@ import { SavedTransactionViews } from './components/SavedTransactionViews'
 import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
 import { CashFlowTrend } from './components/CashFlowTrend'
+import { useAppUpdate } from './components/appUpdateContext'
 import { TransactionDialog } from './components/TransactionDialog'
 import { TransactionFilterSummary } from './components/TransactionFilterSummary'
 import { TransactionList } from './components/TransactionList'
@@ -67,6 +68,7 @@ const initialAiSettings: AiProviderSettings = {
 
 function App({ initialDate, initialMonth }: { initialDate: string; initialMonth: string }) {
   const { localizeEntityName, t } = useI18n()
+  const { status: appUpdateStatus, setRestartBlocked } = useAppUpdate()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
   const [clearingFilter, setClearingFilter] = useState<TransactionClearingFilter>('all')
@@ -95,6 +97,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const [savedTransactionViews, setSavedTransactionViews] = useState<SavedTransactionView[]>([])
   const [ledgerGeneration, setLedgerGeneration] = useState(0)
+  const [ledgerRestoreInProgress, setLedgerRestoreInProgress] = useState(false)
+  const [importMutationInProgress, setImportMutationInProgress] = useState(false)
+  const [recurringMutationInProgress, setRecurringMutationInProgress] = useState(false)
+  const [settingsMutationInProgress, setSettingsMutationInProgress] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiImportButtonRef = useRef<HTMLButtonElement>(null)
@@ -135,20 +141,34 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     saveAccountTransfer,
     saveTransaction: saveMoneyTransaction,
   } = data
+  const otherLedgerMutationInProgress = data.saving
+    || importMutationInProgress
+    || recurringMutationInProgress
+  const ledgerMutationInProgress = otherLedgerMutationInProgress || settingsMutationInProgress
+  const ledgerInteractionLocked = ledgerRestoreInProgress || ledgerMutationInProgress
+
+  const changeLedgerRestoreState = useCallback((restoring: boolean) => {
+    if (restoring && (ledgerMutationInProgress || appUpdateStatus === 'installing')) return false
+    if (restoring) setRestartBlocked(true)
+    setLedgerRestoreInProgress(restoring)
+    return true
+  }, [appUpdateStatus, ledgerMutationInProgress, setRestartBlocked])
 
   const openDialog = useCallback(() => {
+    if (ledgerInteractionLocked) return
     clearActionMessage()
     setEditingTransaction(null)
     setTransactionDraft(null)
     setDialogOpen(true)
-  }, [clearActionMessage])
+  }, [clearActionMessage, ledgerInteractionLocked])
 
   const openTransaction = useCallback((transaction: Transaction) => {
+    if (ledgerInteractionLocked) return
     clearActionMessage()
     setEditingTransaction(transaction)
     setTransactionDraft(null)
     setDialogOpen(true)
-  }, [clearActionMessage])
+  }, [clearActionMessage, ledgerInteractionLocked])
 
   const duplicateTransaction = useCallback((transaction: Transaction) => {
     clearActionMessage()
@@ -163,10 +183,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTransactionDraft(null)
   }, [])
   const openTransferDialog = useCallback((transfer: AccountTransfer | null = null) => {
+    if (ledgerInteractionLocked) return
     clearActionMessage()
     setEditingTransfer(transfer)
     setTransferDialogOpen(true)
-  }, [clearActionMessage])
+  }, [clearActionMessage, ledgerInteractionLocked])
   const closeTransferDialog = useCallback(() => {
     setTransferDialogOpen(false)
     setEditingTransfer(null)
@@ -197,10 +218,24 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   )
 
   const changeView = useCallback((nextView: AppView) => {
+    if (ledgerInteractionLocked) return
     if (nextView !== 'transactions') setRegisterAccountId(null)
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [ledgerInteractionLocked])
+
+  useEffect(() => {
+    if (!ledgerRestoreInProgress) {
+      setRestartBlocked(false)
+      return
+    }
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warnBeforeLeaving)
+    return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
+  }, [ledgerRestoreInProgress, setRestartBlocked])
 
   const makeTransactionRecurring = useCallback((transaction: Transaction) => {
     const draftName = transaction.payee.trim() || localizeEntityName(
@@ -215,11 +250,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
   const openImport = useCallback((mode: 'csv' | 'ai') => {
+    if (ledgerInteractionLocked) return
     setRegisterAccountId(null)
     setView('transactions')
     setImportMode(mode)
     window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+  }, [ledgerInteractionLocked])
 
   const closeImport = useCallback(() => {
     const button = importMode === 'csv' ? csvImportButtonRef : aiImportButtonRef
@@ -493,12 +529,18 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
 
   return (
     <div className="app-shell">
-      <AppHeader view={view} onAdd={openDialog} onViewChange={changeView} />
+      <AppHeader
+        view={view}
+        navigationDisabled={ledgerInteractionLocked}
+        onAdd={openDialog}
+        onViewChange={changeView}
+      />
       <main
         className={`app-main view-${view}`}
         ref={mainRef}
         tabIndex={-1}
         aria-labelledby="app-view-title"
+        aria-busy={ledgerInteractionLocked || undefined}
       >
         <h1 className="sr-only" id="app-view-title">{viewTitle}</h1>
         <div hidden={!moneyView}>
@@ -675,6 +717,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 panelRef={importPanelRef}
                 onClose={closeImport}
                 onImported={() => data.refresh(false)}
+                onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
             {registerAccountId === null && view === 'transactions' && importMode === 'ai' ? (
@@ -688,6 +731,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onClose={closeImport}
                 onConfigure={() => changeView('settings')}
                 onImported={() => data.refresh(false)}
+                onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
             {view === 'transactions' && registerAccountId !== null ? (
@@ -749,13 +793,15 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
         </div>
         <div hidden={view !== 'recurring'}>
           <RecurringRulesPage
-            key={`${ledgerGeneration}:${data.ledgerSettings.updatedAt}`}
+            key={ledgerGeneration}
             accounts={data.accounts}
             categories={data.categories}
             draft={recurringDraft}
+            ledgerContext={data.ledgerSettings.updatedAt}
             mutable={data.source === 'live' && data.online}
             onMoneyRefresh={data.refresh}
             onDraftClose={closeRecurringDraft}
+            onMutationStateChange={setRecurringMutationInProgress}
           />
         </div>
         <div hidden={view !== 'settings'}>
@@ -767,21 +813,31 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             emergencyFundGoal={data.emergencyFundGoal}
             ledgerSettings={data.ledgerSettings}
             canManageReferences={data.source === 'live' && data.online}
+            ledgerRestoreInProgress={ledgerRestoreInProgress}
+            otherLedgerMutationInProgress={otherLedgerMutationInProgress}
             onReferenceRefresh={() => data.refresh(false)}
             onLedgerRestored={handleLedgerRestored}
+            onLedgerMutationStateChange={setSettingsMutationInProgress}
+            onLedgerRestoreStateChange={changeLedgerRestoreState}
           />
         </div>
       </main>
 
-      <MobileNavigation view={view} onChange={changeView} />
+      <MobileNavigation
+        view={view}
+        disabled={ledgerInteractionLocked}
+        onChange={changeView}
+      />
       {dialogOpen ? (
         <TransactionDialog
-          key={`${editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}:${data.ledgerSettings.updatedAt}`}
+          key={`${ledgerGeneration}:${editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}`}
           accounts={data.accounts}
           categories={data.categories}
+          ledgerContext={data.ledgerSettings.updatedAt}
           saving={data.saving}
           serverError={data.saveError}
           online={data.online}
+          source={data.source}
           transaction={editingTransaction}
           draft={transactionDraft}
           onClose={closeDialog}
@@ -793,8 +849,9 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       ) : null}
       {transferDialogOpen ? (
         <AccountTransferDialog
-          key={`${editingTransfer ? `transfer:${editingTransfer.id}` : 'new-transfer'}:${data.ledgerSettings.updatedAt}`}
+          key={`${ledgerGeneration}:${editingTransfer ? `transfer:${editingTransfer.id}` : 'new-transfer'}`}
           accounts={data.accounts}
+          ledgerContext={data.ledgerSettings.updatedAt}
           saving={data.saving}
           serverError={data.saveError}
           online={data.online}

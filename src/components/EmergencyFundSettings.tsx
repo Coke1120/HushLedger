@@ -12,6 +12,7 @@ type EmergencyFundSettingsProps = {
   expectedCurrency: SupportedCurrency
   enabled: boolean
   onRefresh: () => Promise<boolean>
+  onBusyChange: (busy: boolean) => void
 }
 
 type EmergencyFundDraft = {
@@ -28,6 +29,7 @@ export function EmergencyFundSettings({
   expectedCurrency,
   enabled,
   onRefresh,
+  onBusyChange,
 }: EmergencyFundSettingsProps) {
   const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const eligibleAccounts = accounts.filter(
@@ -73,6 +75,7 @@ export function EmergencyFundSettings({
     }
 
     setBusy('save')
+    onBusyChange(true)
     setFeedback(null)
     setFeedbackError(false)
     try {
@@ -100,6 +103,7 @@ export function EmergencyFundSettings({
       setFeedbackError(true)
     } finally {
       setBusy(null)
+      onBusyChange(false)
     }
   }
 
@@ -108,6 +112,7 @@ export function EmergencyFundSettings({
     if (!window.confirm(t('deleteEmergencyFundGoalConfirm'))) return
 
     setBusy('delete')
+    onBusyChange(true)
     setFeedback(null)
     setFeedbackError(false)
     try {
@@ -130,6 +135,7 @@ export function EmergencyFundSettings({
       setFeedbackError(true)
     } finally {
       setBusy(null)
+      onBusyChange(false)
     }
   }
 

@@ -4,6 +4,7 @@ import type { AppView } from './MobileNavigation'
 
 type AppHeaderProps = {
   view: AppView
+  navigationDisabled: boolean
   onAdd: () => void
   onViewChange: (view: AppView) => void
 }
@@ -17,7 +18,7 @@ function HushLedgerMark() {
   )
 }
 
-export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
+export function AppHeader({ view, navigationDisabled, onAdd, onViewChange }: AppHeaderProps) {
   const { privacyMode, setPrivacyMode, t } = useI18n()
   const privacyLabel = t(privacyMode ? 'showAmounts' : 'hideAmounts')
 
@@ -38,6 +39,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             type="button"
             className={view === 'overview' ? 'is-active' : undefined}
             aria-current={view === 'overview' ? 'page' : undefined}
+            disabled={navigationDisabled}
             onClick={() => onViewChange('overview')}
           >
             <House aria-hidden="true" />
@@ -47,6 +49,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             type="button"
             className={view === 'transactions' ? 'is-active' : undefined}
             aria-current={view === 'transactions' ? 'page' : undefined}
+            disabled={navigationDisabled}
             onClick={() => onViewChange('transactions')}
           >
             <List aria-hidden="true" />
@@ -56,6 +59,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             type="button"
             className={view === 'recurring' ? 'is-active' : undefined}
             aria-current={view === 'recurring' ? 'page' : undefined}
+            disabled={navigationDisabled}
             onClick={() => onViewChange('recurring')}
           >
             <Repeat aria-hidden="true" />
@@ -65,6 +69,7 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
             type="button"
             className={view === 'settings' ? 'is-active' : undefined}
             aria-current={view === 'settings' ? 'page' : undefined}
+            disabled={navigationDisabled}
             onClick={() => onViewChange('settings')}
           >
             <Settings aria-hidden="true" />
@@ -81,7 +86,12 @@ export function AppHeader({ view, onAdd, onViewChange }: AppHeaderProps) {
         >
           {privacyMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
         </button>
-        <button className="button button-primary add-button" type="button" onClick={onAdd}>
+        <button
+          className="button button-primary add-button"
+          type="button"
+          onClick={onAdd}
+          disabled={navigationDisabled}
+        >
           <Plus aria-hidden="true" />
           <span>{t('addTransaction')}</span>
         </button>

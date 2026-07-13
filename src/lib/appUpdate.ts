@@ -2,6 +2,7 @@ export const APP_UPDATE_MODE_STORAGE_KEY = 'hushledger:update-mode:v1'
 
 export type AppUpdateMode = 'manual' | 'automatic'
 export type ControllerChangeAction = 'current' | 'reload' | 'restart-required'
+export type AppRestartAction = 'defer' | 'restart'
 
 type AppServiceWorkerRegistration = {
   unregister: () => Promise<boolean>
@@ -57,4 +58,8 @@ export function resolveControllerChange(
   if (reloadArmed) return 'reload'
   if (wasControlled && isControlled) return 'restart-required'
   return 'current'
+}
+
+export function resolveAppRestart(blocked: boolean): AppRestartAction {
+  return blocked ? 'defer' : 'restart'
 }

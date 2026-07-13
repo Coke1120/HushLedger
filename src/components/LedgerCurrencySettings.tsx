@@ -13,12 +13,14 @@ type LedgerCurrencySettingsProps = {
   settings: LedgerCurrencySettings
   enabled: boolean
   onRefresh: () => Promise<boolean>
+  onBusyChange: (busy: boolean) => void
 }
 
 export function LedgerCurrencySettingsPanel({
   settings,
   enabled,
   onRefresh,
+  onBusyChange,
 }: LedgerCurrencySettingsProps) {
   const { locale, t } = useI18n()
   const [selection, setSelection] = useState(() => ({
@@ -49,6 +51,7 @@ export function LedgerCurrencySettingsPanel({
     ) return
 
     setSaving(true)
+    onBusyChange(true)
     setFeedback(null)
     setFeedbackError(false)
     try {
@@ -67,6 +70,7 @@ export function LedgerCurrencySettingsPanel({
       setFeedbackError(true)
     } finally {
       setSaving(false)
+      onBusyChange(false)
     }
   }
 

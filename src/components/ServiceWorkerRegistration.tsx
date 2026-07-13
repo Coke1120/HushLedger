@@ -13,6 +13,7 @@ import {
   clearDevelopmentServiceWorkerState,
   isAppServiceWorkerEnabled,
   normalizeAppUpdateMode,
+  resolveAppRestart,
   resolveControllerChange,
   type AppUpdateMode,
 } from '../lib/appUpdate'
@@ -30,8 +31,25 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
   const waitingWorkerRef = useRef<ServiceWorker | null>(null)
   const restartRequiredRef = useRef(false)
   const reloadingRef = useRef(false)
+  const restartBlockedRef = useRef(false)
+
+  const requestReload = useCallback(() => {
+    if (resolveAppRestart(restartBlockedRef.current) === 'defer') {
+      restartRequiredRef.current = true
+      setStatus('restart-required')
+      return
+    }
+    restartRequiredRef.current = false
+    window.location.reload()
+  }, [])
 
   const activateWorker = useCallback((worker: ServiceWorker) => {
+    if (resolveAppRestart(restartBlockedRef.current) === 'defer') {
+      waitingWorkerRef.current = worker
+      restartRequiredRef.current = true
+      setStatus('restart-required')
+      return
+    }
     if (worker.state !== 'installed') {
       waitingWorkerRef.current = null
       restartRequiredRef.current = true
@@ -63,7 +81,7 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
         navigator.serviceWorker,
         'caches' in window ? window.caches : undefined,
       ).then((registrationState) => {
-        if (wasControlled && registrationState !== 'failed') window.location.reload()
+        if (wasControlled && registrationState !== 'failed') requestReload()
       })
       return
     }
@@ -138,11 +156,10 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
       waitingWorkerRef.current = null
 
       if (action === 'reload') {
-        window.location.reload()
+        requestReload()
       } else if (action === 'restart-required') {
         if (modeRef.current === 'automatic') {
-          restartRequiredRef.current = false
-          window.location.reload()
+          requestReload()
         } else {
           restartRequiredRef.current = true
           setStatus('restart-required')
@@ -168,7 +185,16 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
       waitingWorkerRef.current = null
       restartRequiredRef.current = false
     }
-  }, [activateWorker])
+  }, [activateWorker, requestReload])
+
+  const setRestartBlocked = useCallback((blocked: boolean) => {
+    restartBlockedRef.current = blocked
+    if (blocked || modeRef.current !== 'automatic') return
+
+    const waitingWorker = waitingWorkerRef.current ?? registrationRef.current?.waiting
+    if (waitingWorker) activateWorker(waitingWorker)
+    else if (restartRequiredRef.current) requestReload()
+  }, [activateWorker, requestReload])
 
   const setMode = useCallback((nextMode: AppUpdateMode) => {
     modeRef.current = nextMode
@@ -184,9 +210,9 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
     if (nextMode === 'automatic' && waitingWorker) {
       activateWorker(waitingWorker)
     } else if (nextMode === 'automatic' && restartRequiredRef.current) {
-      window.location.reload()
+      requestReload()
     }
-  }, [activateWorker])
+  }, [activateWorker, requestReload])
 
   const checkForUpdate = useCallback(async () => {
     if (restartRequiredRef.current) {
@@ -220,17 +246,18 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
     if (waitingWorker) {
       activateWorker(waitingWorker)
     } else if (restartRequiredRef.current) {
-      window.location.reload()
+      requestReload()
     }
-  }, [activateWorker])
+  }, [activateWorker, requestReload])
 
   const value = useMemo<AppUpdateContextValue>(() => ({
     mode,
     status,
     setMode,
+    setRestartBlocked,
     checkForUpdate,
     installUpdate,
-  }), [checkForUpdate, installUpdate, mode, setMode, status])
+  }), [checkForUpdate, installUpdate, mode, setMode, setRestartBlocked, status])
 
   return <AppUpdateContext.Provider value={value}>{children}</AppUpdateContext.Provider>
 }
