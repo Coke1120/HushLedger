@@ -1,7 +1,7 @@
 import { isValidCalendarDate } from './date'
 import type { RecurringGenerationResult } from './schema'
 
-export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly'
+export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly'
 
 export function recurringGenerationNeedsAttention(
   result: Pick<RecurringGenerationResult, 'blocked' | 'truncated' | 'failed'>,
@@ -64,7 +64,7 @@ export function advanceOccurrence(
     return formatUtcDate(new Date(Date.UTC(year, month - 1, day) + interval * DAY_MS))
   }
 
-  return monthlyOccurrence({ year, month }, 1, anchorDay)
+  return monthlyOccurrence({ year, month }, frequency === 'monthly' ? 1 : 12, anchorDay)
 }
 
 export function dueOccurrences(
@@ -112,10 +112,12 @@ export function firstOccurrenceOnOrAfter(
     )
   }
 
-  let monthOffset = (minimum.year - start.year) * 12 + minimum.month - start.month
+  let monthOffset = frequency === 'monthly'
+    ? (minimum.year - start.year) * 12 + minimum.month - start.month
+    : (minimum.year - start.year) * 12
   let candidate = monthlyOccurrence(start, monthOffset, anchorDay)
   if (candidate < minimumDate) {
-    monthOffset += 1
+    monthOffset += frequency === 'monthly' ? 1 : 12
     candidate = monthlyOccurrence(start, monthOffset, anchorDay)
   }
   return candidate

@@ -14,7 +14,8 @@ export const PRE_TRANSFERS_LEDGER_SCHEMA_VERSION = 10 as const
 export const PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION = 11 as const
 export const PREVIOUS_LEDGER_SCHEMA_VERSION = 12 as const
 export const PRE_CURRENCY_LEDGER_SCHEMA_VERSION = 13 as const
-export const LEDGER_SCHEMA_VERSION = 14 as const
+export const PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION = 14 as const
+export const LEDGER_SCHEMA_VERSION = 15 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -112,7 +113,7 @@ export const ledgerBackupRecurringRuleSchema = z.object({
   currency: supportedCurrencySchema,
   accountId: safePositiveIntegerSchema,
   categoryId: safePositiveIntegerSchema,
-  frequency: z.enum(['daily', 'weekly', 'monthly']),
+  frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
   scheduleStartsOn: calendarDateSchema,
   nextOccurrenceOn: calendarDateSchema,
   lastOccurrenceOn: calendarDateSchema.nullable(),
@@ -128,6 +129,10 @@ export const ledgerBackupRecurringRuleSchema = z.object({
   deletedAt: timestampSchema.nullable(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
+}).strict()
+
+const preYearlyRecurringLedgerBackupRuleSchema = ledgerBackupRecurringRuleSchema.extend({
+  frequency: z.enum(['daily', 'weekly', 'monthly']),
 }).strict()
 
 const ledgerBackupTransactionFields = {
@@ -241,7 +246,11 @@ export const ledgerBackupDataSchema = z.object({
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-const preCurrencyLedgerBackupDataSchema = ledgerBackupDataSchema.omit({
+const preYearlyRecurringLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+  recurringRules: z.array(preYearlyRecurringLedgerBackupRuleSchema),
+}).strict()
+
+const preCurrencyLedgerBackupDataSchema = preYearlyRecurringLedgerBackupDataSchema.omit({
   currency: true,
 }).strict()
 
@@ -290,6 +299,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preYearlyRecurringLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION),
+  data: preYearlyRecurringLedgerBackupDataSchema,
+}).strict()
+
 const preCurrencyLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_CURRENCY_LEDGER_SCHEMA_VERSION),
   data: preCurrencyLedgerBackupDataSchema,
@@ -312,6 +326,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preYearlyRecurringLedgerBackupPayloadSchema,
   preCurrencyLedgerBackupPayloadSchema,
   previousLedgerBackupPayloadSchema,
   preOpeningBalanceLedgerBackupPayloadSchema,
@@ -326,6 +341,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preYearlyRecurringLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION),
+  data: preYearlyRecurringLedgerBackupDataSchema,
 }).strict()
 
 const preCurrencyLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -350,6 +370,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preYearlyRecurringLedgerBackupSchema,
   preCurrencyLedgerBackupSchema,
   previousLedgerBackupSchema,
   preOpeningBalanceLedgerBackupSchema,
@@ -456,6 +477,9 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
+  if (backup.schemaVersion === PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse(backup.data)
+  }
   return ledgerBackupDataSchema.parse({
     ...backup.data,
     currency: DEFAULT_LEDGER_CURRENCY,

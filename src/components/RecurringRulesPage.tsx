@@ -69,6 +69,7 @@ export function RecurringRulesPage({
     daily: t('daily'),
     weekly: t('weekly'),
     monthly: t('monthly'),
+    yearly: t('yearly'),
   }
 
   const closeEditor = useCallback(() => {

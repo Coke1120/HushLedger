@@ -8,6 +8,7 @@ import {
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
+  PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
@@ -156,26 +157,38 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
-function ledgerDataBeforeCurrency(data: LedgerBackupData) {
+function ledgerDataBeforeYearly(data: LedgerBackupData) {
   return {
-    accounts: data.accounts,
-    categories: data.categories,
-    recurringRules: data.recurringRules,
-    transactions: data.transactions,
-    accountTransfers: data.accountTransfers,
-    emergencyFundGoals: data.emergencyFundGoals,
-    transactionImportKeys: data.transactionImportKeys,
+    ...data,
+    recurringRules: data.recurringRules.map((rule) => {
+      if (rule.frequency === 'yearly') throw new Error('Expected a pre-yearly recurring rule')
+      return { ...rule, frequency: rule.frequency }
+    }),
+  }
+}
+
+function ledgerDataBeforeCurrency(data: LedgerBackupData) {
+  const beforeYearly = ledgerDataBeforeYearly(data)
+  return {
+    accounts: beforeYearly.accounts,
+    categories: beforeYearly.categories,
+    recurringRules: beforeYearly.recurringRules,
+    transactions: beforeYearly.transactions,
+    accountTransfers: beforeYearly.accountTransfers,
+    emergencyFundGoals: beforeYearly.emergencyFundGoals,
+    transactionImportKeys: beforeYearly.transactionImportKeys,
   }
 }
 
 function ledgerDataBeforeEmergencyFund(data: LedgerBackupData) {
+  const beforeYearly = ledgerDataBeforeYearly(data)
   return {
-    accounts: data.accounts,
-    categories: data.categories,
-    recurringRules: data.recurringRules,
-    transactions: data.transactions,
-    accountTransfers: data.accountTransfers,
-    transactionImportKeys: data.transactionImportKeys,
+    accounts: beforeYearly.accounts,
+    categories: beforeYearly.categories,
+    recurringRules: beforeYearly.recurringRules,
+    transactions: beforeYearly.transactions,
+    accountTransfers: beforeYearly.accountTransfers,
+    transactionImportKeys: beforeYearly.transactionImportKeys,
   }
 }
 
@@ -299,6 +312,89 @@ describe('ledger backups', () => {
     data.accountTransfers.forEach((row) => { row.currency = 'USD' })
 
     assert.deepEqual(validateLedgerDataRelations(data), [])
+  })
+
+  it('upgrades schema 14 backups without changing their currency or recurring rules', async () => {
+    const previousData = ledgerDataBeforeYearly(ledgerData())
+    previousData.currency = 'USD'
+    previousData.accounts.forEach((row) => { row.currency = 'USD' })
+    previousData.recurringRules.forEach((row) => { row.currency = 'USD' })
+    previousData.transactions.forEach((row) => { row.currency = 'USD' })
+    previousData.accountTransfers.forEach((row) => { row.currency = 'USD' })
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'USD')
+    assert.equal(upgraded.recurringRules[0]?.frequency, 'daily')
+  })
+
+  it('keeps yearly rules in current backups without accepting them as schemas 8 through 14', () => {
+    const data = ledgerData()
+    data.recurringRules[0].frequency = 'yearly'
+    const backup = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: LEDGER_SCHEMA_VERSION,
+      data,
+      checksum: { algorithm: 'SHA-256', digest: 'a'.repeat(64) },
+    } as const
+
+    assert.equal(compatibleLedgerBackupSchema.safeParse(backup).success, true)
+
+    const current = ledgerData()
+    const beforeYearly = ledgerDataBeforeYearly(current)
+    const beforeTransfers = ledgerDataWithoutTransfers(current)
+    const beforeMonthlyPlans = {
+      ...beforeTransfers,
+      categories: beforeTransfers.categories.map(({
+        monthlyPlanMinor: _monthlyPlanMinor,
+        ...category
+      }) => category),
+    }
+    const legacy = {
+      ...beforeMonthlyPlans,
+      transactions: beforeMonthlyPlans.transactions.map(({
+        cleared: _cleared,
+        ...transaction
+      }) => transaction),
+    }
+    const oldVersions = [
+      [PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION, beforeYearly],
+      [PRE_CURRENCY_LEDGER_SCHEMA_VERSION, ledgerDataBeforeCurrency(current)],
+      [PREVIOUS_LEDGER_SCHEMA_VERSION, ledgerDataBeforeEmergencyFund(current)],
+      [PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION, ledgerDataBeforeOpeningBalances(current)],
+      [PRE_TRANSFERS_LEDGER_SCHEMA_VERSION, beforeTransfers],
+      [PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION, beforeMonthlyPlans],
+      [LEGACY_LEDGER_SCHEMA_VERSION, legacy],
+    ] as const
+
+    for (const [schemaVersion, oldData] of oldVersions) {
+      assert.equal(compatibleLedgerBackupSchema.safeParse({
+        ...backup,
+        schemaVersion,
+        data: {
+          ...oldData,
+          recurringRules: oldData.recurringRules.map((rule) => ({
+            ...rule,
+            frequency: 'yearly',
+          })),
+        },
+      }).success, false, `schema ${schemaVersion} should reject yearly`)
+    }
   })
 
   it('upgrades schema 13 backups as HKD without dropping the emergency fund goal', async () => {

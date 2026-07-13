@@ -36,6 +36,13 @@ function shiftCalendarDay(date, amount) {
   return shifted.toISOString().slice(0, 10)
 }
 
+function shiftCalendarYear(date, amount) {
+  const [year, month, day] = date.split('-').map(Number)
+  const shiftedYear = year + amount
+  const monthEnd = new Date(Date.UTC(shiftedYear, month, 0)).getUTCDate()
+  return `${shiftedYear}-${String(month).padStart(2, '0')}-${String(Math.min(day, monthEnd)).padStart(2, '0')}`
+}
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
@@ -59,6 +66,30 @@ function withoutAccountOpeningBalances(accounts) {
     assert(openingBalanceOn === null || typeof openingBalanceOn === 'string')
     return account
   })
+}
+
+function withoutYearlyRecurringData(backup) {
+  const compatible = structuredClone(backup)
+  const yearlyRuleIds = new Set(
+    compatible.data.recurringRules
+      .filter(({ frequency }) => frequency === 'yearly')
+      .map(({ id }) => id),
+  )
+  const removedTransactionIds = new Set(
+    compatible.data.transactions
+      .filter(({ recurringRuleId }) => yearlyRuleIds.has(recurringRuleId))
+      .map(({ id }) => id),
+  )
+  compatible.data.recurringRules = compatible.data.recurringRules.filter(
+    ({ id }) => !yearlyRuleIds.has(id),
+  )
+  compatible.data.transactions = compatible.data.transactions.filter(
+    ({ id }) => !removedTransactionIds.has(id),
+  )
+  compatible.data.transactionImportKeys = compatible.data.transactionImportKeys.filter(
+    ({ transactionId }) => !removedTransactionIds.has(transactionId),
+  )
+  return compatible
 }
 
 async function availablePort() {
@@ -162,14 +193,23 @@ function runCommand(command, args, label) {
 }
 
 async function verifyUpgradeMigration() {
-  const subsetDirectory = join(temporaryRoot, 'migrations-through-0004')
+  const subsetDirectory = join(temporaryRoot, 'migrations-under-test')
   await mkdir(subsetDirectory)
-  const migrationNames = (await readdir(join(projectRoot, 'migrations')))
-    .filter((name) => /^000[1-4]_.*\.sql$/.test(name))
+  const allMigrationNames = (await readdir(join(projectRoot, 'migrations')))
+    .filter((name) => /^\d{4}_.*\.sql$/.test(name))
     .sort()
-  assert.equal(migrationNames.length, 4)
+  const initialMigrationNames = allMigrationNames.filter((name) => /^000[1-4]_/.test(name))
+  const preYearlyMigrationNames = allMigrationNames.filter((name) => (
+    /^000[5-9]_/.test(name) || /^001[0-4]_/.test(name)
+  ))
+  const yearlyMigrationNames = allMigrationNames.filter((name) => /^0015_/.test(name))
+  assert.equal(initialMigrationNames.length, 4)
+  assert.equal(preYearlyMigrationNames.length, 10)
+  assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
   await Promise.all(
-    migrationNames.map((name) => copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))),
+    initialMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
   )
 
   const upgradeConfig = join(temporaryRoot, 'wrangler-upgrade.json')
@@ -221,6 +261,11 @@ async function verifyUpgradeMigration() {
     '--yes',
   ])
 
+  await Promise.all(
+    preYearlyMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
   await runWrangler([
     'd1',
     'migrations',
@@ -229,6 +274,56 @@ async function verifyUpgradeMigration() {
     '--local',
     '--persist-to',
     upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
+  const recurringSentinelId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const recurringTransactionId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    `INSERT INTO recurring_rules(
+       id,name,type,amount_minor,currency,account_id,category_id,frequency,
+       schedule_starts_on,next_occurrence_on,last_occurrence_on,anchor_day,
+       is_active,payee,note,generated_count,revision,cursor_version
+     ) VALUES (
+       '${recurringSentinelId}','upgrade recurring sentinel','expense',777,'HKD',1,3,'monthly',
+       '2024-01-31','2026-07-31','2026-06-30',31,
+       1,'upgrade recurring payee','preserve every field',9,4,7
+     );
+     INSERT INTO transactions(
+       id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note,
+       recurring_rule_id,recurring_rule_name,recurrence_due_on,recurring_occurrence_key,cleared
+     ) VALUES (
+       '${recurringTransactionId}','expense',777,'HKD',1,3,'2026-06-30','upgrade recurring payee','generated before 0015',
+       '${recurringSentinelId}','upgrade recurring sentinel','2026-06-30','${recurringSentinelId}:2026-06-30',0
+     );`,
+    '--yes',
+  ])
+
+  await Promise.all(
+    yearlyMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
   ])
 
   const verification = await runWrangler([
@@ -245,6 +340,15 @@ async function verifyUpgradeMigration() {
        opening_balance_on AS openingBalanceOn
      FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
+     SELECT id, frequency, schedule_starts_on AS scheduleStartsOn,
+       next_occurrence_on AS nextOccurrenceOn, last_occurrence_on AS lastOccurrenceOn,
+       anchor_day AS anchorDay, generated_count AS generatedCount,
+       revision, cursor_version AS cursorVersion
+     FROM recurring_rules WHERE id = '${recurringSentinelId}';
+     SELECT id, recurring_rule_id AS recurringRuleId,
+       recurrence_due_on AS recurrenceDueOn,
+       recurring_occurrence_key AS recurringOccurrenceKey, cleared
+     FROM transactions WHERE id = '${recurringTransactionId}';
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
      SELECT name FROM sqlite_master
@@ -253,6 +357,20 @@ async function verifyUpgradeMigration() {
      SELECT COUNT(*) AS emergencyFundRevisionTriggers
      FROM sqlite_master
      WHERE type = 'trigger' AND name LIKE 'ledger_revision_emergency_fund_goals_%';
+     SELECT COUNT(*) AS recurringAndTransactionIndexes
+     FROM sqlite_master
+     WHERE type = 'index' AND name IN (
+       'idx_recurring_rules_due', 'idx_recurring_rules_account', 'idx_recurring_rules_category',
+       'idx_transactions_occurred_on', 'idx_transactions_type_occurred_on',
+       'idx_transactions_account_occurred_on', 'idx_transactions_category_occurred_on',
+       'idx_transactions_recurring_rule', 'idx_transactions_cleared_occurred_on'
+     );
+     SELECT COUNT(*) AS recurringAndTransactionRevisionTriggers
+     FROM sqlite_master
+     WHERE type = 'trigger' AND (
+       name LIKE 'ledger_revision_recurring_rules_%'
+       OR name LIKE 'ledger_revision_transactions_%'
+     );
      SELECT currency, updated_at AS updatedAt FROM ledger_settings WHERE id = 1;
      SELECT
        (SELECT COUNT(*) FROM accounts WHERE currency <> ledger_settings.currency) AS accountMismatches,
@@ -275,23 +393,88 @@ async function verifyUpgradeMigration() {
     { name: 'Integration custom category', localizationKey: null, monthlyPlanMinor: null },
     { name: '生活', localizationKey: 'category.living', monthlyPlanMinor: null },
   ])
-  assert.equal(statements[3].results[0].importKeys, 0)
-  assert.equal(statements[4].results[0].revision, 1)
-  assert.deepEqual(statements[5].results, [
+  assert.deepEqual(statements[3].results, [{
+    id: recurringSentinelId,
+    frequency: 'monthly',
+    scheduleStartsOn: '2024-01-31',
+    nextOccurrenceOn: '2026-07-31',
+    lastOccurrenceOn: '2026-06-30',
+    anchorDay: 31,
+    generatedCount: 9,
+    revision: 4,
+    cursorVersion: 7,
+  }])
+  assert.deepEqual(statements[4].results, [{
+    id: recurringTransactionId,
+    recurringRuleId: recurringSentinelId,
+    recurrenceDueOn: '2026-06-30',
+    recurringOccurrenceKey: `${recurringSentinelId}:2026-06-30`,
+    cleared: 0,
+  }])
+  assert.equal(statements[5].results[0].importKeys, 0)
+  assert.equal(statements[6].results[0].revision, 3)
+  assert.deepEqual(statements[7].results, [
     { name: 'account_transfers' },
     { name: 'emergency_fund_goals' },
     { name: 'ledger_settings' },
   ])
-  assert.equal(statements[6].results[0].emergencyFundRevisionTriggers, 3)
-  assert.equal(statements[7].results[0].currency, 'HKD')
-  assert.match(statements[7].results[0].updatedAt, /Z$/)
-  assert.deepEqual(statements[8].results, [{
+  assert.equal(statements[8].results[0].emergencyFundRevisionTriggers, 3)
+  assert.equal(statements[9].results[0].recurringAndTransactionIndexes, 9)
+  assert.equal(statements[10].results[0].recurringAndTransactionRevisionTriggers, 6)
+  assert.equal(statements[11].results[0].currency, 'HKD')
+  assert.match(statements[11].results[0].updatedAt, /Z$/)
+  assert.deepEqual(statements[12].results, [{
     accountMismatches: 0,
     transactionMismatches: 0,
     recurringRuleMismatches: 0,
     transferMismatches: 0,
   }])
-  assert.deepEqual(statements[9].results, [])
+  assert.deepEqual(statements[13].results, [])
+
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    `UPDATE recurring_rules SET frequency = 'yearly' WHERE id = '${recurringSentinelId}';`,
+    '--yes',
+  ])
+  const yearlyFrequency = JSON.parse((await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    `SELECT frequency FROM recurring_rules WHERE id = '${recurringSentinelId}';`,
+    '--json',
+  ])).stdout)
+  assert.deepEqual(yearlyFrequency[0].results, [{ frequency: 'yearly' }])
+
+  await assert.rejects(
+    runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      upgradeState,
+      '--config',
+      upgradeConfig,
+      '--command',
+      `UPDATE recurring_rules SET frequency = 'quarterly' WHERE id = '${recurringSentinelId}';`,
+      '--yes',
+    ]),
+    /CHECK constraint failed/,
+  )
 
   await assert.rejects(
     runWrangler([
@@ -702,7 +885,7 @@ async function verifyPristineCurrencyApi() {
     const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
-    assert.equal(usdBackup.schemaVersion, 14)
+    assert.equal(usdBackup.schemaVersion, 15)
     assert.equal(usdBackup.data.currency, 'USD')
     assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
     assert(usdBackup.data.accounts.every(({
@@ -3250,12 +3433,14 @@ async function verifyWorkerApi() {
     daily: '20000000-0000-4000-8000-000000000001',
     weekly: '20000000-0000-4000-8000-000000000002',
     monthly: '20000000-0000-4000-8000-000000000003',
+    yearly: '20000000-0000-4000-8000-000000000011',
     cron: '20000000-0000-4000-8000-000000000004',
     race: '20000000-0000-4000-8000-000000000007',
     income: '20000000-0000-4000-8000-000000000010',
     skip: '20000000-0000-4000-8000-000000000009',
   }
   const tomorrow = shiftCalendarDay(today, 1)
+  const nextYear = shiftCalendarYear(today, 1)
   const baseRule = {
     name: 'Integration rule',
     type: 'expense',
@@ -3270,7 +3455,7 @@ async function verifyWorkerApi() {
   }
 
   const createdRules = []
-  for (const frequency of ['daily', 'weekly', 'monthly']) {
+  for (const frequency of ['daily', 'weekly', 'monthly', 'yearly']) {
     const created = await api(baseUrl, '/api/recurring-rules', {
       method: 'POST',
       body: {
@@ -3417,6 +3602,19 @@ async function verifyWorkerApi() {
     forecastByRule.get(ruleIds.daily).occurrenceCount,
   )
   assert.equal(forecastByRule.get(ruleIds.weekly).occurrenceDates[0], today)
+  assert.deepEqual(forecastByRule.get(ruleIds.yearly), {
+    recurringRuleId: ruleIds.yearly,
+    name: 'yearly integration',
+    type: 'expense',
+    amountMinor: 456,
+    payee: 'integration test',
+    accountId: account.id,
+    categoryId: expenseCategory.id,
+    frequency: 'yearly',
+    firstOccurrenceOn: today,
+    occurrenceCount: 1,
+    occurrenceDates: [today],
+  })
   const forecastBeforeRunTomorrow = await api(
     baseUrl,
     `/api/summary?month=${tomorrow.slice(0, 7)}`,
@@ -3440,7 +3638,7 @@ async function verifyWorkerApi() {
     body: { asOf: today },
   })
   assert.equal(firstRun.response.status, 200)
-  assert.equal(firstRun.payload.data.created, 3)
+  assert.equal(firstRun.payload.data.created, 4)
   assert.equal(firstRun.payload.data.failed, 0)
   const secondRun = await api(baseUrl, '/api/recurring-rules/run-due', {
     method: 'POST',
@@ -3468,11 +3666,31 @@ async function verifyWorkerApi() {
     ).occurrenceDates[0],
     tomorrow,
   )
+  const yearlyRuleAfterRun = await api(baseUrl, `/api/recurring-rules/${ruleIds.yearly}`)
+  assert.equal(yearlyRuleAfterRun.response.status, 200)
+  assert.equal(yearlyRuleAfterRun.payload.data.lastOccurrenceOn, today)
+  assert.equal(yearlyRuleAfterRun.payload.data.nextOccurrenceOn, nextYear)
+  assert.equal(yearlyRuleAfterRun.payload.data.generatedCount, 1)
+  const yearlyForecastAfterRun = await api(
+    baseUrl,
+    `/api/summary?month=${nextYear.slice(0, 7)}`,
+  )
+  assert.equal(yearlyForecastAfterRun.response.status, 200)
+  assert.deepEqual(
+    yearlyForecastAfterRun.payload.data.recurringForecast.find(
+      ({ recurringRuleId }) => recurringRuleId === ruleIds.yearly,
+    ).occurrenceDates,
+    [nextYear],
+  )
 
   const beforeDelete = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(beforeDelete.response.status, 200)
-  assert.equal(beforeDelete.payload.data.filter((item) => item.recurrenceDueOn === today).length, 3)
+  assert.equal(beforeDelete.payload.data.filter((item) => item.recurrenceDueOn === today).length, 4)
   assert.equal(beforeDelete.payload.data.some((item) => item.recurringRuleId === ruleIds.skip), false)
+  assert.equal(
+    beforeDelete.payload.data.filter((item) => item.recurringRuleId === ruleIds.yearly).length,
+    1,
+  )
   assert(
     beforeDelete.payload.data
       .filter((item) => item.recurrenceDueOn === today)
@@ -3548,7 +3766,7 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 14)
+  assert.equal(backup.schemaVersion, 15)
   assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
@@ -3712,7 +3930,17 @@ async function verifyWorkerApi() {
   const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
-  const schema13Backup = structuredClone(backup)
+  const schema14Backup = withoutYearlyRecurringData(backup)
+  schema14Backup.schemaVersion = 14
+  schema14Backup.checksum.digest = backupChecksum(schema14Backup)
+  const schema14Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema14Backup },
+  })
+  assert.equal(schema14Preview.response.status, 200, JSON.stringify(schema14Preview.payload))
+  assert.equal(schema14Preview.payload.data.backupCurrency, 'HKD')
+
+  const schema13Backup = withoutYearlyRecurringData(backup)
   schema13Backup.schemaVersion = 13
   delete schema13Backup.data.currency
   schema13Backup.checksum.digest = backupChecksum(schema13Backup)
@@ -3733,10 +3961,10 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
   const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 14)
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 15)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
-  const schema12Backup = structuredClone(backup)
+  const schema12Backup = withoutYearlyRecurringData(backup)
   schema12Backup.schemaVersion = 12
   delete schema12Backup.data.currency
   delete schema12Backup.data.emergencyFundGoals
@@ -3762,7 +3990,7 @@ async function verifyWorkerApi() {
   assert.equal(upgradedSchema12Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema12Backup.payload.data.emergencyFundGoals, [])
 
-  const schema11Backup = structuredClone(backup)
+  const schema11Backup = withoutYearlyRecurringData(backup)
   schema11Backup.schemaVersion = 11
   delete schema11Backup.data.currency
   schema11Backup.data.accounts = withoutAccountOpeningBalances(schema11Backup.data.accounts)
@@ -3795,7 +4023,7 @@ async function verifyWorkerApi() {
     openingBalanceOn,
   }) => openingBalanceMinor === null && openingBalanceOn === null))
 
-  const schema10Backup = structuredClone(backup)
+  const schema10Backup = withoutYearlyRecurringData(backup)
   schema10Backup.schemaVersion = 10
   delete schema10Backup.data.currency
   schema10Backup.data.accounts = withoutAccountOpeningBalances(schema10Backup.data.accounts)
@@ -3828,7 +4056,7 @@ async function verifyWorkerApi() {
     ({ monthlyPlanMinor }) => monthlyPlanMinor !== null,
   ))
 
-  const schema9Backup = structuredClone(backup)
+  const schema9Backup = withoutYearlyRecurringData(backup)
   schema9Backup.schemaVersion = 9
   delete schema9Backup.data.currency
   schema9Backup.data.accounts = withoutAccountOpeningBalances(schema9Backup.data.accounts)
@@ -3867,7 +4095,7 @@ async function verifyWorkerApi() {
   ))
   assert(upgradedSchema9Backup.payload.data.transactions.some(({ cleared }) => cleared === false))
 
-  const schema8Backup = structuredClone(backup)
+  const schema8Backup = withoutYearlyRecurringData(backup)
   schema8Backup.schemaVersion = 8
   delete schema8Backup.data.currency
   schema8Backup.data.accounts = withoutAccountOpeningBalances(schema8Backup.data.accounts)
@@ -3935,7 +4163,7 @@ async function verifyWorkerApi() {
     payeeSummaries: 2,
     payeeExports: 1,
     cashFlowTrendQueries: 4,
-    recurringForecasts: 5,
+    recurringForecasts: 7,
     recurringSkips: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
@@ -4182,8 +4410,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0014',
-      upgradeMigration: '0004-to-0014-preserved-data-names-clearing-null-plans-transfers-openings-emergency-goal-and-ledger-currency',
+      freshMigrations: '0001-0015',
+      upgradeMigration: '0004-to-0015-preserved-data-fks-indexes-triggers-and-yearly-frequency',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

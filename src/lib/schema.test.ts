@@ -468,12 +468,21 @@ describe('recurring rule validation', () => {
     const { id, ...update } = validRecurringRule
     assert.match(id, /-/)
     assert.equal(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success, true)
+    assert.equal(recurringRuleUpdateSchema.safeParse({
+      ...update,
+      frequency: 'yearly',
+      revision: 1,
+    }).success, true)
     assert.equal(recurringRuleStatusSchema.safeParse({ isActive: false, revision: 1 }).success, true)
     assert.equal(recurringRuleSkipSchema.safeParse({
       revision: 1,
       nextOccurrenceOn: '2026-08-01',
     }).success, true)
     assert.equal(recurringRuleDeleteSchema.safeParse({ revision: 1 }).success, true)
+    assert.equal(recurringRuleCreateSchema.safeParse({
+      ...validRecurringRule,
+      frequency: 'yearly',
+    }).success, true)
     assert.equal(recurringRuleSkipSchema.safeParse({
       revision: 1,
       nextOccurrenceOn: '2026-02-30',
@@ -486,7 +495,7 @@ describe('recurring rule validation', () => {
   })
 
   for (const [label, patch] of [
-    ['unsupported frequency', { frequency: 'yearly' }],
+    ['unsupported frequency', { frequency: 'quarterly' }],
     ['invalid start date', { scheduleStartsOn: '2026-02-30' }],
     ['first occurrence before the anchor date', { firstOccurrenceOn: '2026-07-31' }],
     ['empty rule name', { name: '   ' }],

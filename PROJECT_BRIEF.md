@@ -131,7 +131,7 @@ not operate an independent database server or a multi-user identity system.
 
 ### Automate predictable entries
 
-- Create a daily, weekly, or monthly recurring rule.
+- Create a daily, weekly, monthly, or yearly recurring rule.
 - Set name, type, amount, account, category, schedule date, payee, note, and
   active state.
 - Modify, pause, resume, skip exactly one next occurrence, or delete the rule.
@@ -251,9 +251,11 @@ its archived references while being reviewed or corrected.
 
 ### Recurring rules
 
-- Frequencies: `daily`, `weekly`, `monthly`.
+- Frequencies: `daily`, `weekly`, `monthly`, `yearly`.
 - A schedule retains its original numeric day anchor. A January 31 monthly rule
   clamps to February's last day and returns to March 31.
+- A February 29 yearly rule clamps to February's final day in non-leap years and
+  returns to February 29 in the next leap year.
 - Creating a rule with a past start does not create historical entries; its
   first due date is the first matching date on or after the current date in the
   application's configured timezone.
@@ -338,17 +340,18 @@ keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
-The schema-14 ledger JSON format covers the ledger currency and seven collections:
+The schema-15 ledger JSON format covers the ledger currency and seven collections:
 accounts, categories, the emergency-fund checkpoint, recurring rules,
 transactions, account transfers, and import tombstones. It excludes browser
 preferences and AI credentials. Its SHA-256
 checksum detects modification. Restore validates internal references, returns a
 no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-the currency and all seven collections. Schema-8 through schema-13 backups remain
-compatible and upgrade to HKD; schema-8 through schema-12 do not invent an
-emergency-fund checkpoint. Schema-14 restores preserve the selected currency and
-never convert amounts. The in-app file limit is 7 MiB;
+the currency and all seven collections. Schema-8 through schema-14 backups remain
+compatible; pre-schema-14 backups upgrade to HKD, and schema-8 through schema-12
+do not invent an emergency-fund checkpoint. Schema-14 and schema-15 restores
+preserve the selected currency and never convert amounts. Only schema 15 can
+contain yearly recurring rules. The in-app file limit is 7 MiB;
 larger or database-level recovery uses Wrangler D1 export and restore. The browser
 stores only the most recent backup-preparation and integrity-check dates; this
 reminder does not prove that a backup file was retained off-platform.
@@ -420,7 +423,8 @@ reminder does not prove that a backup file was retained off-platform.
   transaction clearing status, optional expense-category monthly plans, and
   atomic account transfers with two-sided posting review, plus migration 0013's
   optional single account-backed emergency-fund checkpoint and migration 0014's
-  singleton ledger currency with database-enforced change locks.
+  singleton ledger currency with database-enforced change locks, plus migration
+  0015's yearly recurring-rule frequency constraint.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, recurring-rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
@@ -437,8 +441,8 @@ reminder does not prove that a backup file was retained off-platform.
   generic bank CSV import, private payee memory,
   recurring-rule management, language settings, and the pristine-ledger currency
   setting.
-- Versioned schema-14 currency-plus-seven-collection JSON backup with schema-8
-  through schema-13 compatibility, SHA-256 integrity checking, preview-only
+- Versioned schema-15 currency-plus-seven-collection JSON backup with schema-8
+  through schema-14 compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only
@@ -479,7 +483,7 @@ database IDs. See
   change appears in its list and monthly summary, and stale mutations are rejected.
 - An account transfer can be created, edited, posted on each side, and deleted
   without changing recorded income, expense, or balance.
-- Daily, weekly, and monthly rules can be created, edited, paused, resumed,
+- Daily, weekly, monthly, and yearly rules can be created, edited, paused, resumed,
   skipped once, run, and deleted without duplicate occurrences or history loss.
 - Date-only behavior is visible across UI, API, tests, and migrations.
 - `npm test`, typecheck, ESLint, Oxlint, production build, fresh migrations, and

@@ -104,7 +104,13 @@ export function RecurringRuleDialog({
     daily: t('daily'),
     weekly: t('weekly'),
     monthly: t('monthly'),
+    yearly: t('yearly'),
   }
+  const anchorHelpId = frequency === 'monthly'
+    ? 'recurring-monthly-note'
+    : frequency === 'yearly'
+      ? 'recurring-yearly-note'
+      : undefined
 
   useEffect(() => {
     savingRef.current = saving
@@ -225,7 +231,7 @@ export function RecurringRuleDialog({
   const describedBy = [
     'recurring-future-note',
     draft ? 'recurring-draft-note' : '',
-    frequency === 'monthly' ? 'recurring-monthly-note' : '',
+    anchorHelpId ?? '',
     error ? 'recurring-form-error' : '',
   ]
     .filter(Boolean)
@@ -347,7 +353,11 @@ export function RecurringRuleDialog({
             </label>
             <label>
               <span>{t('frequency')}</span>
-              <select value={frequency} onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}>
+              <select
+                value={frequency}
+                aria-describedby={anchorHelpId}
+                onChange={(event) => setFrequency(event.target.value as RecurrenceFrequency)}
+              >
                 {Object.entries(frequencyLabels).map(([value, label]) => (
                   <option value={value} key={value}>
                     {label}
@@ -369,6 +379,12 @@ export function RecurringRuleDialog({
           {frequency === 'monthly' ? (
             <p className="schedule-note" id="recurring-monthly-note">
               {t('monthlyAnchorHelp')}
+            </p>
+          ) : null}
+
+          {frequency === 'yearly' ? (
+            <p className="schedule-note" id="recurring-yearly-note">
+              {t('yearlyAnchorHelp')}
             </p>
           ) : null}
 

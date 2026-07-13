@@ -24,7 +24,7 @@ export const transactionDateScopeSchema = z.enum(['month', 'range', 'all'])
 export type TransactionDateScope = z.infer<typeof transactionDateScopeSchema>
 export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
 export type AccountType = z.infer<typeof accountTypeSchema>
-export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly'])
+export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly', 'yearly'])
 
 const calendarDateSchema = z
   .string()

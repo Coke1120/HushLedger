@@ -12,7 +12,7 @@ HushLedger is a single-user, online-first personal finance tool with interfaces 
 Traditional Chinese, English, Japanese, and French. Built with the Next.js App
 Router and deployed through OpenNext to Cloudflare Workers and D1, it focuses on
 fast transaction entry, clear monthly summaries, and dependable daily, weekly,
-and monthly recurring transactions.
+monthly, and yearly recurring transactions.
 Production deployments must be protected by Cloudflare Access.
 
 **Live demo:** [Try HushLedger in your browser](https://hushledger-demo.howailoklineage.workers.dev/).
@@ -176,13 +176,15 @@ knowledge and explains every command and dashboard click.
 - Custom payees and notes, with private suggestions that can reuse a known
   payee's latest still-active account and category without sending ledger data
   to a third party.
-- Daily, weekly, and monthly recurring transactions that can be created, edited,
-  paused, resumed, skipped once without creating a transaction, and deleted.
+- Daily, weekly, monthly, and yearly recurring transactions that can be created,
+  edited, paused, resumed, skipped once without creating a transaction, and deleted.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
   duplicate occurrence for the same rule and date. A manual run reports blocked,
   failed, or safety-limited work as incomplete instead of presenting full success.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
+- Stable leap-day anchors: a yearly February 29 rule runs on February's final day
+  in non-leap years and returns to February 29 in the next leap year.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
 - One silent data recheck when an already-loaded live ledger tab returns from hidden state.
   Successful responses replace stale money and recurring-rule views; failed
@@ -426,12 +428,14 @@ warns the user to clear the site's browser data before reloading or reusing save
 views.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 14 and accepts schemas 8 through 14. Schema 8 through schema 13
-backups upgrade to HKD; schema 8 through schema 12 also upgrade without inventing
-an emergency-fund checkpoint. Their existing version-specific defaults for
-clearing state, monthly plans, transfers, and opening balances still apply. A
-schema-14 restore carries its currency with the rest of the ledger instead of
-converting any amount. For a backup larger than 7 MiB, long-term disaster recovery,
+writes schema 15 and accepts schemas 8 through 15. Schema 8 through schema 14
+backups upgrade in memory; schema 8 through schema 13 default the ledger currency
+to HKD, while schema 8 through schema 12 also upgrade without inventing an
+emergency-fund checkpoint. Their existing version-specific defaults for clearing
+state, monthly plans, transfers, and opening balances still apply. Schema-14 and
+schema-15 restores carry their currency with the rest of the ledger instead of
+converting any amount; only schema 15 can contain yearly recurring rules. For a
+backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
 recovery process in
 [the advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery).
@@ -576,9 +580,11 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete schema-14 JSON ledger, including its
-currency and seven data collections, and verifies schema-8 through schema-13
-compatibility. Pre-schema-14 backups upgrade to HKD. Schema-12 and older backups
+The same gate exports and restores a complete schema-15 JSON ledger, including its
+currency and seven data collections, and verifies schema-8 through schema-14
+compatibility. Pre-schema-14 backups upgrade to HKD. Schema-14 and older backups
+retain their existing daily, weekly, or monthly recurring rules without inventing
+a yearly frequency. Schema-12 and older backups
 never invent an emergency-fund checkpoint; schema-11 and older backups also
 receive no invented opening balance, schema-10 and older backups receive no
 invented transfer, schema-9 and older backups receive no invented category plan,
@@ -610,6 +616,7 @@ npm run types:worker
 | `0012_account_opening_balances.sql` | Adds optional signed, dated account opening balances with database guards requiring the amount and date together. |
 | `0013_emergency_fund_goal.sql` | Adds one optional account-backed emergency-fund checkpoint and ledger-revision triggers without reserving or moving money. |
 | `0014_ledger_currency.sql` | Adds one ledger-wide two-decimal currency setting, migrates existing ledgers as HKD, cascades pristine currency changes across dependent rows, and blocks relabeling after monetary history exists. |
+| `0015_yearly_recurring_rules.sql` | Allows yearly recurring rules while preserving existing schedules and generated-transaction provenance. |
 
 Apply migrations locally:
 

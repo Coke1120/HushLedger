@@ -104,6 +104,24 @@ describe('monthly recurring forecast', () => {
     ])
   })
 
+  it('shows yearly rules only in their anchored month', () => {
+    const annualRule = rule({
+      name: 'Annual insurance',
+      frequency: 'yearly',
+      nextOccurrenceOn: '2024-02-29',
+      anchorDay: 29,
+    })
+
+    assert.deepEqual(recurringForecastForMonth([annualRule], '2026-01'), [])
+    assert.deepEqual(recurringForecastForMonth([annualRule], '2026-02').map((item) => ({
+      frequency: item.frequency,
+      occurrenceDates: item.occurrenceDates,
+    })), [{
+      frequency: 'yearly',
+      occurrenceDates: ['2026-02-28'],
+    }])
+  })
+
   it('totals every remaining occurrence without mixing the forecast into recorded money', () => {
     const forecast = recurringForecastForMonth([
       rule({
