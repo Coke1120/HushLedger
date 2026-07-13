@@ -1792,6 +1792,17 @@ textarea:focus-visible {
   border-color: var(--warning);
 }
 
+.transaction-follow-up-filter {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.transaction-follow-up-filter.is-active {
+  color: var(--brand);
+  background: var(--income-soft);
+  border-color: var(--brand);
+}
+
 .transaction-reference-filters {
   display: flex;
   min-width: 0;

@@ -1,4 +1,4 @@
-import { AlertTriangle, Download, FileUp, Search, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Download, FileUp, Flag, Search, Sparkles, X } from 'lucide-react'
 import { useState, type RefObject } from 'react'
 import { useI18n } from '../i18n'
 import { trailingSevenDayRange, trailingTwelveMonthRange } from '../lib/date'
@@ -16,6 +16,8 @@ export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
 type TransactionDateScopeOption = TransactionDateScope | 'trailing7' | 'trailing12'
+
+const followUpTag = '#follow-up'
 
 type TransactionToolbarProps = {
   search: string
@@ -246,6 +248,16 @@ export function TransactionToolbar({
         {t('reviewPossibleDuplicates')}
       </button>
       <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
+        <button
+          className={`button button-secondary transaction-follow-up-filter${tagFilter === followUpTag ? ' is-active' : ''}`}
+          type="button"
+          aria-pressed={tagFilter === followUpTag}
+          onClick={() => onTagFilterChange(tagFilter === followUpTag ? null : followUpTag)}
+          title={t('reviewFollowUpHelp')}
+        >
+          <Flag aria-hidden="true" />
+          {t('reviewFollowUp')}
+        </button>
         {showSort ? (
           <label className="transaction-reference-filter transaction-date-scope">
             <span className="sr-only">{t('transactionDateScope')}</span>

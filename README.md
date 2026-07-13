@@ -122,6 +122,8 @@ knowledge and explains every command and dashboard click.
 - Add case-sensitive, whitespace-delimited `#tags` to transaction notes. Tag
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
+  The `#follow-up` shortcut retrieves items you marked for personal review; it
+  does not classify fraud.
 - Export every transaction matching the current date scope and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
