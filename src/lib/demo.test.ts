@@ -4,6 +4,7 @@ import { translate, type Locale, type Translator } from '../i18n'
 import {
   addDemo,
   deleteDemo,
+  demoAccountBalances,
   demoCategories,
   demoSummary,
   getDemoTransactions,
@@ -76,6 +77,47 @@ describe('localized demo data', () => {
 
     assert.equal(uncleared.length, 1)
     assert.equal(uncleared[0]?.cleared, false)
+  })
+
+  it('counts offsetting uncleared demo entries even when their net is zero', () => {
+    const ids = [
+      '58000000-0000-4000-8000-000000000001',
+      '58000000-0000-4000-8000-000000000002',
+    ]
+
+    assert.equal(demoAccountBalances('2026-07').find(({ accountId }) => accountId === 1)?.unclearedBalance, 0)
+    try {
+      addDemo({
+        id: ids[0],
+        type: 'income',
+        amountMinor: 10_000,
+        currency: 'HKD',
+        accountId: 1,
+        categoryId: 1,
+        occurredOn: '2026-07-12',
+        cleared: false,
+        payee: 'Offsetting demo income',
+        note: '',
+      })
+      addDemo({
+        id: ids[1],
+        type: 'expense',
+        amountMinor: 10_000,
+        currency: 'HKD',
+        accountId: 1,
+        categoryId: 3,
+        occurredOn: '2026-07-12',
+        cleared: false,
+        payee: 'Offsetting demo expense',
+        note: '',
+      })
+
+      const balance = demoAccountBalances('2026-07').find(({ accountId }) => accountId === 1)
+      assert.equal(balance?.unclearedBalance, 0)
+      assert.equal(balance?.unclearedCount, 2)
+    } finally {
+      for (const id of ids) deleteDemo(id)
+    }
   })
 
   it('keeps monthly review bounded while allowing an explicit all-history search', () => {

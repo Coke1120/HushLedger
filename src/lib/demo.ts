@@ -221,6 +221,7 @@ export function demoAccountBalances(month: string): AccountBalance[] {
       recordedBalance,
       clearedBalance,
       unclearedBalance: recordedBalance - clearedBalance,
+      unclearedCount: movements.filter(({ cleared }) => !cleared).length,
     }
   })
 }

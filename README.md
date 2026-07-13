@@ -60,9 +60,11 @@ knowledge and explains every command and dashboard click.
 - Amounts stored in the ledger's selected currency as integer minor units to
   avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
-  month. An optional dated opening balance anchors incomplete history, and an
-  in-app month-end reconciliation workspace compares the statement against the
-  exact cleared balance. It keeps the statement value only on screen, highlights
+  month, plus the exact number of still-uncleared entries through that cutoff so
+  offsetting movements cannot hide review work. An optional dated opening balance
+  anchors incomplete history. The in-app month-end reconciliation workspace
+  compares the statement with the exact cleared balance. It keeps the statement
+  value only on screen, highlights
   uncleared entries with direct posting-status controls, and never claims to lock
   the ledger. The same monthly account register merges ordinary transactions with
   both transfer legs and shows the exact recorded balance after every entry.
@@ -251,7 +253,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
   app derives the balance from all recorded history; schema-8 through schema-11
   backups upgrade to that null state rather than inventing a baseline.
 - Account balances include income, expenses, and both sides of transfers before
-  the selected month-end cutoff. Cleared balances include only posted movements;
+  the selected month-end cutoff. Cleared balances include only posted movements,
+  and the uncleared count treats each transfer side independently;
   the reconciliation workspace stores no statement value and does not claim an
   irreversible reconciliation lock. Each inline posting-status change uses the
   same concurrency-checked update as the transaction or transfer editor.
@@ -622,7 +625,7 @@ GET    /api/health
 GET    /api/ledger-settings  (ledger currency and whether it can still change)
 PUT    /api/ledger-settings  (conflict-safe pristine-ledger currency change; no conversion)
 GET    /api/accounts
-GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
+GET    /api/accounts/balances?month=YYYY-MM  (month-end balances and exact uncleared-entry counts)
 GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)
 GET    /api/reports/net-worth?month=YYYY-MM  (six complete-or-unavailable month-end net-worth points)
 GET    /api/emergency-fund-goal  (the optional account-backed checkpoint, or null)

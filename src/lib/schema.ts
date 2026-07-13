@@ -565,6 +565,8 @@ export type AccountBalance = {
   recordedBalance: number | null
   clearedBalance: number | null
   unclearedBalance: number | null
+  /** Missing only when a cached newer app shell reads an older API response. */
+  unclearedCount?: number | null
 }
 
 export type EmergencyFundGoal = {

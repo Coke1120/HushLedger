@@ -51,6 +51,10 @@ export function AccountBalances({
             const available = account.recordedBalance !== null
               && account.clearedBalance !== null
               && account.unclearedBalance !== null
+            const unclearedCount = account.unclearedCount
+            const showUnclearedCount = typeof unclearedCount === 'number'
+              && Number.isSafeInteger(unclearedCount)
+              && unclearedCount >= 0
             return (
               <li key={account.accountId} className={!account.isActive ? 'is-inactive' : undefined}>
                 <div className="account-balance-row">
@@ -71,6 +75,16 @@ export function AccountBalances({
                       <div>
                         <dt>{t('unclearedBalance')}</dt>
                         <dd>{formatMoney(account.unclearedBalance ?? 0)}</dd>
+                        {showUnclearedCount ? (
+                          <>
+                            <dt className="account-balance-uncleared-count-label">
+                              {t('unclearedThroughMonthEnd')}
+                            </dt>
+                            <dd className="account-balance-uncleared-count">
+                              {t('unclearedCount', { count: unclearedCount })}
+                            </dd>
+                          </>
+                        ) : null}
                       </div>
                     </dl>
                   ) : (

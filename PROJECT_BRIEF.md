@@ -105,7 +105,9 @@ not operate an independent database server or a multi-user identity system.
   never classify that movement as income or expense.
 - Leave manual entries uncleared until they appear at the bank, or mark them
   cleared during entry or review. Duplicated and recurring entries also begin
-  uncleared; reviewed bank imports begin cleared.
+  uncleared; reviewed bank imports begin cleared. Show each account's exact
+  still-uncleared entry count through the selected month-end so a zero net does
+  not hide offsetting items, and count transfer posting state per account side.
 - Calculate an amount with touch-friendly arithmetic operators or a typed
   expression; parse without `eval` and round only the final result to minor units.
 - Save and close a valid transaction from any dialog field with `Ctrl+Enter` or

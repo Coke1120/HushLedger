@@ -174,7 +174,10 @@ export async function listAccounts(database: D1Database): Promise<Account[]> {
   return result.results.map((row) => ({ ...row, isActive: row.isActive === 1 }))
 }
 
-type AccountBalanceRow = Omit<AccountBalance, 'isActive'> & { isActive: number }
+type AccountBalanceRow = Omit<AccountBalance, 'isActive' | 'unclearedCount'> & {
+  isActive: number
+  unclearedCount: number | null
+}
 type MonthlyAccountBalanceRow = AccountBalanceRow & { month: string }
 
 async function listAccountBalancesByMonth(
@@ -202,7 +205,8 @@ async function listAccountBalancesByMonth(
         CASE
           WHEN cleared = 1 THEN CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END
           ELSE 0
-        END AS clearedAmount
+        END AS clearedAmount,
+        CASE WHEN cleared = 0 THEN 1 ELSE 0 END AS unclearedCount
       FROM transactions
       WHERE occurred_on < ?
 
@@ -212,7 +216,8 @@ async function listAccountBalancesByMonth(
         from_account_id AS accountId,
         occurred_on AS occurredOn,
         -amount_minor AS recordedAmount,
-        CASE WHEN from_cleared = 1 THEN -amount_minor ELSE 0 END AS clearedAmount
+        CASE WHEN from_cleared = 1 THEN -amount_minor ELSE 0 END AS clearedAmount,
+        CASE WHEN from_cleared = 0 THEN 1 ELSE 0 END AS unclearedCount
       FROM account_transfers
       WHERE occurred_on < ?
 
@@ -222,7 +227,8 @@ async function listAccountBalancesByMonth(
         to_account_id AS accountId,
         occurred_on AS occurredOn,
         amount_minor AS recordedAmount,
-        CASE WHEN to_cleared = 1 THEN amount_minor ELSE 0 END AS clearedAmount
+        CASE WHEN to_cleared = 1 THEN amount_minor ELSE 0 END AS clearedAmount,
+        CASE WHEN to_cleared = 0 THEN 1 ELSE 0 END AS unclearedCount
       FROM account_transfers
       WHERE occurred_on < ?
     ), totals AS (
@@ -239,7 +245,12 @@ async function listAccountBalancesByMonth(
           WHEN account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on
           THEN movement.clearedAmount
           ELSE 0
-        END), 0) AS clearedMovement
+        END), 0) AS clearedMovement,
+        COALESCE(SUM(CASE
+          WHEN account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on
+          THEN movement.unclearedCount
+          ELSE 0
+        END), 0) AS unclearedCount
       FROM months
       CROSS JOIN accounts AS account
       LEFT JOIN movements AS movement
@@ -257,17 +268,21 @@ async function listAccountBalancesByMonth(
       account.opening_balance_minor AS openingBalanceMinor,
       account.opening_balance_on AS openingBalanceOn,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on >= totals.endDate THEN NULL
         ELSE COALESCE(account.opening_balance_minor, 0) + totals.recordedMovement
       END AS recordedBalance,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on >= totals.endDate THEN NULL
         ELSE COALESCE(account.opening_balance_minor, 0) + totals.clearedMovement
       END AS clearedBalance,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on >= totals.endDate THEN NULL
         ELSE totals.recordedMovement - totals.clearedMovement
-      END AS unclearedBalance
+      END AS unclearedBalance,
+      CASE
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on >= totals.endDate THEN NULL
+        ELSE totals.unclearedCount
+      END AS unclearedCount
     FROM totals
     INNER JOIN accounts AS account ON account.id = totals.accountId
     ORDER BY totals.month ASC, account.is_active DESC, account.sort_order ASC, account.id ASC
@@ -278,6 +293,10 @@ async function listAccountBalancesByMonth(
       if (value !== null && !Number.isSafeInteger(value)) {
         throw new Error('Account balance exceeds the safe integer range')
       }
+    }
+    if (row.unclearedCount !== null
+      && (!Number.isSafeInteger(row.unclearedCount) || row.unclearedCount < 0)) {
+      throw new Error('Account uncleared count is invalid')
     }
     balancesByMonth.get(month)?.push({ ...row, isActive: row.isActive === 1 })
   }

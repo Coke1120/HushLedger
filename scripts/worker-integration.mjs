@@ -1104,6 +1104,39 @@ async function verifyWorkerApi() {
   assert.equal(createdAccount.payload.data.openingBalanceMinor, 100_000)
   assert.equal(createdAccount.payload.data.openingBalanceOn, today)
 
+  const nextMonthStart = `${shiftCalendarMonth(month, 1)}-01`
+  const futureOpeningAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: createdAccount.payload.data.name,
+      type: createdAccount.payload.data.type,
+      openingBalanceMinor: createdAccount.payload.data.openingBalanceMinor,
+      openingBalanceOn: nextMonthStart,
+      updatedAt: createdAccount.payload.data.updatedAt,
+    },
+  })
+  assert.equal(futureOpeningAccount.response.status, 200)
+  const balancesBeforeExactOpening = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  const balanceBeforeExactOpening = balancesBeforeExactOpening.payload.data.find(
+    ({ accountId }) => accountId === createdAccount.payload.data.id,
+  )
+  assert(balanceBeforeExactOpening)
+  assert.equal(balanceBeforeExactOpening.recordedBalance, null)
+  assert.equal(balanceBeforeExactOpening.clearedBalance, null)
+  assert.equal(balanceBeforeExactOpening.unclearedBalance, null)
+  assert.equal(balanceBeforeExactOpening.unclearedCount, null)
+  const restoredOpeningAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
+    method: 'PUT',
+    body: {
+      name: createdAccount.payload.data.name,
+      type: createdAccount.payload.data.type,
+      openingBalanceMinor: createdAccount.payload.data.openingBalanceMinor,
+      openingBalanceOn: today,
+      updatedAt: futureOpeningAccount.payload.data.updatedAt,
+    },
+  })
+  assert.equal(restoredOpeningAccount.response.status, 200)
+
   const incompleteOpeningBalance = await api(baseUrl, '/api/accounts', {
     method: 'POST',
     body: { name: 'Invalid opening', type: 'bank', openingBalanceMinor: 100_000 },
@@ -1125,7 +1158,7 @@ async function verifyWorkerApi() {
       type: 'wallet',
       openingBalanceMinor: createdAccount.payload.data.openingBalanceMinor,
       openingBalanceOn: createdAccount.payload.data.openingBalanceOn,
-      updatedAt: createdAccount.payload.data.updatedAt,
+      updatedAt: restoredOpeningAccount.payload.data.updatedAt,
     },
   })
   assert.equal(renamedAccount.response.status, 200)
@@ -1739,6 +1772,82 @@ async function verifyWorkerApi() {
   assert.equal(sourceBalanceBefore.recordedBalance, 100_000)
   assert.equal(sourceBalanceBefore.clearedBalance, 100_000)
   assert.equal(sourceBalanceBefore.unclearedBalance, 0)
+  assert.equal(sourceBalanceBefore.unclearedCount, 0)
+
+  const offsettingUnclearedBodies = [
+    {
+      id: '58000000-0000-4000-8000-000000000003',
+      type: 'income',
+      amountMinor: 10_000,
+      currency: account.currency,
+      accountId: account.id,
+      categoryId: incomeCategory.id,
+      occurredOn: today,
+      cleared: false,
+      payee: 'Offsetting pending income',
+      note: '',
+    },
+    {
+      id: '58000000-0000-4000-8000-000000000004',
+      type: 'expense',
+      amountMinor: 10_000,
+      currency: account.currency,
+      accountId: account.id,
+      categoryId: expenseCategory.id,
+      occurredOn: today,
+      cleared: false,
+      payee: 'Offsetting pending expense',
+      note: '',
+    },
+    {
+      id: '58000000-0000-4000-8000-000000000005',
+      type: 'expense',
+      amountMinor: 5_000,
+      currency: account.currency,
+      accountId: account.id,
+      categoryId: expenseCategory.id,
+      occurredOn: shiftCalendarDay(today, -1),
+      cleared: false,
+      payee: 'Before opening boundary',
+      note: '',
+    },
+  ]
+  const offsettingUncleared = await Promise.all(offsettingUnclearedBodies.map((body) => (
+    api(baseUrl, '/api/transactions', { method: 'POST', body })
+  )))
+  assert(offsettingUncleared.every(({ response }) => response.status === 201))
+  const balancesWithOffsettingUncleared = await api(
+    baseUrl,
+    `/api/accounts/balances?month=${month}`,
+  )
+  const sourceWithOffsettingUncleared = balancesWithOffsettingUncleared.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  assert(sourceWithOffsettingUncleared)
+  assert.equal(sourceWithOffsettingUncleared.recordedBalance, 100_000)
+  assert.equal(sourceWithOffsettingUncleared.clearedBalance, 100_000)
+  assert.equal(sourceWithOffsettingUncleared.unclearedBalance, 0)
+  assert.equal(sourceWithOffsettingUncleared.unclearedCount, 2)
+  const balancesBeforeOpeningMonth = await api(
+    baseUrl,
+    `/api/accounts/balances?month=${shiftCalendarMonth(month, -1)}`,
+  )
+  const sourceBeforeOpeningMonth = balancesBeforeOpeningMonth.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  assert(sourceBeforeOpeningMonth)
+  assert.equal(sourceBeforeOpeningMonth.recordedBalance, null)
+  assert.equal(sourceBeforeOpeningMonth.clearedBalance, null)
+  assert.equal(sourceBeforeOpeningMonth.unclearedBalance, null)
+  assert.equal(sourceBeforeOpeningMonth.unclearedCount, null)
+  const deletedOffsettingUncleared = await Promise.all(offsettingUncleared.map(
+    ({ payload }, index) => api(
+      baseUrl,
+      `/api/transactions/${offsettingUnclearedBodies[index].id}`,
+      { method: 'DELETE', body: { updatedAt: payload.data.updatedAt } },
+    ),
+  ))
+  assert(deletedOffsettingUncleared.every(({ response }) => response.status === 200))
 
   const invalidNetWorthMonth = await api(baseUrl, '/api/reports/net-worth?month=2026-13')
   assert.equal(invalidNetWorthMonth.response.status, 400)
@@ -1820,6 +1929,7 @@ async function verifyWorkerApi() {
   assert.equal(sourceWithUnclearedTransfer.recordedBalance, 50_000)
   assert.equal(sourceWithUnclearedTransfer.clearedBalance, 100_000)
   assert.equal(sourceWithUnclearedTransfer.unclearedBalance, -50_000)
+  assert.equal(sourceWithUnclearedTransfer.unclearedCount, sourceBalanceBefore.unclearedCount + 1)
   assert.equal(
     destinationWithUnclearedTransfer.recordedBalance,
     destinationBalanceBefore.recordedBalance + 50_000,
@@ -1827,6 +1937,10 @@ async function verifyWorkerApi() {
   assert.equal(
     destinationWithUnclearedTransfer.clearedBalance,
     destinationBalanceBefore.clearedBalance,
+  )
+  assert.equal(
+    destinationWithUnclearedTransfer.unclearedCount,
+    destinationBalanceBefore.unclearedCount + 1,
   )
   const sourceRegister = await api(
     baseUrl,
@@ -1924,13 +2038,46 @@ async function verifyWorkerApi() {
   assert.deepEqual(destinationTransfers.payload.data.map(({ id }) => id), [transferBody.id])
   assert.deepEqual(unrelatedTransfers.payload.data, [])
 
-  const transferUpdateFields = {
+  const sourcePostedTransferFields = {
     amountMinor: transferBody.amountMinor,
     currency: transferBody.currency,
     fromAccountId: transferBody.fromAccountId,
     toAccountId: transferBody.toAccountId,
     occurredOn: transferBody.occurredOn,
     fromCleared: true,
+    toCleared: false,
+    note: 'Integration transfer left source',
+  }
+  const sourcePostedTransfer = await api(baseUrl, `/api/transfers/${transferBody.id}`, {
+    method: 'PUT',
+    body: {
+      ...sourcePostedTransferFields,
+      updatedAt: createdTransfer.payload.data.updatedAt,
+    },
+  })
+  assert.equal(sourcePostedTransfer.response.status, 200, JSON.stringify(sourcePostedTransfer.payload))
+  assert.equal(sourcePostedTransfer.payload.data.fromCleared, true)
+  assert.equal(sourcePostedTransfer.payload.data.toCleared, false)
+  const balancesWithSourcePostedTransfer = await api(
+    baseUrl,
+    `/api/accounts/balances?month=${month}`,
+  )
+  const sourceWithSourcePostedTransfer = balancesWithSourcePostedTransfer.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  const destinationWithSourcePostedTransfer = balancesWithSourcePostedTransfer.payload.data.find(
+    ({ accountId }) => accountId === transferDestination.id,
+  )
+  assert(sourceWithSourcePostedTransfer)
+  assert(destinationWithSourcePostedTransfer)
+  assert.equal(sourceWithSourcePostedTransfer.unclearedCount, sourceBalanceBefore.unclearedCount)
+  assert.equal(
+    destinationWithSourcePostedTransfer.unclearedCount,
+    destinationBalanceBefore.unclearedCount + 1,
+  )
+
+  const transferUpdateFields = {
+    ...sourcePostedTransferFields,
     toCleared: true,
     note: 'Integration transfer posted',
   }
@@ -1938,7 +2085,7 @@ async function verifyWorkerApi() {
     method: 'PUT',
     body: {
       ...transferUpdateFields,
-      updatedAt: createdTransfer.payload.data.updatedAt,
+      updatedAt: sourcePostedTransfer.payload.data.updatedAt,
     },
   })
   assert.equal(updatedTransfer.response.status, 200, JSON.stringify(updatedTransfer.payload))
@@ -1957,11 +2104,13 @@ async function verifyWorkerApi() {
   assert.equal(sourceWithPostedTransfer.recordedBalance, 50_000)
   assert.equal(sourceWithPostedTransfer.clearedBalance, 50_000)
   assert.equal(sourceWithPostedTransfer.unclearedBalance, 0)
+  assert.equal(sourceWithPostedTransfer.unclearedCount, sourceBalanceBefore.unclearedCount)
   assert.equal(
     destinationWithPostedTransfer.clearedBalance,
     destinationBalanceBefore.clearedBalance + 50_000,
   )
   assert.equal(destinationWithPostedTransfer.unclearedBalance, destinationBalanceBefore.unclearedBalance)
+  assert.equal(destinationWithPostedTransfer.unclearedCount, destinationBalanceBefore.unclearedCount)
 
   const staleTransferUpdate = await api(baseUrl, `/api/transfers/${transferBody.id}`, {
     method: 'PUT',

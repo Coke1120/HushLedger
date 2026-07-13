@@ -927,6 +927,16 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.account-balance-values .account-balance-uncleared-count-label {
+  margin-top: 8px;
+}
+
+.account-balance-values .account-balance-uncleared-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .account-balance-unavailable {
   margin: 0;
 }
