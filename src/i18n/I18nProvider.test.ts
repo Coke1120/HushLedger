@@ -55,7 +55,7 @@ describe('message catalogs', () => {
     assert.equal(translate('fr', 'recurringRuleCount', { count: 0 }), '0 règles')
     assert.equal(
       translate('en', 'reconciliationReviewHelp', { count: 1 }),
-      '1 uncleared entry is currently shown below. Select it to update its posting status.',
+      '1 uncleared entry is currently shown below. Use its status button to match your statement.',
     )
   })
 

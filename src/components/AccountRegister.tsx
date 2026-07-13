@@ -1,4 +1,14 @@
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Landmark, ReceiptText, Scale } from 'lucide-react'
+import {
+  ArrowDownLeft,
+  ArrowLeft,
+  ArrowUpRight,
+  Circle,
+  CircleCheck,
+  Landmark,
+  LoaderCircle,
+  ReceiptText,
+  Scale,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import { parseSignedAmount } from '../lib/money'
@@ -16,10 +26,17 @@ type AccountRegisterProps = {
   transactions: Transaction[]
   transfers: AccountTransfer[]
   loading: boolean
+  saving: boolean
   reconcileInitially: boolean
   onClose: () => void
   onEditTransaction: (transaction: Transaction) => void
   onEditTransfer: (transfer: AccountTransfer) => void
+  onSetTransactionCleared: (transaction: Transaction, cleared: boolean) => Promise<boolean>
+  onSetTransferCleared: (
+    transfer: AccountTransfer,
+    accountId: number,
+    cleared: boolean,
+  ) => Promise<boolean>
 }
 
 export function AccountRegister({
@@ -28,14 +45,18 @@ export function AccountRegister({
   transactions,
   transfers,
   loading,
+  saving,
   reconcileInitially,
   onClose,
   onEditTransaction,
   onEditTransfer,
+  onSetTransactionCleared,
+  onSetTransferCleared,
 }: AccountRegisterProps) {
   const { formatDate, formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [reconciling, setReconciling] = useState(reconcileInitially)
   const [statementValue, setStatementValue] = useState('')
+  const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
   const transactionsById = useMemo(
     () => new Map(transactions.map((transaction) => [transaction.id, transaction])),
     [transactions],
@@ -73,6 +94,21 @@ export function AccountRegister({
   }
 
   const accountName = localizeEntityName(register.accountName, register.accountLocalizationKey)
+  const setEntryCleared = async (
+    entryId: string,
+    cleared: boolean,
+    transaction?: Transaction,
+    transfer?: AccountTransfer,
+  ) => {
+    if (saving || updatingEntryId !== null) return
+    setUpdatingEntryId(entryId)
+    try {
+      if (transaction) await onSetTransactionCleared(transaction, cleared)
+      else if (transfer) await onSetTransferCleared(transfer, register.accountId, cleared)
+    } finally {
+      setUpdatingEntryId(null)
+    }
+  }
 
   return (
     <section className="account-register" aria-labelledby="account-register-title">
@@ -227,14 +263,7 @@ export function AccountRegister({
                 <span className={`account-register-icon ${entry.kind}`} aria-hidden="true"><Icon /></span>
                 <span className="account-register-main">
                   <strong>{title}</strong>
-                  <small>
-                    {entry.kind === 'transaction' ? <span>{categoryName}</span> : null}
-                    {entry.cleared !== null ? (
-                      <span className={entry.cleared ? 'is-cleared' : undefined}>
-                        {t(entry.cleared ? 'cleared' : 'uncleared')}
-                      </span>
-                    ) : null}
-                  </small>
+                  {entry.kind === 'transaction' ? <small><span>{categoryName}</span></small> : null}
                   {entry.note ? <span className="account-register-note">{entry.note}</span> : null}
                 </span>
                 <time dateTime={entry.occurredOn}>{formatDate(entry.occurredOn)}</time>
@@ -252,16 +281,46 @@ export function AccountRegister({
             return (
               <li key={entry.entryId}>
                 {editable ? (
-                  <button
-                    className={`account-register-row${entry.cleared === false ? ' is-uncleared' : ''}`}
-                    type="button"
-                    onClick={() => transaction
-                      ? onEditTransaction(transaction)
-                      : transfer && onEditTransfer(transfer)}
-                  >
-                    <span className="sr-only">{t('edit')}</span>
-                    {content}
-                  </button>
+                  <>
+                    <button
+                      className={`account-register-row${entry.cleared === false ? ' is-uncleared' : ''}`}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => transaction
+                        ? onEditTransaction(transaction)
+                        : transfer && onEditTransfer(transfer)}
+                    >
+                      <span className="sr-only">{t('edit')}</span>
+                      {content}
+                    </button>
+                    {entry.cleared !== null ? (
+                      <button
+                        className={`account-register-clearing-toggle ${entry.cleared ? 'is-cleared' : 'is-uncleared'}`}
+                        type="button"
+                        disabled={saving}
+                        aria-busy={updatingEntryId === entry.entryId}
+                        aria-label={t(entry.cleared
+                          ? 'markRegisterEntryUncleared'
+                          : 'markRegisterEntryCleared')}
+                        title={t(entry.cleared
+                          ? 'markRegisterEntryUncleared'
+                          : 'markRegisterEntryCleared')}
+                        onClick={() => void setEntryCleared(
+                          entry.entryId,
+                          !entry.cleared,
+                          transaction,
+                          transfer,
+                        )}
+                      >
+                        {updatingEntryId === entry.entryId
+                          ? <LoaderCircle className="spin" aria-hidden="true" />
+                          : entry.cleared
+                            ? <CircleCheck aria-hidden="true" />
+                            : <Circle aria-hidden="true" />}
+                        <span>{t(entry.cleared ? 'cleared' : 'uncleared')}</span>
+                      </button>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="account-register-row">{content}</div>
                 )}

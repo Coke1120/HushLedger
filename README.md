@@ -47,9 +47,9 @@ knowledge and explains every command and dashboard click.
   month. An optional dated opening balance anchors incomplete history, and an
   in-app month-end reconciliation workspace compares the statement against the
   exact cleared balance. It keeps the statement value only on screen, highlights
-  uncleared entries for direct review, and never claims to lock the ledger. The
-  same monthly account register merges ordinary transactions with both transfer
-  legs and shows the exact recorded balance after every entry.
+  uncleared entries with direct posting-status controls, and never claims to lock
+  the ledger. The same monthly account register merges ordinary transactions with
+  both transfer legs and shows the exact recorded balance after every entry.
 - A six-month recorded net-worth trend across every active and inactive account,
   including negative debts. Months with unknown pre-opening history are marked
   unavailable instead of silently omitting an account, and selecting a month
@@ -76,7 +76,9 @@ knowledge and explains every command and dashboard click.
   Saved views contain review criteria only and do not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
-  while HushLedger CSV and full-ledger backups preserve their recorded state.
+  while HushLedger CSV and full-ledger backups preserve their recorded state. The
+  account register can switch a transaction or the displayed side of a transfer
+  directly, while its row still opens the full editor.
 - Add case-sensitive, whitespace-delimited `#tags` to transaction notes. Tag
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
@@ -173,8 +175,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Account balances include income, expenses, and both sides of transfers before
   the selected month-end cutoff. Cleared balances include only posted movements;
   the reconciliation workspace stores no statement value and does not claim an
-  irreversible reconciliation lock. Changing a posting status still requires an
-  explicit save through the existing transaction or transfer editor.
+  irreversible reconciliation lock. Each inline posting-status change uses the
+  same concurrency-checked update as the transaction or transfer editor.
 - Recorded net worth is the exact sum of all available signed account balances at
   each month end. Transfers therefore have zero net effect. If any account balance
   is unavailable for a month, the complete net-worth point is unavailable too.

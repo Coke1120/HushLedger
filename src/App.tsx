@@ -35,6 +35,10 @@ import { shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
 import {
+  transactionInputWithClearingStatus,
+  transferInputWithClearingStatus,
+} from './lib/reconciliation'
+import {
   addSavedTransactionView,
   parseSavedTransactionViews,
   SAVED_TRANSACTION_VIEWS_STORAGE_KEY,
@@ -150,6 +154,20 @@ function App({ initialMonth }: { initialMonth: string }) {
   const saveTransfer = useCallback(
     async (input: AccountTransferInput) => saveAccountTransfer(input, editingTransfer ?? undefined),
     [editingTransfer, saveAccountTransfer],
+  )
+  const setRegisterTransactionCleared = useCallback(
+    async (transaction: Transaction, cleared: boolean) => saveMoneyTransaction(
+      transactionInputWithClearingStatus(transaction, cleared),
+      transaction,
+    ),
+    [saveMoneyTransaction],
+  )
+  const setRegisterTransferCleared = useCallback(
+    async (transfer: AccountTransfer, accountId: number, cleared: boolean) => saveAccountTransfer(
+      transferInputWithClearingStatus(transfer, accountId, cleared),
+      transfer,
+    ),
+    [saveAccountTransfer],
   )
 
   const changeView = useCallback((nextView: AppView) => {
@@ -542,10 +560,13 @@ function App({ initialMonth }: { initialMonth: string }) {
                 transactions={data.transactions}
                 transfers={data.accountTransfers}
                 loading={loading}
+                saving={data.saving}
                 reconcileInitially={registerMode === 'reconcile'}
                 onClose={closeAccountRegister}
                 onEditTransaction={openTransaction}
                 onEditTransfer={openTransferDialog}
+                onSetTransactionCleared={setRegisterTransactionCleared}
+                onSetTransferCleared={setRegisterTransferCleared}
               />
             ) : view === 'transactions' ? (
               <AccountTransferList
