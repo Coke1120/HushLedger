@@ -360,7 +360,9 @@ reminder does not prove that a backup file was retained off-platform.
 - The Cloudflare account uses strong authentication and MFA.
 - Repository, logs, fixtures, screenshots, issues, and pull requests contain no
   secrets or real financial data.
-- `.wrangler/`, local databases, exports, and backups are ignored by Git. Supported
+- Local secret-bearing `.dev.vars*` and `.env*` files stay outside Git and
+  container build contexts;
+  `.wrangler/`, local databases, exports, and backups are ignored by Git. Supported
   host and container commands also remove group/other POSIX mode access before use,
   set a restrictive creation mask, and remove inherited macOS ACLs from host state.
 - D1 is not the only copy: maintain encrypted off-platform backups and periodic

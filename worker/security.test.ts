@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { describe, it } from 'node:test'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import {
@@ -132,5 +133,19 @@ describe('security and cache policy', () => {
     )
     assert.equal(response.headers.get('cache-control'), 'no-cache, no-store, must-revalidate')
     assert.equal(response.headers.get('service-worker-allowed'), '/')
+  })
+})
+
+describe('container build privacy', () => {
+  it('keeps local secret files out of the Docker build context', () => {
+    const ignored = new Set(
+      readFileSync(new URL('../.dockerignore', import.meta.url), 'utf8')
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    )
+
+    assert.equal(ignored.has('.env*'), true)
+    assert.equal(ignored.has('.dev.vars*'), true)
   })
 })

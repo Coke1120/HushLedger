@@ -501,6 +501,7 @@ Then open `http://localhost:8787`.
 The optional container image runs the same OpenNext Worker and local D1 runtime
 without installing Node.js on the host. It is for one-computer use only. Both
 Docker Desktop and Apple Container build the same OCI-compatible `Dockerfile`.
+The build context excludes local `.env*` and Wrangler `.dev.vars*` secrets.
 Pending D1 migrations are applied automatically whenever the container starts.
 
 Keep port `8787` bound to `127.0.0.1`. Local mode has no application login, so do

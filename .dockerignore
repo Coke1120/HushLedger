@@ -6,6 +6,7 @@
 .omx
 node_modules
 .env*
+.dev.vars*
 *.log
 *.sqlite*
 backups
