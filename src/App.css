@@ -1199,6 +1199,163 @@ textarea:focus-visible {
   list-style: none;
 }
 
+.account-transfers {
+  margin: 0 24px 20px;
+  overflow: hidden;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.account-transfers-heading {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-transfers-heading h3 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  color: var(--brand-strong);
+  font-size: 16px;
+}
+
+.account-transfers-heading h3 svg,
+.account-transfers-heading .button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.account-transfers-heading p,
+.account-transfers-limit {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-transfer-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.account-transfer-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.account-transfer-row {
+  display: grid;
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 18px;
+  grid-template-columns: 40px minmax(180px, 1fr) 130px minmax(110px, auto);
+  gap: 12px;
+  align-items: center;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+.account-transfer-row:hover {
+  background: var(--surface);
+}
+
+.account-transfer-row:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.transfer-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  color: var(--brand);
+  background: var(--income-soft);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.transfer-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.account-transfer-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.account-transfer-main strong,
+.account-transfer-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-transfer-main strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account-transfer-main small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  color: var(--expense);
+  font-size: 11px;
+}
+
+.account-transfer-main small .is-cleared {
+  color: var(--income);
+}
+
+.account-transfer-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-transfer-row time {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.account-transfer-amount {
+  color: var(--brand-strong);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.account-transfers-empty {
+  display: flex;
+  min-height: 90px;
+  padding: 18px;
+  color: var(--muted);
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.account-transfers-empty strong {
+  color: var(--ink);
+}
+
+.account-transfers-limit {
+  padding: 10px 18px;
+  border-top: 1px solid var(--line);
+}
+
 .transaction-list-item {
   border-bottom: 1px solid var(--line);
 }
@@ -1635,6 +1792,41 @@ textarea:focus-visible {
   min-height: 22px;
   margin: 0;
   accent-color: var(--brand);
+}
+
+.transfer-form-help {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 11px 12px;
+  margin: 0;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border: 1px solid var(--brand);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.transfer-form-help svg {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+}
+
+.transfer-clearing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.transfer-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.transfer-dialog-actions .save-button {
+  min-width: 160px;
 }
 
 .transaction-cleared-toggle > span {
@@ -4008,6 +4200,49 @@ textarea:focus-visible {
     padding-inline: 20px;
   }
 
+  .account-transfers {
+    margin: 0 12px 14px;
+  }
+
+  .account-transfers-heading {
+    align-items: stretch;
+    padding: 14px;
+    flex-direction: column;
+  }
+
+  .account-transfers-heading .button {
+    width: 100%;
+  }
+
+  .account-transfer-row {
+    min-height: 88px;
+    padding: 12px 14px;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 4px 10px;
+  }
+
+  .transfer-icon {
+    grid-row: 1 / 3;
+  }
+
+  .account-transfer-main {
+    grid-row: 1 / 3;
+  }
+
+  .account-transfer-row time {
+    grid-column: 3;
+    grid-row: 2;
+    align-self: start;
+    font-size: 11px;
+  }
+
+  .account-transfer-amount {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: end;
+  }
+
   .desktop-navigation button {
     padding-inline: 10px;
   }
@@ -4425,6 +4660,19 @@ textarea:focus-visible {
   .transaction-dialog-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .transfer-clearing-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-dialog-actions .save-button {
+    min-width: 0;
   }
 
   .recurring-page {

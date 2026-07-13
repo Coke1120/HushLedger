@@ -5,6 +5,7 @@ import {
   LEDGER_BACKUP_VERSION,
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
+  PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
   checksumLedgerBackupPayload,
@@ -22,17 +23,30 @@ const timestamp = '2026-07-13T00:00:00.000Z'
 
 function ledgerData(): LedgerBackupData {
   return {
-    accounts: [{
-      id: 1,
-      name: 'Daily account',
-      type: 'bank',
-      currency: 'HKD',
-      isActive: true,
-      sortOrder: 10,
-      localizationKey: 'account.bank',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }],
+    accounts: [
+      {
+        id: 1,
+        name: 'Daily account',
+        type: 'bank',
+        currency: 'HKD',
+        isActive: true,
+        sortOrder: 10,
+        localizationKey: 'account.bank',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 2,
+        name: 'Cash wallet',
+        type: 'cash',
+        currency: 'HKD',
+        isActive: true,
+        sortOrder: 20,
+        localizationKey: 'account.cash',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ],
     categories: [
       {
         id: 1,
@@ -104,11 +118,34 @@ function ledgerData(): LedgerBackupData {
       createdAt: timestamp,
       updatedAt: timestamp,
     }],
+    accountTransfers: [{
+      id: '30000000-0000-4000-8000-000000000001',
+      amountMinor: 25_000,
+      currency: 'HKD',
+      fromAccountId: 1,
+      toAccountId: 2,
+      occurredOn: '2026-07-13',
+      fromCleared: true,
+      toCleared: false,
+      note: 'Cash withdrawal',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
     transactionImportKeys: [{
       importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
       transactionId: '10000000-0000-4000-8000-000000000099',
       importedAt: timestamp,
     }],
+  }
+}
+
+function ledgerDataWithoutTransfers(data: LedgerBackupData) {
+  return {
+    accounts: data.accounts,
+    categories: data.categories,
+    recurringRules: data.recurringRules,
+    transactions: data.transactions,
+    transactionImportKeys: data.transactionImportKeys,
   }
 }
 
@@ -144,26 +181,52 @@ describe('ledger backups', () => {
     const data = ledgerData()
     assert.deepEqual(validateLedgerDataRelations(data), [])
     assert.deepEqual(countLedgerData(data), {
-      accounts: 1,
+      accounts: 2,
       categories: 2,
       recurringRules: 1,
       transactions: 1,
+      accountTransfers: 1,
       transactionImportKeys: 1,
     })
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
 
-  it('upgrades schema 9 backups without inventing category plans', async () => {
+  it('upgrades schema 10 backups without inventing transfers', async () => {
     const current = ledgerData()
+    const previousData = ledgerDataWithoutTransfers(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PREVIOUS_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.accountTransfers, [])
+    assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
+    assert.equal(upgraded.transactions[0]?.cleared, false)
+  })
+
+  it('upgrades schema 9 backups without inventing category plans or transfers', async () => {
+    const current = ledgerData()
+    const withoutTransfers = ledgerDataWithoutTransfers(current)
     const legacyData = {
-      ...current,
+      ...withoutTransfers,
       categories: current.categories.map(({ monthlyPlanMinor: _monthlyPlanMinor, ...category }) => category),
     }
     const legacyPayload = {
       format: LEDGER_BACKUP_FORMAT,
       version: LEDGER_BACKUP_VERSION,
       exportedAt: timestamp,
-      schemaVersion: PREVIOUS_LEDGER_SCHEMA_VERSION,
+      schemaVersion: PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
       data: legacyData,
     } as const
     const backup = compatibleLedgerBackupSchema.parse({
@@ -177,12 +240,14 @@ describe('ledger backups', () => {
     const upgraded = upgradeLedgerBackupData(backup)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, false)
+    assert.deepEqual(upgraded.accountTransfers, [])
   })
 
   it('upgrades schema 8 backups with cleared history and no invented category plans', async () => {
     const current = ledgerData()
+    const withoutTransfers = ledgerDataWithoutTransfers(current)
     const legacyData = {
-      ...current,
+      ...withoutTransfers,
       categories: current.categories.map(({ monthlyPlanMinor: _monthlyPlanMinor, ...category }) => category),
       transactions: current.transactions.map(({ cleared: _cleared, ...transaction }) => transaction),
     }
@@ -204,11 +269,12 @@ describe('ledger backups', () => {
     const upgraded = upgradeLedgerBackupData(backup)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, true)
+    assert.deepEqual(upgraded.accountTransfers, [])
   })
 
   it('rejects broken references, duplicate tombstones, and unusable reference data', () => {
     const data = ledgerData()
-    data.accounts[0].isActive = false
+    data.accounts.forEach((account) => { account.isActive = false })
     data.categories[0].isActive = false
     data.transactions[0].categoryId = 999
     data.transactionImportKeys.push({ ...data.transactionImportKeys[0] })
@@ -218,6 +284,16 @@ describe('ledger backups', () => {
     assert(issues.some(({ message }) => message === 'At least one active expense category is required'))
     assert(issues.some(({ message }) => message === 'Referenced category is missing'))
     assert(issues.some(({ path }) => path.endsWith('.importKey')))
+  })
+
+  it('rejects transfer references that cannot form a valid account movement', () => {
+    const data = ledgerData()
+    data.accountTransfers.push({ ...data.accountTransfers[0] })
+    data.accountTransfers[0].toAccountId = 999
+
+    const issues = validateLedgerDataRelations(data)
+    assert(issues.some(({ path }) => path.endsWith('.id')))
+    assert(issues.some(({ message }) => message === 'Referenced destination account is missing'))
   })
 
   it('requires recurring transaction metadata to be complete and derived consistently', () => {

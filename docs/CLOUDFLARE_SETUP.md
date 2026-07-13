@@ -208,7 +208,7 @@ records while diagnosing a production issue.
 ## 7. Back up and test recovery
 
 For routine app-level portability, Settings can download a versioned JSON file
-covering all five HushLedger ledger tables. The file is plaintext even though it
+covering all six HushLedger ledger tables, including account transfers. The file is plaintext even though it
 has a SHA-256 integrity check, so move it immediately to encrypted storage. The
 in-app restore validates and previews first, but it still replaces the current
 ledger; use a separate test deployment for restore drills.

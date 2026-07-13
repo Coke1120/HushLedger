@@ -4,6 +4,8 @@ import { ChevronRight } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { BankImportPanel } from './components/BankImportPanel'
+import { AccountTransferDialog } from './components/AccountTransferDialog'
+import { AccountTransferList } from './components/AccountTransferList'
 import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
@@ -38,6 +40,8 @@ import {
 } from './lib/savedTransactionViews'
 import type {
   RecurringRuleCreateInput,
+  AccountTransfer,
+  AccountTransferInput,
   Transaction,
   TransactionInput,
   TransactionSort,
@@ -62,6 +66,8 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+  const [editingTransfer, setEditingTransfer] = useState<AccountTransfer | null>(null)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
   const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
@@ -89,6 +95,8 @@ function App({ initialMonth }: { initialMonth: string }) {
     clearActionMessage,
     refresh: refreshMoneyData,
     removeTransaction,
+    removeAccountTransfer,
+    saveAccountTransfer,
     saveTransaction: saveMoneyTransaction,
   } = data
 
@@ -118,11 +126,24 @@ function App({ initialMonth }: { initialMonth: string }) {
     setEditingTransaction(null)
     setTransactionDraft(null)
   }, [])
+  const openTransferDialog = useCallback((transfer: AccountTransfer | null = null) => {
+    clearActionMessage()
+    setEditingTransfer(transfer)
+    setTransferDialogOpen(true)
+  }, [clearActionMessage])
+  const closeTransferDialog = useCallback(() => {
+    setTransferDialogOpen(false)
+    setEditingTransfer(null)
+  }, [])
   const closeRecurringDraft = useCallback(() => setRecurringDraft(null), [])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput) => saveMoneyTransaction(input, editingTransaction ?? undefined),
     [editingTransaction, saveMoneyTransaction],
+  )
+  const saveTransfer = useCallback(
+    async (input: AccountTransferInput) => saveAccountTransfer(input, editingTransfer ?? undefined),
+    [editingTransfer, saveAccountTransfer],
   )
 
   const changeView = useCallback((nextView: AppView) => {
@@ -451,6 +472,15 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onImported={() => data.refresh(false)}
               />
             ) : null}
+            {view === 'transactions' ? (
+              <AccountTransferList
+                transfers={data.accountTransfers}
+                loading={loading}
+                available={data.source === 'live' && data.online && data.accounts.filter(({ isActive }) => isActive).length >= 2}
+                onAdd={() => openTransferDialog()}
+                onEdit={openTransferDialog}
+              />
+            ) : null}
             <TransactionList
               transactions={transactions}
               loading={loading}
@@ -499,6 +529,20 @@ function App({ initialMonth }: { initialMonth: string }) {
           onDelete={removeTransaction}
           onDuplicate={duplicateTransaction}
           onMakeRecurring={makeTransactionRecurring}
+        />
+      ) : null}
+      {transferDialogOpen ? (
+        <AccountTransferDialog
+          key={editingTransfer ? `transfer:${editingTransfer.id}` : 'new-transfer'}
+          accounts={data.accounts}
+          saving={data.saving}
+          serverError={data.saveError}
+          online={data.online}
+          available={data.source === 'live' && data.online}
+          transfer={editingTransfer}
+          onClose={closeTransferDialog}
+          onSubmit={saveTransfer}
+          onDelete={removeAccountTransfer}
         />
       ) : null}
     </div>

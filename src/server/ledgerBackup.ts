@@ -28,6 +28,10 @@ type RawAccount = Omit<LedgerBackupData['accounts'][number], 'isActive'> & { isA
 type RawCategory = Omit<LedgerBackupData['categories'][number], 'isActive'> & { isActive: number }
 type RawRecurringRule = Omit<LedgerBackupData['recurringRules'][number], 'isActive'> & { isActive: number }
 type RawTransaction = Omit<LedgerBackupData['transactions'][number], 'cleared'> & { cleared: number }
+type RawAccountTransfer = Omit<
+  LedgerBackupData['accountTransfers'][number],
+  'fromCleared' | 'toCleared'
+> & { fromCleared: number; toCleared: number }
 type LedgerRevisionRow = { revision: number }
 
 type LedgerSnapshot = {
@@ -59,6 +63,7 @@ type LedgerRestoreChunks = {
   categories: string[]
   recurringRules: string[]
   transactions: string[]
+  accountTransfers: string[]
   transactionImportKeys: string[]
 }
 
@@ -142,6 +147,23 @@ const transactionQuery = `
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM transactions
+  ORDER BY id ASC
+`
+
+const accountTransferQuery = `
+  SELECT
+    id,
+    amount_minor AS amountMinor,
+    currency,
+    from_account_id AS fromAccountId,
+    to_account_id AS toAccountId,
+    occurred_on AS occurredOn,
+    from_cleared AS fromCleared,
+    to_cleared AS toCleared,
+    note,
+    created_at AS createdAt,
+    updated_at AS updatedAt
+  FROM account_transfers
   ORDER BY id ASC
 `
 
@@ -253,6 +275,26 @@ const transactionInsert = `
   FROM json_each(?)
 `
 
+const accountTransferInsert = `
+  INSERT INTO account_transfers(
+    id, amount_minor, currency, from_account_id, to_account_id, occurred_on,
+    from_cleared, to_cleared, note, created_at, updated_at
+  )
+  SELECT
+    json_extract(value, '$.id'),
+    json_extract(value, '$.amountMinor'),
+    json_extract(value, '$.currency'),
+    json_extract(value, '$.fromAccountId'),
+    json_extract(value, '$.toAccountId'),
+    json_extract(value, '$.occurredOn'),
+    json_extract(value, '$.fromCleared'),
+    json_extract(value, '$.toCleared'),
+    json_extract(value, '$.note'),
+    json_extract(value, '$.createdAt'),
+    json_extract(value, '$.updatedAt')
+  FROM json_each(?)
+`
+
 const importKeyInsert = `
   INSERT INTO transaction_import_keys(import_key, transaction_id, imported_at)
   SELECT
@@ -268,6 +310,7 @@ const countQuery = `
     (SELECT COUNT(*) FROM categories) AS categories,
     (SELECT COUNT(*) FROM recurring_rules) AS recurringRules,
     (SELECT COUNT(*) FROM transactions) AS transactions,
+    (SELECT COUNT(*) FROM account_transfers) AS accountTransfers,
     (SELECT COUNT(*) FROM transaction_import_keys) AS transactionImportKeys
 `
 
@@ -286,6 +329,7 @@ const countGuardQuery = `
     OR categories <> ?
     OR recurringRules <> ?
     OR transactions <> ?
+    OR accountTransfers <> ?
     OR transactionImportKeys <> ?
 `
 
@@ -419,21 +463,23 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
     categories: chunkRows(data.categories),
     recurringRules: chunkRows(data.recurringRules),
     transactions: chunkRows(data.transactions),
+    accountTransfers: chunkRows(data.accountTransfers),
     transactionImportKeys: chunkRows(data.transactionImportKeys),
   }
 }
 
 export function countRestoreStatements(chunks: LedgerRestoreChunks) {
-  return 8 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
+  return 9 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
 }
 
 async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot> {
-  const [accounts, categories, recurringRules, transactions, importKeys, revision] =
+  const [accounts, categories, recurringRules, transactions, accountTransfers, importKeys, revision] =
     await database.batch([
       database.prepare(accountQuery),
       database.prepare(categoryQuery),
       database.prepare(recurringRuleQuery),
       database.prepare(transactionQuery),
+      database.prepare(accountTransferQuery),
       database.prepare(importKeyQuery),
       database.prepare(revisionQuery),
     ])
@@ -457,6 +503,11 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
     transactions: (transactions.results as RawTransaction[]).map((row) => ({
       ...row,
       cleared: row.cleared === 1,
+    })),
+    accountTransfers: (accountTransfers.results as RawAccountTransfer[]).map((row) => ({
+      ...row,
+      fromCleared: row.fromCleared === 1,
+      toCleared: row.toCleared === 1,
     })),
     transactionImportKeys: importKeys.results,
   })
@@ -518,6 +569,7 @@ function buildRestoreStatements(
     `).bind(expectedRevision, expectedRevision),
     database.prepare('DELETE FROM transaction_import_keys'),
     database.prepare('DELETE FROM transactions'),
+    database.prepare('DELETE FROM account_transfers'),
     database.prepare('DELETE FROM recurring_rules'),
     database.prepare('DELETE FROM categories'),
     database.prepare('DELETE FROM accounts'),
@@ -527,12 +579,14 @@ function buildRestoreStatements(
   appendChunkStatements(statements, database, categoryInsert, chunks.categories)
   appendChunkStatements(statements, database, recurringRuleInsert, chunks.recurringRules)
   appendChunkStatements(statements, database, transactionInsert, chunks.transactions)
+  appendChunkStatements(statements, database, accountTransferInsert, chunks.accountTransfers)
   appendChunkStatements(statements, database, importKeyInsert, chunks.transactionImportKeys)
   statements.push(database.prepare(countGuardQuery).bind(
     expectedCounts.accounts,
     expectedCounts.categories,
     expectedCounts.recurringRules,
     expectedCounts.transactions,
+    expectedCounts.accountTransfers,
     expectedCounts.transactionImportKeys,
   ))
   statements.push(database.prepare(countQuery))
@@ -554,6 +608,7 @@ function sameCounts(left: LedgerTableCounts, right: LedgerTableCounts) {
     left.categories === right.categories &&
     left.recurringRules === right.recurringRules &&
     left.transactions === right.transactions &&
+    left.accountTransfers === right.accountTransfers &&
     left.transactionImportKeys === right.transactionImportKeys
   )
 }

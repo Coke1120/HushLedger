@@ -43,6 +43,10 @@ knowledge and explains every command and dashboard click.
   plus exact scheduled income, expense, and net totals. Forecast values never
   change the recorded monthly balance before their entries are generated.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
+- Record money moved between two accounts as one atomic transfer with independent
+  source and destination posting states. Transfers stay outside income, expense,
+  balance, category, plan, trend, and CSV transaction reports, so withdrawals and
+  credit-card payments do not manufacture spending or income.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact cents,
   with touch-friendly operator buttons for mobile entry.
@@ -159,6 +163,10 @@ credit card, or a digital wallet. It is not an additional transaction type.
   transaction times.
 - Transaction edits preserve recurring-rule provenance and use `updated_at` as an
   optimistic concurrency token; stale updates and deletes are rejected.
+- Account transfers use client-generated UUIDs, require two distinct compatible
+  accounts, and use `updated_at` conflict detection. A transfer is one atomic row,
+  not a pair of income/expense transactions; its two clearing flags can represent
+  money that has left one account but has not yet reached the other.
 - Disabled accounts and categories are unavailable to new entries. An existing
   transaction may keep and edit against its archived references until the user
   explicitly reassigns them to active ones.
@@ -171,7 +179,7 @@ credit card, or a digital wallet. It is not an additional transaction type.
   duplicates require an explicit checkbox; invalid or archived references are
   never silently substituted.
 - Full-ledger backups cover accounts, categories, recurring rules, transactions,
-  and import tombstones. A SHA-256 checksum detects modification, and a monotonic
+  account transfers, and import tombstones. A SHA-256 checksum detects modification, and a monotonic
   ledger revision rejects restore previews that became stale before commit.
 
 ## Architecture
@@ -242,7 +250,7 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 ## Ledger backup and restore
 
 Settings can download one versioned JSON file containing every account, category,
-recurring rule (including soft-deleted rule history), transaction, and import
+recurring rule (including soft-deleted rule history), transaction, account transfer, and import
 tombstone. AI provider credentials, pasted bank text, language preferences, update
 preferences, and screen privacy state are intentionally excluded.
 
@@ -255,7 +263,7 @@ Restore is preview-first:
 1. Choose a HushLedger JSON backup of at most 7 MiB.
 2. HushLedger validates the format and schema version, checksum, unique keys,
    account/category references, recurring provenance, and active reference minimums.
-3. Review the current-versus-backup row counts for all five tables.
+3. Review the current-versus-backup row counts for all six tables.
 4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
 5. HushLedger rechecks the live ledger revision and replaces every table in one D1
    transaction. A stale preview or any constraint failure writes nothing.
@@ -388,9 +396,10 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete five-table JSON ledger, upgrades
-schema-9 backups with no invented category plans and schema-8 backups with both
-no invented plans and cleared legacy history, rejects a modified checksum and a
+The same gate exports and restores a complete six-table JSON ledger, upgrades
+schema-10 backups with no invented transfers, schema-9 backups with neither
+invented transfers nor category plans, and schema-8 backups with cleared legacy
+history, rejects a modified checksum and a
 stale preview, and proves that the final re-export exactly matches the pre-restore
 data.
 
@@ -414,6 +423,7 @@ npm run types:worker
 | `0008_ledger_revision.sql` | Adds a monotonic ledger revision maintained by table triggers so restore previews cannot overwrite newer writes. |
 | `0009_transaction_clearing_status.sql` | Adds cleared/uncleared bank-posting status, preserving existing history as cleared. |
 | `0010_category_monthly_plans.sql` | Adds optional positive monthly spending plans to expense categories without implying reserved cash or rollover. |
+| `0011_account_transfers.sql` | Adds atomic account-to-account transfers with independent source and destination posting states and backup revision triggers. |
 
 Apply migrations locally:
 
@@ -452,6 +462,11 @@ POST   /api/transactions/duplicates  (exact local-ledger match count; no transac
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
+GET    /api/transfers?month=YYYY-MM  (latest 200 account transfers)
+POST   /api/transfers
+GET    /api/transfers/:id
+PUT    /api/transfers/:id
+DELETE /api/transfers/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
@@ -486,6 +501,13 @@ how many are visible out of the complete result. The adjacent filtered summary
 uses a separate order-independent aggregate query over every match, so its count, income, expense,
 and signed net are not truncated by the list limit. The optional `status` filter
 is shared by the aggregate and uncapped CSV export.
+
+Transfers are a separate ledger surface because movement between owned accounts
+must not affect income or expense reporting. New transfers require two active HKD
+accounts. Editing preserves an existing archived source or destination, uses the
+same optimistic `updatedAt` guard as transactions, and records source and
+destination posting independently. Transfer routes are strict, same-origin, and
+never included in transaction CSV exports.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income

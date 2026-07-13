@@ -74,6 +74,9 @@ not operate an independent database server or a multi-user identity system.
 ### Record money
 
 - Add income or expense in a short responsive form.
+- Record a withdrawal, card payment, or movement between owned accounts as one
+  atomic transfer, with separate “left source” and “reached destination” states;
+  never classify that movement as income or expense.
 - Leave manual entries uncleared until they appear at the bank, or mark them
   cleared during entry or review. Duplicated and recurring entries also begin
   uncleared; reviewed bank imports begin cleared.
@@ -163,6 +166,27 @@ In product wording, a custom `payment` item means a payment-method account such
 as cash, bank, credit card, or wallet. It is not a separate transaction or
 account type in the current data model.
 
+### Account transfers
+
+```text
+id                 client-generated UUID
+amount_minor       positive integer minor units
+currency           HKD in the current release
+from_account_id    source account
+to_account_id      distinct destination account
+occurred_on        YYYY-MM-DD calendar date
+from_cleared       source posting-review state
+to_cleared         destination posting-review state
+note               optional custom text
+created_at         internal UTC audit timestamp
+updated_at         optimistic concurrency token
+```
+
+A transfer is one atomic record, not paired income and expense rows. It is omitted
+from monthly totals, category reports, plans, trends, and transaction CSV export.
+New records require two active compatible accounts; an existing record may retain
+its archived references while being reviewed or corrected.
+
 ### Recurring rules
 
 - Frequencies: `daily`, `weekly`, `monthly`.
@@ -202,6 +226,11 @@ POST   /api/transactions/duplicates  (exact match count only)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
+GET    /api/transfers?month=YYYY-MM
+POST   /api/transfers
+GET    /api/transfers/:id
+PUT    /api/transfers/:id
+DELETE /api/transfers/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
@@ -238,11 +267,11 @@ re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
 The ledger JSON format covers accounts, categories, recurring rules, transactions,
-and import tombstones while excluding browser preferences and AI credentials. Its
+account transfers, and import tombstones while excluding browser preferences and AI credentials. Its
 SHA-256 checksum detects modification. Restore validates internal references,
 returns a no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-all five tables. The in-app file limit is 7 MiB; larger or database-level recovery
+all six tables. The in-app file limit is 7 MiB; larger or database-level recovery
 uses Wrangler D1 export and restore.
 
 ## Reliability and privacy
@@ -291,7 +320,8 @@ uses Wrangler D1 export and restore.
 ### Complete core
 
 - D1 schema, seed, constraints, indexes, date-only migration, reversible
-  transaction clearing status, and optional expense-category monthly plans.
+  transaction clearing status, optional expense-category monthly plans, and
+  atomic account transfers with two-sided posting review.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
@@ -303,7 +333,7 @@ uses Wrangler D1 export and restore.
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
-- Versioned five-table JSON backup, SHA-256 integrity checking, preview-only
+- Versioned six-table JSON backup, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only
@@ -342,6 +372,8 @@ database IDs. See
 - Local Next.js development and the OpenNext workerd preview read and write D1.
 - A transaction can be created, edited, cleared/uncleared, and deleted; each
   change appears in its list and monthly summary, and stale mutations are rejected.
+- An account transfer can be created, edited, posted on each side, and deleted
+  without changing recorded income, expense, or balance.
 - Daily, weekly, and monthly rules can be created, edited, paused, resumed,
   skipped once, run, and deleted without duplicate occurrences or history loss.
 - Date-only behavior is visible across UI, API, tests, and migrations.

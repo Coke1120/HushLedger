@@ -3,6 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import {
   accountCreateSchema,
+  accountTransferDeleteSchema,
+  accountTransferInputSchema,
+  accountTransferUpdateSchema,
   accountUpdateSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
@@ -20,6 +23,7 @@ import {
   transactionUpdateSchema,
   type RecurringGenerationResult,
   type Account,
+  type AccountTransfer,
   type Category,
 } from '../lib/schema'
 import {
@@ -60,10 +64,17 @@ import {
   type ReferenceErrorCode,
   type UpdateRuleResult,
 } from '../server/recurring'
+import {
+  createAccountTransfer,
+  deleteAccountTransfer,
+  updateAccountTransfer,
+  type UpdateAccountTransferResult,
+} from '../server/transfers'
 import { emptyActionSchema, recurringRuleIdSchema } from '../server/validation'
 
 type DeletedRule = { id: string; deleted: true; revision: number }
 type DeletedTransaction = { id: string; deleted: true }
+type DeletedTransfer = { id: string; deleted: true }
 
 export async function createAccountAction(input: unknown): Promise<ActionResult<Account>> {
   const denied = await accessDenied<Account>()
@@ -250,6 +261,74 @@ export async function deleteTransactionAction(
   })
 }
 
+export async function createAccountTransferAction(
+  input: unknown,
+): Promise<ActionResult<AccountTransfer>> {
+  const denied = await accessDenied<AccountTransfer>()
+  if (denied) return denied
+
+  const parsed = accountTransferInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('帳戶轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('create_account_transfer', async () => {
+    const result = await createAccountTransfer(await getDatabase(), parsed.data)
+    if (result.kind === 'id_conflict') {
+      return actionError('ID_CONFLICT', '帳戶轉帳 ID 已用於另一筆資料')
+    }
+    if (result.kind === 'reference_invalid') return referenceError('ACCOUNT_INVALID')
+    return revalidatedSuccess(result.transfer)
+  })
+}
+
+export async function updateAccountTransferAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<AccountTransfer>> {
+  const denied = await accessDenied<AccountTransfer>()
+  if (denied) return denied
+
+  const id = transactionIdSchema.safeParse(idInput)
+  if (!id.success) return invalidTransferId(id.error.issues)
+
+  const parsed = accountTransferUpdateSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('帳戶轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('update_account_transfer', async () => transferMutationResult(
+    await updateAccountTransfer(await getDatabase(), id.data, parsed.data),
+  ))
+}
+
+export async function deleteAccountTransferAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<DeletedTransfer>> {
+  const denied = await accessDenied<DeletedTransfer>()
+  if (denied) return denied
+
+  const id = transactionIdSchema.safeParse(idInput)
+  if (!id.success) return invalidTransferId(id.error.issues)
+
+  const parsed = accountTransferDeleteSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('刪除帳戶轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('delete_account_transfer', async () => {
+    const result = await deleteAccountTransfer(await getDatabase(), id.data, parsed.data.updatedAt)
+    if (result.kind === 'not_found') {
+      return actionError('TRANSFER_NOT_FOUND', '找不到指定的帳戶轉帳')
+    }
+    if (result.kind === 'version_conflict') {
+      return actionError('TRANSFER_VERSION_CONFLICT', '帳戶轉帳已被修改，請重新載入後再試')
+    }
+    return revalidatedSuccess({ id: result.id, deleted: true })
+  })
+}
+
 export async function createRecurringRuleAction(
   input: unknown,
 ): Promise<ActionResult<RecurringRuleView>> {
@@ -415,6 +494,14 @@ function invalidTransactionId<T>(issues: Parameters<typeof sanitizeValidationIss
   )
 }
 
+function invalidTransferId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]) {
+  return actionError<T>(
+    'INVALID_TRANSFER_ID',
+    '帳戶轉帳 ID 不正確',
+    sanitizeValidationIssues(issues),
+  )
+}
+
 function invalidReferenceId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]) {
   return actionError<T>(
     'INVALID_REFERENCE_ID',
@@ -480,6 +567,17 @@ function transactionMutationResult(result: UpdateTransactionResult): ActionResul
   }
   if (result.kind === 'reference_invalid') return referenceError(result.code)
   return revalidatedSuccess(result.transaction)
+}
+
+function transferMutationResult(result: UpdateAccountTransferResult): ActionResult<AccountTransfer> {
+  if (result.kind === 'not_found') {
+    return actionError('TRANSFER_NOT_FOUND', '找不到指定的帳戶轉帳')
+  }
+  if (result.kind === 'version_conflict') {
+    return actionError('TRANSFER_VERSION_CONFLICT', '帳戶轉帳已被修改，請重新載入後再試')
+  }
+  if (result.kind === 'reference_invalid') return referenceError('ACCOUNT_INVALID')
+  return revalidatedSuccess(result.transfer)
 }
 
 async function accessDenied<T>() {

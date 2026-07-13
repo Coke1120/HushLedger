@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  createAccountTransferAction,
   createTransactionAction,
+  deleteAccountTransferAction,
   deleteTransactionAction,
+  updateAccountTransferAction,
   updateTransactionAction,
 } from '../app/actions'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
@@ -18,6 +21,8 @@ import {
 } from '../lib/demo'
 import type {
   Account,
+  AccountTransfer,
+  AccountTransferInput,
   Category,
   Summary,
   Transaction,
@@ -33,6 +38,7 @@ export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 
 type Snapshot = {
   transactions: Transaction[]
+  accountTransfers: AccountTransfer[]
   transactionFilterSummary: TransactionFilterSummary
   summary: Summary
   accounts: Account[]
@@ -51,6 +57,7 @@ function demoSnapshot(
 ): Snapshot {
   return {
     transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status, sort),
+    accountTransfers: [],
     transactionFilterSummary: summarizeDemoTransactions(
       month,
       type,
@@ -100,14 +107,15 @@ export function useMoneyData(
     const transactionQuery = new URLSearchParams(query)
     if (sort !== 'date_desc') transactionQuery.set('sort', sort)
 
-    const [transactions, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
+    const [transactions, accountTransfers, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
+      api<AccountTransfer[]>(`/api/transfers?month=${encodeURIComponent(month)}`),
       api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
     ])
-    return { transactions, transactionFilterSummary, summary, accounts, categories }
+    return { transactions, accountTransfers, transactionFilterSummary, summary, accounts, categories }
   }, [accountId, categoryId, month, search, sort, status, tag, type])
 
   const refresh = useCallback(
@@ -254,6 +262,75 @@ export function useMoneyData(
     [accountId, categoryId, month, refresh, search, sort, source, status, tag, type],
   )
 
+  const saveAccountTransfer = useCallback(
+    async (input: AccountTransferInput, original?: AccountTransfer) => {
+      if (submitting.current) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      try {
+        if (!navigator.onLine || source !== 'live') {
+          setSaveError(message(source === 'live' ? 'transferOfflineError' : 'transferUnavailable'))
+          return false
+        }
+
+        if (original) {
+          const { id, ...fields } = input
+          await actionData(updateAccountTransferAction(id, {
+            ...fields,
+            updatedAt: original.updatedAt,
+          }))
+        } else {
+          await actionData(createAccountTransferAction(input))
+        }
+        const refreshed = await refresh(false)
+        setActionMessage(message(
+          refreshed
+            ? original ? 'transferUpdated' : 'transferSaved'
+            : 'transactionSavedRefreshFailed',
+        ))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transferSaveFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [refresh, source],
+  )
+
+  const removeAccountTransfer = useCallback(
+    async (transfer: AccountTransfer) => {
+      if (submitting.current) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      try {
+        if (!navigator.onLine || source !== 'live') {
+          setSaveError(message(source === 'live' ? 'transferOfflineError' : 'transferUnavailable'))
+          return false
+        }
+        await actionData(deleteAccountTransferAction(transfer.id, { updatedAt: transfer.updatedAt }))
+        const refreshed = await refresh(false)
+        setActionMessage(message(refreshed ? 'transferDeleted' : 'transactionSavedRefreshFailed'))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transferDeleteFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [refresh, source],
+  )
+
   const visibleSnapshot = useMemo(
     () =>
       source === 'demo'
@@ -287,6 +364,8 @@ export function useMoneyData(
     refresh,
     saveTransaction,
     removeTransaction,
+    saveAccountTransfer,
+    removeAccountTransfer,
     clearActionMessage,
   }
 }

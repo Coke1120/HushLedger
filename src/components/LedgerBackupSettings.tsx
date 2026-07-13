@@ -28,6 +28,7 @@ const countRows: ReadonlyArray<{ key: keyof LedgerTableCounts; label: MessageKey
   { key: 'categories', label: 'ledgerTableCategories' },
   { key: 'recurringRules', label: 'ledgerTableRecurringRules' },
   { key: 'transactions', label: 'ledgerTableTransactions' },
+  { key: 'accountTransfers', label: 'ledgerTableAccountTransfers' },
   { key: 'transactionImportKeys', label: 'ledgerTableImportKeys' },
 ]
 

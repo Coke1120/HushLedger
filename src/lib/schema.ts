@@ -52,6 +52,62 @@ export const transactionDuplicateCheckSchema = transactionFieldsSchema
   .extend({ excludeId: transactionIdSchema.optional() })
   .strict()
 
+const accountTransferFields = {
+  amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  currency: z.literal('HKD').default('HKD'),
+  fromAccountId: z.number().int().positive(),
+  toAccountId: z.number().int().positive(),
+  occurredOn: calendarDateSchema,
+  fromCleared: z.boolean().default(false),
+  toCleared: z.boolean().default(false),
+  note: z.string().trim().max(200).default(''),
+}
+
+const validateTransferAccounts = (
+  value: { fromAccountId: number; toAccountId: number },
+  context: z.RefinementCtx,
+) => {
+  if (value.fromAccountId === value.toAccountId) {
+    context.addIssue({
+      code: 'custom',
+      path: ['toAccountId'],
+      message: '轉出及轉入帳戶必須不同',
+    })
+  }
+}
+
+export const accountTransferInputSchema = z
+  .object({ id: transactionIdSchema, ...accountTransferFields })
+  .strict()
+  .superRefine(validateTransferAccounts)
+
+export const accountTransferUpdateSchema = z
+  .object({
+    ...accountTransferFields,
+    currency: z.literal('HKD'),
+    fromCleared: z.boolean(),
+    toCleared: z.boolean(),
+    note: z.string().trim().max(200),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+  .superRefine(validateTransferAccounts)
+
+export const accountTransferDeleteSchema = transactionDeleteSchema
+
+export const accountTransferQuerySchema = z
+  .object({
+    month: z.string().refine((value) => {
+      try {
+        monthRangeDates(value)
+        return true
+      } catch {
+        return false
+      }
+    }, '月份格式必須為有效的 YYYY-MM'),
+  })
+  .strict()
+
 export const transactionQuerySchema = z
   .object({
     month: z.string().refine((value) => {
@@ -75,6 +131,8 @@ export const transactionQuerySchema = z
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
+export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
+export type AccountTransferUpdateInput = z.infer<typeof accountTransferUpdateSchema>
 
 const referenceNameSchema = z.string().trim().min(1).max(80)
 const updatedReferenceSchema = z.object({
@@ -187,6 +245,15 @@ export type Transaction = TransactionInput & {
   updatedAt: string
   recurringRuleId?: string | null
   recurringRuleName?: string | null
+}
+
+export type AccountTransfer = AccountTransferInput & {
+  fromAccountName: string
+  fromAccountLocalizationKey: AccountLocalizationKey | null
+  toAccountName: string
+  toAccountLocalizationKey: AccountLocalizationKey | null
+  createdAt: string
+  updatedAt: string
 }
 
 export type TransactionFilterSummary = {

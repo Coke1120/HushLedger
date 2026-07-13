@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   accountCreateSchema,
+  accountTransferInputSchema,
+  accountTransferQuerySchema,
+  accountTransferUpdateSchema,
   accountUpdateSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
@@ -211,6 +214,53 @@ describe('transaction query validation', () => {
       assert.equal(transactionQuerySchema.safeParse(query).success, false)
     })
   }
+})
+
+describe('account transfer validation', () => {
+  const transfer = {
+    id: '019f5087-229b-7ce3-a76f-95c833dcf253',
+    amountMinor: 50_000,
+    currency: 'HKD',
+    fromAccountId: 1,
+    toAccountId: 2,
+    occurredOn: '2026-07-11',
+    fromCleared: true,
+    toCleared: false,
+    note: 'Cash withdrawal',
+  } as const
+
+  it('accepts an exact two-sided HKD transfer', () => {
+    assert.deepEqual(accountTransferInputSchema.parse(transfer), transfer)
+  })
+
+  it('rejects self-transfers, unsafe amounts, dates with times, and extra fields', () => {
+    assert.equal(accountTransferInputSchema.safeParse({ ...transfer, toAccountId: 1 }).success, false)
+    assert.equal(accountTransferInputSchema.safeParse({
+      ...transfer,
+      amountMinor: Number.MAX_SAFE_INTEGER + 1,
+    }).success, false)
+    assert.equal(accountTransferInputSchema.safeParse({
+      ...transfer,
+      occurredOn: '2026-07-11T10:30:00.000Z',
+    }).success, false)
+    assert.equal(accountTransferInputSchema.safeParse({ ...transfer, categoryId: 3 }).success, false)
+  })
+
+  it('uses a conflict token without allowing an ID replacement', () => {
+    const { id, ...fields } = transfer
+    const updatedAt = '2026-07-11T10:30:00.000Z'
+    assert.equal(accountTransferUpdateSchema.safeParse({ ...fields, updatedAt }).success, true)
+    assert.equal(accountTransferUpdateSchema.safeParse({ ...fields, id, updatedAt }).success, false)
+    const { toCleared: _toCleared, ...missingPostingState } = fields
+    assert.equal(_toCleared, false)
+    assert.equal(accountTransferUpdateSchema.safeParse({ ...missingPostingState, updatedAt }).success, false)
+  })
+
+  it('requires one strict calendar month query', () => {
+    assert.deepEqual(accountTransferQuerySchema.parse({ month: '2026-07' }), { month: '2026-07' })
+    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-13' }).success, false)
+    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', accountId: '1' }).success, false)
+  })
 })
 
 const validRecurringRule = {

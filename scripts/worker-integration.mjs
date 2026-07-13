@@ -236,6 +236,7 @@ async function verifyUpgradeMigration() {
      SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
+     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account_transfers';
      PRAGMA foreign_key_check;`,
     '--json',
   ])
@@ -253,7 +254,8 @@ async function verifyUpgradeMigration() {
   ])
   assert.equal(statements[3].results[0].importKeys, 0)
   assert.equal(statements[4].results[0].revision, 1)
-  assert.deepEqual(statements[5].results, [])
+  assert.deepEqual(statements[5].results, [{ name: 'account_transfers' }])
+  assert.deepEqual(statements[6].results, [])
 }
 
 async function seedCsvExportRows() {
@@ -937,8 +939,124 @@ async function verifyWorkerApi() {
     .find(({ id }) => id === enabledAccount.payload.data.id)
   let expenseCategory = reorderedCategories.payload.data
     .find(({ id }) => id === enabledCategory.payload.data.id)
+  const transferDestination = reorderedAccounts.payload.data.find(({ id, isActive, currency }) => (
+    id !== account?.id && isActive && currency === 'HKD'
+  ))
   assert(account)
   assert(expenseCategory)
+  assert(transferDestination)
+
+  const summaryBeforeTransfer = await api(baseUrl, `/api/transactions/summary?month=${month}`)
+  assert.equal(summaryBeforeTransfer.response.status, 200)
+  const transferBody = {
+    id: '60000000-0000-4000-8000-000000000001',
+    amountMinor: 50_000,
+    currency: 'HKD',
+    fromAccountId: account.id,
+    toAccountId: transferDestination.id,
+    occurredOn: today,
+    fromCleared: false,
+    toCleared: false,
+    note: 'Integration transfer',
+  }
+  const crossOriginTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: transferBody,
+  })
+  assert.equal(crossOriginTransfer.response.status, 403)
+  assert.equal(crossOriginTransfer.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const invalidTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: { ...transferBody, id: '60000000-0000-4000-8000-000000000002', toAccountId: account.id },
+  })
+  assert.equal(invalidTransfer.response.status, 400)
+  assert.equal(invalidTransfer.payload.error.code, 'VALIDATION_ERROR')
+
+  const createdTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: transferBody,
+  })
+  assert.equal(createdTransfer.response.status, 201, JSON.stringify(createdTransfer.payload))
+  assert.equal(createdTransfer.payload.data.fromAccountName, account.name)
+  assert.equal(createdTransfer.payload.data.toAccountName, transferDestination.name)
+  assert.equal(createdTransfer.payload.data.fromCleared, false)
+  assert.equal(createdTransfer.payload.data.toCleared, false)
+
+  const repeatedTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: transferBody,
+  })
+  assert.equal(repeatedTransfer.response.status, 200)
+  assert.equal(repeatedTransfer.payload.data.id, transferBody.id)
+
+  const conflictingTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: { ...transferBody, amountMinor: transferBody.amountMinor + 1 },
+  })
+  assert.equal(conflictingTransfer.response.status, 409)
+  assert.equal(conflictingTransfer.payload.error.code, 'ID_CONFLICT')
+
+  const listedTransfers = await api(baseUrl, `/api/transfers?month=${month}`)
+  assert.equal(listedTransfers.response.status, 200)
+  assert.deepEqual(listedTransfers.payload.data.map(({ id }) => id), [transferBody.id])
+
+  const transferUpdateFields = {
+    amountMinor: transferBody.amountMinor,
+    currency: transferBody.currency,
+    fromAccountId: transferBody.fromAccountId,
+    toAccountId: transferBody.toAccountId,
+    occurredOn: transferBody.occurredOn,
+    fromCleared: true,
+    toCleared: true,
+    note: 'Integration transfer posted',
+  }
+  const updatedTransfer = await api(baseUrl, `/api/transfers/${transferBody.id}`, {
+    method: 'PUT',
+    body: {
+      ...transferUpdateFields,
+      updatedAt: createdTransfer.payload.data.updatedAt,
+    },
+  })
+  assert.equal(updatedTransfer.response.status, 200, JSON.stringify(updatedTransfer.payload))
+  assert.equal(updatedTransfer.payload.data.fromCleared, true)
+  assert.equal(updatedTransfer.payload.data.toCleared, true)
+
+  const staleTransferUpdate = await api(baseUrl, `/api/transfers/${transferBody.id}`, {
+    method: 'PUT',
+    body: {
+      ...transferUpdateFields,
+      updatedAt: createdTransfer.payload.data.updatedAt,
+    },
+  })
+  assert.equal(staleTransferUpdate.response.status, 409)
+  assert.equal(staleTransferUpdate.payload.error.code, 'TRANSFER_VERSION_CONFLICT')
+
+  const summaryAfterTransfer = await api(baseUrl, `/api/transactions/summary?month=${month}`)
+  assert.deepEqual(summaryAfterTransfer.payload.data, summaryBeforeTransfer.payload.data)
+
+  const temporaryTransferBody = {
+    ...transferBody,
+    id: '60000000-0000-4000-8000-000000000003',
+    amountMinor: 25_000,
+    note: 'Temporary transfer',
+  }
+  const temporaryTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: temporaryTransferBody,
+  })
+  assert.equal(temporaryTransfer.response.status, 201)
+  const deletedTransfer = await api(baseUrl, `/api/transfers/${temporaryTransferBody.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: temporaryTransfer.payload.data.updatedAt },
+  })
+  assert.equal(deletedTransfer.response.status, 200)
+  const repeatedTransferDelete = await api(baseUrl, `/api/transfers/${temporaryTransferBody.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: temporaryTransfer.payload.data.updatedAt },
+  })
+  assert.equal(repeatedTransferDelete.response.status, 404)
 
   const cappedExportRows = await api(baseUrl, `/api/transactions?month=${month}&search=export%20bulk`)
   assert.equal(cappedExportRows.response.status, 200)
@@ -1634,13 +1752,17 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 10)
+  assert.equal(backup.schemaVersion, 11)
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
   assert(backup.data.categories.every(({ monthlyPlanMinor }) => (
     monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor)
   )))
+  assert.equal(backup.data.accountTransfers.length, 1)
+  assert.equal(backup.data.accountTransfers[0].id, transferBody.id)
+  assert.equal(backup.data.accountTransfers[0].fromCleared, true)
+  assert.equal(backup.data.accountTransfers[0].toCleared, true)
   assert(backup.data.transactionImportKeys.length > 0)
 
   const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
@@ -1666,6 +1788,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(originalPreview.response.status, 200, JSON.stringify(originalPreview.payload))
   assert.equal(originalPreview.payload.data.backupCounts.transactions, backup.data.transactions.length)
+  assert.equal(originalPreview.payload.data.backupCounts.accountTransfers, 1)
   assert.equal(originalPreview.payload.data.currentDigest, originalPreview.payload.data.backupDigest)
 
   const restoreSentinelId = '50000000-0000-4000-8000-000000000001'
@@ -1726,8 +1849,36 @@ async function verifyWorkerApi() {
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema10Backup = structuredClone(backup)
+  schema10Backup.schemaVersion = 10
+  delete schema10Backup.data.accountTransfers
+  schema10Backup.checksum.digest = backupChecksum(schema10Backup)
+  const schema10Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema10Backup },
+  })
+  assert.equal(schema10Preview.response.status, 200, JSON.stringify(schema10Preview.payload))
+  assert.equal(schema10Preview.payload.data.backupCounts.accountTransfers, 0)
+  const schema10Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema10Backup,
+      expectedCurrentDigest: schema10Preview.payload.data.currentDigest,
+      expectedRevision: schema10Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema10Restore.response.status, 200, JSON.stringify(schema10Restore.payload))
+  const upgradedSchema10Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.deepEqual(upgradedSchema10Backup.payload.data.accountTransfers, [])
+  assert(upgradedSchema10Backup.payload.data.categories.some(
+    ({ monthlyPlanMinor }) => monthlyPlanMinor !== null,
+  ))
+
   const schema9Backup = structuredClone(backup)
   schema9Backup.schemaVersion = 9
+  delete schema9Backup.data.accountTransfers
   schema9Backup.data.categories = schema9Backup.data.categories.map(({
     monthlyPlanMinor,
     ...category
@@ -1760,6 +1911,7 @@ async function verifyWorkerApi() {
 
   const schema8Backup = structuredClone(backup)
   schema8Backup.schemaVersion = 8
+  delete schema8Backup.data.accountTransfers
   schema8Backup.data.categories = schema8Backup.data.categories.map(({
     monthlyPlanMinor,
     ...category
@@ -1820,7 +1972,10 @@ async function verifyWorkerApi() {
     csvImportWrites: 2,
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
-    ledgerBackupTables: 5,
+    accountTransferLifecycles: 1,
+    accountTransferGuards: 5,
+    ledgerBackupTables: 6,
+    ledgerSchema10Restores: 1,
     ledgerSchema9Restores: 1,
     ledgerSchema8Restores: 1,
     ledgerRestoreStaleGuards: 1,
@@ -2020,8 +2175,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0010',
-      upgradeMigration: '0004-to-0010-preserved-data-names-clearing-and-null-plans',
+      freshMigrations: '0001-0011',
+      upgradeMigration: '0004-to-0011-preserved-data-names-clearing-null-plans-and-transfers',
       ...apiEvidence,
       ...nextAiEvidence,
     }),
