@@ -15,7 +15,8 @@ export const PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION = 11 as const
 export const PREVIOUS_LEDGER_SCHEMA_VERSION = 12 as const
 export const PRE_CURRENCY_LEDGER_SCHEMA_VERSION = 13 as const
 export const PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION = 14 as const
-export const LEDGER_SCHEMA_VERSION = 15 as const
+export const PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION = 15 as const
+export const LEDGER_SCHEMA_VERSION = 16 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -105,7 +106,7 @@ export const ledgerBackupCategorySchema = z.object({
   }
 })
 
-export const ledgerBackupRecurringRuleSchema = z.object({
+const ledgerBackupRecurringRuleFields = {
   id: uuidSchema,
   name: trimmedNameSchema,
   type: z.enum(['expense', 'income']),
@@ -129,9 +130,32 @@ export const ledgerBackupRecurringRuleSchema = z.object({
   deletedAt: timestampSchema.nullable(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-}).strict()
+}
 
-const preYearlyRecurringLedgerBackupRuleSchema = ledgerBackupRecurringRuleSchema.extend({
+const preScheduleEndLedgerBackupRuleSchema = z.object(ledgerBackupRecurringRuleFields).strict()
+
+export const ledgerBackupRecurringRuleSchema = z.object({
+  ...ledgerBackupRecurringRuleFields,
+  scheduleEndsOn: calendarDateSchema.nullable(),
+}).strict().superRefine((rule, context) => {
+  if (rule.scheduleEndsOn && rule.scheduleEndsOn < rule.scheduleStartsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['scheduleEndsOn'],
+      message: 'Schedule end cannot be before the schedule start',
+    })
+  }
+  if (rule.scheduleEndsOn && rule.isActive && rule.nextOccurrenceOn > rule.scheduleEndsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['isActive'],
+      message: 'A completed recurring schedule cannot remain active',
+    })
+  }
+})
+
+const preYearlyRecurringLedgerBackupRuleSchema = z.object({
+  ...ledgerBackupRecurringRuleFields,
   frequency: z.enum(['daily', 'weekly', 'monthly']),
 }).strict()
 
@@ -246,7 +270,11 @@ export const ledgerBackupDataSchema = z.object({
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-const preYearlyRecurringLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+const preScheduleEndLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+  recurringRules: z.array(preScheduleEndLedgerBackupRuleSchema),
+}).strict()
+
+const preYearlyRecurringLedgerBackupDataSchema = preScheduleEndLedgerBackupDataSchema.extend({
   recurringRules: z.array(preYearlyRecurringLedgerBackupRuleSchema),
 }).strict()
 
@@ -299,6 +327,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preScheduleEndLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION),
+  data: preScheduleEndLedgerBackupDataSchema,
+}).strict()
+
 const preYearlyRecurringLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION),
   data: preYearlyRecurringLedgerBackupDataSchema,
@@ -326,6 +359,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preScheduleEndLedgerBackupPayloadSchema,
   preYearlyRecurringLedgerBackupPayloadSchema,
   preCurrencyLedgerBackupPayloadSchema,
   previousLedgerBackupPayloadSchema,
@@ -341,6 +375,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preScheduleEndLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION),
+  data: preScheduleEndLedgerBackupDataSchema,
 }).strict()
 
 const preYearlyRecurringLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -370,6 +409,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preScheduleEndLedgerBackupSchema,
   preYearlyRecurringLedgerBackupSchema,
   preCurrencyLedgerBackupSchema,
   previousLedgerBackupSchema,
@@ -477,11 +517,16 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
-  if (backup.schemaVersion === PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION) {
-    return ledgerBackupDataSchema.parse(backup.data)
+  const recurringRules = backup.data.recurringRules.map((rule) => ({
+    ...rule,
+    scheduleEndsOn: null,
+  }))
+  if (backup.schemaVersion >= PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse({ ...backup.data, recurringRules })
   }
   return ledgerBackupDataSchema.parse({
     ...backup.data,
+    recurringRules,
     currency: DEFAULT_LEDGER_CURRENCY,
     accounts: backup.schemaVersion >= PREVIOUS_LEDGER_SCHEMA_VERSION
       ? backup.data.accounts

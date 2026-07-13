@@ -69,6 +69,7 @@ export function RecurringRuleDialog({
   const [scheduleDate, setScheduleDate] = useState(
     draft?.firstOccurrenceOn ?? initialRule?.scheduleStartsOn ?? currentHongKongDate().date,
   )
+  const [scheduleEndDate, setScheduleEndDate] = useState(initialRule?.scheduleEndsOn ?? '')
   const [isActive, setIsActive] = useState(initialRule?.isActive ?? true)
   const [localError, setLocalError] = useState('')
   const [openingLedgerContext] = useState(ledgerContext)
@@ -186,6 +187,14 @@ export function RecurringRuleDialog({
       return
     }
 
+    if (
+      scheduleEndDate
+      && (!isValidCalendarDate(scheduleEndDate) || scheduleEndDate < scheduleDate)
+    ) {
+      setLocalError(t('scheduleEndDateInvalid'))
+      return
+    }
+
     let amountMinor: number
     try {
       amountMinor = parseAmount(String(data.get('amount') ?? ''), locale)
@@ -205,6 +214,7 @@ export function RecurringRuleDialog({
           : (matchingCategories[0]?.id ?? 0),
         frequency,
         scheduleStartsOn: draft?.scheduleStartsOn ?? scheduleDate,
+        scheduleEndsOn: scheduleEndDate || null,
         isActive,
         payee: String(data.get('payee') ?? ''),
         note: String(data.get('note') ?? ''),
@@ -232,6 +242,7 @@ export function RecurringRuleDialog({
     'recurring-future-note',
     draft ? 'recurring-draft-note' : '',
     anchorHelpId ?? '',
+    'recurring-end-date-help',
     error ? 'recurring-form-error' : '',
   ]
     .filter(Boolean)
@@ -374,7 +385,21 @@ export function RecurringRuleDialog({
                 required
               />
             </label>
+            <label>
+              <span>{t('scheduleEndDateOptional')}</span>
+              <input
+                type="date"
+                min={scheduleDate}
+                value={scheduleEndDate}
+                aria-describedby="recurring-end-date-help"
+                onChange={(event) => setScheduleEndDate(event.target.value)}
+              />
+            </label>
           </div>
+
+          <p className="schedule-note" id="recurring-end-date-help">
+            {t('scheduleEndDateHelp')}
+          </p>
 
           {frequency === 'monthly' ? (
             <p className="schedule-note" id="recurring-monthly-note">
@@ -388,7 +413,7 @@ export function RecurringRuleDialog({
             </p>
           ) : null}
 
-          {rule ? (
+          {rule && !(rule.scheduleEndsOn && rule.nextOccurrenceOn > rule.scheduleEndsOn) ? (
             <p className="schedule-note">{t('nextGenerationHelp', { date: formatDate(rule.nextOccurrenceOn) })}</p>
           ) : null}
 

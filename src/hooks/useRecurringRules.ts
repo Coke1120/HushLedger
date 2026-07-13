@@ -49,6 +49,7 @@ function createDemoRules(): RecurringRule[] {
     categoryId: 1,
     frequency: 'monthly',
     scheduleStartsOn: today,
+    scheduleEndsOn: null,
     nextOccurrenceOn: today,
     lastOccurrenceOn: null,
     anchorDay: Number(today.slice(-2)),

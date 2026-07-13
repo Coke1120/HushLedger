@@ -415,10 +415,36 @@ const recurringRuleFieldsSchema = z.object({
   categoryId: z.number().int().positive(),
   frequency: recurrenceFrequencySchema,
   scheduleStartsOn: calendarDateSchema,
+  /** Omitted only when an older cached app shell updates a newer API. */
+  scheduleEndsOn: calendarDateSchema.nullable().optional(),
   isActive: z.boolean().default(true),
   payee: z.string().trim().max(80).default(''),
   note: z.string().trim().max(200).default(''),
 })
+
+const validateRecurringSchedule = (
+  value: {
+    scheduleStartsOn: string
+    scheduleEndsOn?: string | null
+    firstOccurrenceOn?: string
+  },
+  context: z.RefinementCtx,
+) => {
+  if (value.scheduleEndsOn && value.scheduleEndsOn < value.scheduleStartsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['scheduleEndsOn'],
+      message: '週期結束日不得早於週期起始日',
+    })
+  }
+  if (value.scheduleEndsOn && value.firstOccurrenceOn && value.scheduleEndsOn < value.firstOccurrenceOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['scheduleEndsOn'],
+      message: '週期結束日不得早於首次產生日期',
+    })
+  }
+}
 
 export const recurringRuleCreateSchema = recurringRuleFieldsSchema.extend({
   id: z.string().uuid('週期交易 ID 必須是 UUID'),
@@ -431,11 +457,12 @@ export const recurringRuleCreateSchema = recurringRuleFieldsSchema.extend({
       message: '首次產生日期不得早於週期起始日',
     })
   }
+  validateRecurringSchedule(value, context)
 })
 
 export const recurringRuleUpdateSchema = recurringRuleFieldsSchema.extend({
   revision: z.number().int().positive(),
-}).strict()
+}).strict().superRefine(validateRecurringSchedule)
 export const recurringRuleStatusSchema = z
   .object({ isActive: z.boolean(), revision: z.number().int().positive() })
   .strict()

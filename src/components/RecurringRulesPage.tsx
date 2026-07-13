@@ -253,6 +253,9 @@ export function RecurringRulesPage({
           <ul className="recurring-list" aria-label={t('recurringRuleList')}>
             {recurring.rules.map((rule) => {
               const busy = recurring.mutatingId === rule.id
+              const completed = Boolean(
+                rule.scheduleEndsOn && rule.nextOccurrenceOn > rule.scheduleEndsOn,
+              )
               const account = accountsById.get(rule.accountId)
               const category = categoriesById.get(rule.categoryId)
               const accountName = account
@@ -262,14 +265,17 @@ export function RecurringRulesPage({
                 ? localizeEntityName(category.name, category.localizationKey)
                 : t('unknownCategory')
               return (
-                <li className={`recurring-rule ${rule.isActive ? '' : 'is-paused'}`} key={rule.id}>
+                <li
+                  className={`recurring-rule ${completed ? 'is-completed' : rule.isActive ? '' : 'is-paused'}`}
+                  key={rule.id}
+                >
                   <div className="recurring-rule-main">
                     <span className={`recurring-rule-icon ${rule.type}`} aria-hidden="true">
                       <Repeat />
                     </span>
                     <div className="recurring-rule-title">
-                      <span className={`rule-status ${rule.isActive ? 'is-active' : 'is-paused'}`}>
-                        {rule.isActive ? t('active') : t('paused')}
+                      <span className={`rule-status ${completed ? 'is-completed' : rule.isActive ? 'is-active' : 'is-paused'}`}>
+                        {completed ? t('recurringCompleted') : rule.isActive ? t('active') : t('paused')}
                       </span>
                       <strong>{rule.name}</strong>
                       <small>{rule.payee || `${categoryName} · ${accountName}`}</small>
@@ -292,7 +298,15 @@ export function RecurringRulesPage({
                     </div>
                     <div>
                       <dt>{t('nextDate')}</dt>
-                      <dd>{formatDate(rule.nextOccurrenceOn)}</dd>
+                      <dd>{completed ? '—' : formatDate(rule.nextOccurrenceOn)}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('scheduleEndDate')}</dt>
+                      <dd>
+                        {rule.scheduleEndsOn
+                          ? formatDate(rule.scheduleEndsOn)
+                          : t('noScheduleEndDate')}
+                      </dd>
                     </div>
                     <div>
                       <dt>{t('accountAndCategory')}</dt>
@@ -323,7 +337,7 @@ export function RecurringRulesPage({
                       <Pencil aria-hidden="true" />
                       {t('edit')}
                     </button>
-                    {rule.isActive ? (
+                    {!completed && rule.isActive ? (
                       <button
                         className="button button-secondary"
                         type="button"
@@ -339,21 +353,23 @@ export function RecurringRulesPage({
                         {t('skipNextOccurrence')}
                       </button>
                     ) : null}
-                    <button
-                      className="button button-secondary"
-                      type="button"
-                      onClick={() => void recurring.setRuleActive(rule, !rule.isActive)}
-                      disabled={!mutationsEnabled || busy}
-                    >
-                      {busy ? (
-                        <LoaderCircle className="spin" aria-hidden="true" />
-                      ) : rule.isActive ? (
-                        <Pause aria-hidden="true" />
-                      ) : (
-                        <Play aria-hidden="true" />
-                      )}
-                      {rule.isActive ? t('pause') : t('resume')}
-                    </button>
+                    {!completed ? (
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => void recurring.setRuleActive(rule, !rule.isActive)}
+                        disabled={!mutationsEnabled || busy}
+                      >
+                        {busy ? (
+                          <LoaderCircle className="spin" aria-hidden="true" />
+                        ) : rule.isActive ? (
+                          <Pause aria-hidden="true" />
+                        ) : (
+                          <Play aria-hidden="true" />
+                        )}
+                        {rule.isActive ? t('pause') : t('resume')}
+                      </button>
+                    ) : null}
                     <button
                       className="button recurring-delete-button"
                       type="button"

@@ -946,11 +946,13 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category_id AS categoryId,
         frequency,
         next_occurrence_on AS nextOccurrenceOn,
-        anchor_day AS anchorDay
+        anchor_day AS anchorDay,
+        schedule_ends_on AS scheduleEndsOn
       FROM recurring_rules
       WHERE is_active = 1
         AND deleted_at IS NULL
         AND next_occurrence_on < ?
+        AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
       ORDER BY next_occurrence_on ASC, id ASC
     `)
       .bind(end)

@@ -8,6 +8,7 @@ import {
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
+  PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION,
   PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
@@ -17,6 +18,7 @@ import {
   countLedgerData,
   digestLedgerData,
   ledgerBackupExportRequestSchema,
+  ledgerBackupRecurringRuleSchema,
   ledgerBackupTransactionSchema,
   ledgerRestorePreviewSchema,
   upgradeLedgerBackupData,
@@ -96,6 +98,7 @@ function ledgerData(): LedgerBackupData {
       categoryId: 1,
       frequency: 'daily',
       scheduleStartsOn: '2026-07-01',
+      scheduleEndsOn: '2026-07-31',
       nextOccurrenceOn: '2026-07-14',
       lastOccurrenceOn: '2026-07-13',
       anchorDay: 1,
@@ -157,10 +160,21 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
-function ledgerDataBeforeYearly(data: LedgerBackupData) {
+function ledgerDataBeforeScheduleEnd(data: LedgerBackupData) {
   return {
     ...data,
-    recurringRules: data.recurringRules.map((rule) => {
+    recurringRules: data.recurringRules.map(({
+      scheduleEndsOn: _scheduleEndsOn,
+      ...rule
+    }) => rule),
+  }
+}
+
+function ledgerDataBeforeYearly(data: LedgerBackupData) {
+  const beforeScheduleEnd = ledgerDataBeforeScheduleEnd(data)
+  return {
+    ...beforeScheduleEnd,
+    recurringRules: beforeScheduleEnd.recurringRules.map((rule) => {
       if (rule.frequency === 'yearly') throw new Error('Expected a pre-yearly recurring rule')
       return { ...rule, frequency: rule.frequency }
     }),
@@ -314,6 +328,60 @@ describe('ledger backups', () => {
     assert.deepEqual(validateLedgerDataRelations(data), [])
   })
 
+  it('preserves an optional inclusive recurring schedule end', () => {
+    const rule = ledgerData().recurringRules[0]
+
+    assert.equal(ledgerBackupRecurringRuleSchema.safeParse(rule).success, true)
+    assert.equal(ledgerBackupRecurringRuleSchema.safeParse({ ...rule, scheduleEndsOn: null }).success, true)
+    assert.equal(ledgerBackupRecurringRuleSchema.safeParse({
+      ...rule,
+      scheduleEndsOn: '2026-06-30',
+    }).success, false)
+    assert.equal(ledgerBackupRecurringRuleSchema.safeParse({
+      ...rule,
+      scheduleEndsOn: '2026-07-13',
+    }).success, false)
+    assert.equal(ledgerBackupRecurringRuleSchema.safeParse({
+      ...rule,
+      scheduleEndsOn: '2026-07-13',
+      isActive: false,
+    }).success, true)
+
+    const backup = compatibleLedgerBackupSchema.parse({
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: LEDGER_SCHEMA_VERSION,
+      data: ledgerData(),
+      checksum: { algorithm: 'SHA-256', digest: 'a'.repeat(64) },
+    })
+    assert.equal(upgradeLedgerBackupData(backup).recurringRules[0]?.scheduleEndsOn, '2026-07-31')
+  })
+
+  it('upgrades schema 15 recurring rules as perpetual without changing yearly schedules', async () => {
+    const current = ledgerData()
+    current.recurringRules[0].frequency = 'yearly'
+    const previousData = ledgerDataBeforeScheduleEnd(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.recurringRules[0]?.frequency, 'yearly')
+    assert.equal(upgraded.recurringRules[0]?.scheduleEndsOn, null)
+  })
+
   it('upgrades schema 14 backups without changing their currency or recurring rules', async () => {
     const previousData = ledgerDataBeforeYearly(ledgerData())
     previousData.currency = 'USD'
@@ -339,6 +407,7 @@ describe('ledger backups', () => {
     const upgraded = upgradeLedgerBackupData(backup)
     assert.equal(upgraded.currency, 'USD')
     assert.equal(upgraded.recurringRules[0]?.frequency, 'daily')
+    assert.equal(upgraded.recurringRules[0]?.scheduleEndsOn, null)
   })
 
   it('keeps yearly rules in current backups without accepting them as schemas 8 through 14', () => {

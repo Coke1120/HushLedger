@@ -300,7 +300,10 @@ export async function setAccountReferenceStatus(
       AND (? = 1 OR NOT EXISTS (
         SELECT 1
         FROM recurring_rules
-        WHERE account_id = ? AND is_active = 1 AND deleted_at IS NULL
+        WHERE account_id = ?
+          AND is_active = 1
+          AND deleted_at IS NULL
+          AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
       ))
       AND (? = 1 OR NOT EXISTS (
         SELECT 1 FROM emergency_fund_goals WHERE account_id = ?
@@ -445,7 +448,10 @@ export async function setCategoryReferenceStatus(
       AND (? = 1 OR NOT EXISTS (
         SELECT 1
         FROM recurring_rules
-        WHERE category_id = ? AND is_active = 1 AND deleted_at IS NULL
+        WHERE category_id = ?
+          AND is_active = 1
+          AND deleted_at IS NULL
+          AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
       ))
   `).bind(active, id, input.updatedAt, active, existing.type, active, id).run()
 
@@ -557,7 +563,10 @@ async function hasActiveRules(database: D1Database, column: 'account_id' | 'cate
   const row = await database.prepare(`
     SELECT 1 AS found
     FROM recurring_rules
-    WHERE ${column} = ? AND is_active = 1 AND deleted_at IS NULL
+    WHERE ${column} = ?
+      AND is_active = 1
+      AND deleted_at IS NULL
+      AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
     LIMIT 1
   `).bind(id).first<{ found: number }>()
   return row?.found === 1

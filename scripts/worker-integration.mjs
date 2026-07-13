@@ -68,8 +68,20 @@ function withoutAccountOpeningBalances(accounts) {
   })
 }
 
-function withoutYearlyRecurringData(backup) {
+function withoutRecurringScheduleEnds(backup) {
   const compatible = structuredClone(backup)
+  compatible.data.recurringRules = compatible.data.recurringRules.map(({
+    scheduleEndsOn,
+    ...rule
+  }) => {
+    assert(scheduleEndsOn === null || typeof scheduleEndsOn === 'string')
+    return rule
+  })
+  return compatible
+}
+
+function withoutYearlyRecurringData(backup) {
+  const compatible = withoutRecurringScheduleEnds(backup)
   const yearlyRuleIds = new Set(
     compatible.data.recurringRules
       .filter(({ frequency }) => frequency === 'yearly')
@@ -203,9 +215,11 @@ async function verifyUpgradeMigration() {
     /^000[5-9]_/.test(name) || /^001[0-4]_/.test(name)
   ))
   const yearlyMigrationNames = allMigrationNames.filter((name) => /^0015_/.test(name))
+  const scheduleEndMigrationNames = allMigrationNames.filter((name) => /^0016_/.test(name))
   assert.equal(initialMigrationNames.length, 4)
   assert.equal(preYearlyMigrationNames.length, 10)
   assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
+  assert.deepEqual(scheduleEndMigrationNames, ['0016_recurring_rule_end_dates.sql'])
   await Promise.all(
     initialMigrationNames.map((name) => (
       copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
@@ -326,6 +340,23 @@ async function verifyUpgradeMigration() {
     upgradeConfig,
   ])
 
+  await Promise.all(
+    scheduleEndMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
   const verification = await runWrangler([
     'd1',
     'execute',
@@ -341,6 +372,7 @@ async function verifyUpgradeMigration() {
      FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT id, frequency, schedule_starts_on AS scheduleStartsOn,
+       schedule_ends_on AS scheduleEndsOn,
        next_occurrence_on AS nextOccurrenceOn, last_occurrence_on AS lastOccurrenceOn,
        anchor_day AS anchorDay, generated_count AS generatedCount,
        revision, cursor_version AS cursorVersion
@@ -397,6 +429,7 @@ async function verifyUpgradeMigration() {
     id: recurringSentinelId,
     frequency: 'monthly',
     scheduleStartsOn: '2024-01-31',
+    scheduleEndsOn: null,
     nextOccurrenceOn: '2026-07-31',
     lastOccurrenceOn: '2026-06-30',
     anchorDay: 31,
@@ -471,6 +504,23 @@ async function verifyUpgradeMigration() {
       upgradeConfig,
       '--command',
       `UPDATE recurring_rules SET frequency = 'quarterly' WHERE id = '${recurringSentinelId}';`,
+      '--yes',
+    ]),
+    /CHECK constraint failed/,
+  )
+
+  await assert.rejects(
+    runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      upgradeState,
+      '--config',
+      upgradeConfig,
+      '--command',
+      `UPDATE recurring_rules SET schedule_ends_on = '2023-12-31' WHERE id = '${recurringSentinelId}';`,
       '--yes',
     ]),
     /CHECK constraint failed/,
@@ -885,7 +935,7 @@ async function verifyPristineCurrencyApi() {
     const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
-    assert.equal(usdBackup.schemaVersion, 15)
+    assert.equal(usdBackup.schemaVersion, 16)
     assert.equal(usdBackup.data.currency, 'USD')
     assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
     assert(usdBackup.data.accounts.every(({
@@ -3732,8 +3782,11 @@ async function verifyWorkerApi() {
     race: '20000000-0000-4000-8000-000000000007',
     income: '20000000-0000-4000-8000-000000000010',
     skip: '20000000-0000-4000-8000-000000000009',
+    finite: '20000000-0000-4000-8000-000000000012',
+    finiteSkip: '20000000-0000-4000-8000-000000000013',
   }
   const tomorrow = shiftCalendarDay(today, 1)
+  const dayAfterTomorrow = shiftCalendarDay(today, 2)
   const nextYear = shiftCalendarYear(today, 1)
   const baseRule = {
     name: 'Integration rule',
@@ -3747,6 +3800,31 @@ async function verifyWorkerApi() {
     payee: 'integration test',
     note: '',
   }
+
+  const endBeforeStart = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: '20000000-0000-4000-8000-000000000014',
+      frequency: 'daily',
+      scheduleEndsOn: shiftCalendarDay(today, -1),
+    },
+  })
+  assert.equal(endBeforeStart.response.status, 400)
+  assert.equal(endBeforeStart.payload.error.code, 'VALIDATION_ERROR')
+
+  const endBeforeFirstOccurrence = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: '20000000-0000-4000-8000-000000000015',
+      frequency: 'daily',
+      firstOccurrenceOn: tomorrow,
+      scheduleEndsOn: today,
+    },
+  })
+  assert.equal(endBeforeFirstOccurrence.response.status, 400)
+  assert.equal(endBeforeFirstOccurrence.payload.error.code, 'VALIDATION_ERROR')
 
   const createdRules = []
   for (const frequency of ['daily', 'weekly', 'monthly', 'yearly']) {
@@ -3762,6 +3840,7 @@ async function verifyWorkerApi() {
     })
     assert.equal(created.response.status, 201)
     assert.equal(created.payload.data.nextOccurrenceOn, today)
+    assert.equal(created.payload.data.scheduleEndsOn, null)
     createdRules.push(created.payload.data)
   }
 
@@ -3843,6 +3922,7 @@ async function verifyWorkerApi() {
   assert.equal(edited.response.status, 200)
   assert.equal(edited.payload.data.name, 'edited daily integration')
   assert.equal(edited.payload.data.amountMinor, 789)
+  assert.equal(edited.payload.data.scheduleEndsOn, null)
   assert.equal(edited.payload.data.revision, 2)
 
   const paused = await api(baseUrl, `/api/recurring-rules/${ruleIds.weekly}/status`, {
@@ -3977,17 +4057,210 @@ async function verifyWorkerApi() {
     [nextYear],
   )
 
+  const finiteAccount = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: { name: 'Finite recurring account', type: 'bank' },
+  })
+  assert.equal(finiteAccount.response.status, 201, JSON.stringify(finiteAccount.payload))
+  const finiteCategory = await api(baseUrl, '/api/categories', {
+    method: 'POST',
+    body: { name: 'Finite recurring category', type: 'expense' },
+  })
+  assert.equal(finiteCategory.response.status, 201, JSON.stringify(finiteCategory.payload))
+  const finiteBaseRule = {
+    ...baseRule,
+    accountId: finiteAccount.payload.data.id,
+    categoryId: finiteCategory.payload.data.id,
+    frequency: 'daily',
+    payee: 'finite schedule integration',
+  }
+
+  const finiteSkipRule = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...finiteBaseRule,
+      id: ruleIds.finiteSkip,
+      name: 'finite skip integration',
+      scheduleEndsOn: today,
+    },
+  })
+  assert.equal(finiteSkipRule.response.status, 201, JSON.stringify(finiteSkipRule.payload))
+  assert.equal(finiteSkipRule.payload.data.scheduleEndsOn, today)
+  const skippedFiniteEnd = await api(
+    baseUrl,
+    `/api/recurring-rules/${ruleIds.finiteSkip}/skip`,
+    {
+      method: 'POST',
+      body: {
+        revision: finiteSkipRule.payload.data.revision,
+        nextOccurrenceOn: today,
+      },
+    },
+  )
+  assert.equal(skippedFiniteEnd.response.status, 200, JSON.stringify(skippedFiniteEnd.payload))
+  assert.equal(skippedFiniteEnd.payload.data.nextOccurrenceOn, tomorrow)
+  assert.equal(skippedFiniteEnd.payload.data.isActive, false)
+  assert.equal(skippedFiniteEnd.payload.data.generatedCount, 0)
+
+  const finiteRule = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...finiteBaseRule,
+      id: ruleIds.finite,
+      name: 'finite run integration',
+      scheduleEndsOn: tomorrow,
+    },
+  })
+  assert.equal(finiteRule.response.status, 201, JSON.stringify(finiteRule.payload))
+  assert.equal(finiteRule.payload.data.scheduleEndsOn, tomorrow)
+  const incompatibleLegacyFiniteUpdate = await api(
+    baseUrl,
+    `/api/recurring-rules/${ruleIds.finite}`,
+    {
+      method: 'PUT',
+      body: {
+        ...finiteBaseRule,
+        scheduleStartsOn: dayAfterTomorrow,
+        name: 'incompatible legacy finite update',
+        revision: finiteRule.payload.data.revision,
+      },
+    },
+  )
+  assert.equal(
+    incompatibleLegacyFiniteUpdate.response.status,
+    409,
+    JSON.stringify(incompatibleLegacyFiniteUpdate.payload),
+  )
+  assert.equal(incompatibleLegacyFiniteUpdate.payload.error.code, 'RULE_VERSION_CONFLICT')
+  const legacyFiniteUpdate = await api(baseUrl, `/api/recurring-rules/${ruleIds.finite}`, {
+    method: 'PUT',
+    body: {
+      ...finiteBaseRule,
+      name: 'legacy finite update',
+      revision: finiteRule.payload.data.revision,
+    },
+  })
+  assert.equal(legacyFiniteUpdate.response.status, 200, JSON.stringify(legacyFiniteUpdate.payload))
+  assert.equal(legacyFiniteUpdate.payload.data.scheduleEndsOn, tomorrow)
+
+  const forecastMonths = [...new Set([month, tomorrow.slice(0, 7)])]
+  const finiteForecastDates = new Set()
+  for (const forecastMonth of forecastMonths) {
+    const finiteForecast = await api(baseUrl, `/api/summary?month=${forecastMonth}`)
+    assert.equal(finiteForecast.response.status, 200)
+    const forecast = finiteForecast.payload.data.recurringForecast.find(
+      ({ recurringRuleId }) => recurringRuleId === ruleIds.finite,
+    )
+    for (const occurrenceOn of forecast?.occurrenceDates ?? []) {
+      finiteForecastDates.add(occurrenceOn)
+    }
+  }
+  assert.deepEqual([...finiteForecastDates].sort(), [today, tomorrow])
+
+  const finiteRun = await api(baseUrl, '/api/recurring-rules/run-due', {
+    method: 'POST',
+    body: { asOf: tomorrow },
+  })
+  assert.equal(finiteRun.response.status, 200, JSON.stringify(finiteRun.payload))
+  assert(finiteRun.payload.data.created >= 2)
+  const completedFiniteRule = await api(baseUrl, `/api/recurring-rules/${ruleIds.finite}`)
+  assert.equal(completedFiniteRule.response.status, 200)
+  assert.equal(completedFiniteRule.payload.data.scheduleEndsOn, tomorrow)
+  assert.equal(completedFiniteRule.payload.data.nextOccurrenceOn, dayAfterTomorrow)
+  assert.equal(completedFiniteRule.payload.data.isActive, false)
+  assert.equal(completedFiniteRule.payload.data.generatedCount, 2)
+
+  const attemptedCompletedResume = await api(
+    baseUrl,
+    `/api/recurring-rules/${ruleIds.finite}/status`,
+    {
+      method: 'PATCH',
+      body: { isActive: true, revision: completedFiniteRule.payload.data.revision },
+    },
+  )
+  assert.equal(attemptedCompletedResume.response.status, 200)
+  assert.equal(attemptedCompletedResume.payload.data.isActive, false)
+  assert.equal(attemptedCompletedResume.payload.data.nextOccurrenceOn, dayAfterTomorrow)
+
+  const futureFiniteRun = await api(baseUrl, '/api/recurring-rules/run-due', {
+    method: 'POST',
+    body: { asOf: dayAfterTomorrow },
+  })
+  assert.equal(futureFiniteRun.response.status, 200, JSON.stringify(futureFiniteRun.payload))
+  const finiteTransactions = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&scope=range&dateFrom=${today}&dateTo=${dayAfterTomorrow}&search=finite%20schedule%20integration`,
+  )
+  assert.equal(finiteTransactions.response.status, 200)
+  assert.deepEqual(
+    finiteTransactions.payload.data
+      .filter(({ recurringRuleId }) => recurringRuleId === ruleIds.finite)
+      .map(({ recurrenceDueOn }) => recurrenceDueOn)
+      .sort(),
+    [today, tomorrow],
+  )
+  assert.equal(
+    finiteTransactions.payload.data.some(
+      ({ recurringRuleId }) => recurringRuleId === ruleIds.finiteSkip,
+    ),
+    false,
+  )
+  for (const forecastMonth of forecastMonths) {
+    const completedForecast = await api(baseUrl, `/api/summary?month=${forecastMonth}`)
+    assert.equal(completedForecast.response.status, 200)
+    assert.equal(
+      completedForecast.payload.data.recurringForecast.some(
+        ({ recurringRuleId }) => recurringRuleId === ruleIds.finite,
+      ),
+      false,
+    )
+  }
+
+  const disabledFiniteAccount = await api(
+    baseUrl,
+    `/api/accounts/${finiteAccount.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: finiteAccount.payload.data.updatedAt },
+    },
+  )
+  assert.equal(disabledFiniteAccount.response.status, 200, JSON.stringify(disabledFiniteAccount.payload))
+  const disabledFiniteCategory = await api(
+    baseUrl,
+    `/api/categories/${finiteCategory.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: finiteCategory.payload.data.updatedAt },
+    },
+  )
+  assert.equal(disabledFiniteCategory.response.status, 200, JSON.stringify(disabledFiniteCategory.payload))
+
   const beforeDelete = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(beforeDelete.response.status, 200)
-  assert.equal(beforeDelete.payload.data.filter((item) => item.recurrenceDueOn === today).length, 4)
-  assert.equal(beforeDelete.payload.data.some((item) => item.recurringRuleId === ruleIds.skip), false)
+  const initialDueRuleIds = new Set([
+    ruleIds.daily,
+    ruleIds.weekly,
+    ruleIds.monthly,
+    ruleIds.yearly,
+  ])
+  assert.equal(
+    beforeDelete.payload.data.filter(
+      (item) => item.recurrenceDueOn === today && initialDueRuleIds.has(item.recurringRuleId),
+    ).length,
+    4,
+  )
+  assert.equal(beforeDelete.payload.data.some(
+    (item) => item.recurringRuleId === ruleIds.skip && item.recurrenceDueOn === today,
+  ), false)
   assert.equal(
     beforeDelete.payload.data.filter((item) => item.recurringRuleId === ruleIds.yearly).length,
     1,
   )
   assert(
     beforeDelete.payload.data
-      .filter((item) => item.recurrenceDueOn === today)
+      .filter(
+        (item) => item.recurrenceDueOn === today && initialDueRuleIds.has(item.recurringRuleId),
+      )
       .every(
         (item) =>
           item.cleared === false &&
@@ -4060,7 +4333,7 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 15)
+  assert.equal(backup.schemaVersion, 16)
   assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
@@ -4091,6 +4364,17 @@ async function verifyWorkerApi() {
     emergencyFundGoal.payload.data.updatedAt,
   )
   assert(backup.data.transactionImportKeys.length > 0)
+  assert.equal(
+    backup.data.recurringRules.find(({ id }) => id === ruleIds.finite)?.scheduleEndsOn,
+    tomorrow,
+  )
+  assert.equal(
+    backup.data.recurringRules.find(({ id }) => id === ruleIds.finiteSkip)?.scheduleEndsOn,
+    today,
+  )
+  assert(backup.data.recurringRules.every(({ scheduleEndsOn }) => (
+    scheduleEndsOn === null || typeof scheduleEndsOn === 'string'
+  )))
 
   const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -4224,6 +4508,31 @@ async function verifyWorkerApi() {
   const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema15Backup = withoutRecurringScheduleEnds(backup)
+  schema15Backup.schemaVersion = 15
+  schema15Backup.checksum.digest = backupChecksum(schema15Backup)
+  const schema15Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema15Backup },
+  })
+  assert.equal(schema15Preview.response.status, 200, JSON.stringify(schema15Preview.payload))
+  const schema15Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema15Backup,
+      expectedCurrentDigest: schema15Preview.payload.data.currentDigest,
+      expectedRevision: schema15Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema15Restore.response.status, 200, JSON.stringify(schema15Restore.payload))
+  const upgradedSchema15Backup = await downloadLedgerBackup(baseUrl)
+  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 16)
+  assert(upgradedSchema15Backup.payload.data.recurringRules.every(
+    ({ scheduleEndsOn }) => scheduleEndsOn === null,
+  ))
+
   const schema14Backup = withoutYearlyRecurringData(backup)
   schema14Backup.schemaVersion = 14
   schema14Backup.checksum.digest = backupChecksum(schema14Backup)
@@ -4255,7 +4564,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
   const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 15)
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 16)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
   const schema12Backup = withoutYearlyRecurringData(backup)
@@ -4457,8 +4766,11 @@ async function verifyWorkerApi() {
     payeeSummaries: 2,
     payeeExports: 1,
     cashFlowTrendQueries: 4,
-    recurringForecasts: 7,
-    recurringSkips: 1,
+    recurringForecasts: 7 + forecastMonths.length * 2,
+    recurringSkips: 2,
+    recurringScheduleEndGuards: 2,
+    recurringScheduleEndRuns: 2,
+    recurringScheduleEndReferenceReleases: 2,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,
@@ -4486,6 +4798,7 @@ async function verifyWorkerApi() {
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
     ledgerBackupTables: 7,
+    ledgerSchema15Restores: 1,
     lockedCurrencyChanges: 1,
     ledgerSchema13Restores: 1,
     ledgerSchema12Restores: 1,
@@ -4704,8 +5017,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0015',
-      upgradeMigration: '0004-to-0015-preserved-data-fks-indexes-triggers-and-yearly-frequency',
+      freshMigrations: '0001-0016',
+      upgradeMigration: '0004-to-0016-preserved-data-fks-indexes-triggers-yearly-and-end-dates',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

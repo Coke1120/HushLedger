@@ -3367,7 +3367,8 @@ button.account-register-row:focus-visible {
   border-bottom: 0;
 }
 
-.recurring-rule.is-paused {
+.recurring-rule.is-paused,
+.recurring-rule.is-completed {
   background: var(--surface-soft);
 }
 
@@ -3446,7 +3447,8 @@ button.account-register-row:focus-visible {
   background: var(--income-soft);
 }
 
-.rule-status.is-paused {
+.rule-status.is-paused,
+.rule-status.is-completed {
   color: var(--muted);
   background: #e8ecea;
 }
@@ -3482,7 +3484,12 @@ button.account-register-row:focus-visible {
 
 .recurring-rule-details {
   display: grid;
-  grid-template-columns: repeat(4, minmax(80px, 1fr));
+  grid-template-columns:
+    minmax(70px, 0.8fr)
+    minmax(80px, 0.9fr)
+    minmax(80px, 1fr)
+    minmax(130px, 1.6fr)
+    minmax(70px, 0.7fr);
   gap: 12px 18px;
   padding: 0;
   margin: 0;

@@ -116,6 +116,7 @@ const recurringRuleQuery = `
     category_id AS categoryId,
     frequency,
     schedule_starts_on AS scheduleStartsOn,
+    schedule_ends_on AS scheduleEndsOn,
     next_occurrence_on AS nextOccurrenceOn,
     last_occurrence_on AS lastOccurrenceOn,
     anchor_day AS anchorDay,
@@ -246,7 +247,7 @@ const categoryInsert = `
 const recurringRuleInsert = `
   INSERT INTO recurring_rules(
     id, name, type, amount_minor, currency, account_id, category_id, frequency,
-    schedule_starts_on, next_occurrence_on, last_occurrence_on, anchor_day, is_active,
+    schedule_starts_on, schedule_ends_on, next_occurrence_on, last_occurrence_on, anchor_day, is_active,
     payee, note, generated_count, last_error_code, last_error_at, revision, cursor_version,
     deleted_at, created_at, updated_at
   )
@@ -260,6 +261,7 @@ const recurringRuleInsert = `
     json_extract(value, '$.categoryId'),
     json_extract(value, '$.frequency'),
     json_extract(value, '$.scheduleStartsOn'),
+    json_extract(value, '$.scheduleEndsOn'),
     json_extract(value, '$.nextOccurrenceOn'),
     json_extract(value, '$.lastOccurrenceOn'),
     json_extract(value, '$.anchorDay'),

@@ -178,6 +178,8 @@ knowledge and explains every command and dashboard click.
   to a third party.
 - Daily, weekly, monthly, and yearly recurring transactions that can be created,
   edited, paused, resumed, skipped once without creating a transaction, and deleted.
+  An optional inclusive end date automatically completes a rule after its final
+  scheduled occurrence without deleting generated history.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
   duplicate occurrence for the same rule and date. A manual run reports blocked,
   failed, or safety-limited work as incomplete instead of presenting full success.
@@ -312,6 +314,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - A recurring rule occurrence date is an immutable idempotency key. Editing a rule
   affects only future occurrences that have not been generated. Pausing or deleting
   a rule never deletes historical transactions.
+- A recurring rule end date is inclusive: an occurrence may be generated on that
+  date, and the rule is complete only after its generation cursor advances beyond it.
 - Every API input is validated with Zod and checked again against server-side
   account, category, and transaction-type rules.
 - Selected CSV rows are committed with a D1 transactional batch. A unique exact
@@ -428,13 +432,15 @@ warns the user to clear the site's browser data before reloading or reusing save
 views.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 15 and accepts schemas 8 through 15. Schema 8 through schema 14
+writes schema 16 and accepts schemas 8 through 16. Schema 8 through schema 15
 backups upgrade in memory; schema 8 through schema 13 default the ledger currency
 to HKD, while schema 8 through schema 12 also upgrade without inventing an
 emergency-fund checkpoint. Their existing version-specific defaults for clearing
-state, monthly plans, transfers, and opening balances still apply. Schema-14 and
-schema-15 restores carry their currency with the rest of the ledger instead of
-converting any amount; only schema 15 can contain yearly recurring rules. For a
+state, monthly plans, transfers, and opening balances still apply. Schema-14 through
+schema-16 restores carry their currency with the rest of the ledger instead of
+converting any amount. Only schema 15 and schema 16 can contain yearly recurring
+rules, and only schema 16 can store recurring-rule end dates; older backups upgrade
+with no end date. For a
 backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
 recovery process in
@@ -580,11 +586,12 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete schema-15 JSON ledger, including its
+The same gate exports and restores a complete schema-16 JSON ledger, including its
 currency and seven data collections, and verifies schema-8 through schema-14
-compatibility. Pre-schema-14 backups upgrade to HKD. Schema-14 and older backups
-retain their existing daily, weekly, or monthly recurring rules without inventing
-a yearly frequency. Schema-12 and older backups
+compatibility plus schema-15 upgrades. Pre-schema-14 backups upgrade to HKD.
+Schema-14 and older backups retain their existing daily, weekly, or monthly recurring
+rules without inventing a yearly frequency, and schema-15 and older rules receive no
+invented end date. Schema-12 and older backups
 never invent an emergency-fund checkpoint; schema-11 and older backups also
 receive no invented opening balance, schema-10 and older backups receive no
 invented transfer, schema-9 and older backups receive no invented category plan,
@@ -617,6 +624,7 @@ npm run types:worker
 | `0013_emergency_fund_goal.sql` | Adds one optional account-backed emergency-fund checkpoint and ledger-revision triggers without reserving or moving money. |
 | `0014_ledger_currency.sql` | Adds one ledger-wide two-decimal currency setting, migrates existing ledgers as HKD, cascades pristine currency changes across dependent rows, and blocks relabeling after monetary history exists. |
 | `0015_yearly_recurring_rules.sql` | Allows yearly recurring rules while preserving existing schedules and generated-transaction provenance. |
+| `0016_recurring_rule_end_dates.sql` | Adds optional inclusive end dates so recurring rules can complete automatically without deleting generated history. |
 
 Apply migrations locally:
 

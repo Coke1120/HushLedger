@@ -19,6 +19,7 @@ function rule(patch: Partial<RecurringForecastRule>): RecurringForecastRule {
     frequency: 'monthly',
     nextOccurrenceOn: '2026-01-31',
     anchorDay: 31,
+    scheduleEndsOn: null,
     ...patch,
   }
 }
@@ -102,6 +103,31 @@ describe('monthly recurring forecast', () => {
     })), [
       { name: 'Daily commute', firstOccurrenceOn: '2026-07-30', occurrenceCount: 2 },
     ])
+  })
+
+  it('includes the schedule end date and excludes every later occurrence', () => {
+    assert.deepEqual(recurringForecastForMonth([
+      rule({
+        name: 'Finite daily plan',
+        frequency: 'daily',
+        nextOccurrenceOn: '2026-07-29',
+        anchorDay: 29,
+        scheduleEndsOn: '2026-07-30',
+      }),
+    ], '2026-07').map(({ firstOccurrenceOn, occurrenceDates }) => ({
+      firstOccurrenceOn,
+      occurrenceDates,
+    })), [{
+      firstOccurrenceOn: '2026-07-29',
+      occurrenceDates: ['2026-07-29', '2026-07-30'],
+    }])
+
+    assert.deepEqual(recurringForecastForMonth([
+      rule({
+        nextOccurrenceOn: '2026-08-01',
+        scheduleEndsOn: '2026-07-31',
+      }),
+    ], '2026-08'), [])
   })
 
   it('shows yearly rules only in their anchored month', () => {

@@ -26,6 +26,7 @@ type RuleRow = {
   categoryId: number
   frequency: RecurrenceFrequency
   scheduleStartsOn: string
+  scheduleEndsOn: string | null
   nextOccurrenceOn: string
   lastOccurrenceOn: string | null
   anchorDay: number
@@ -57,6 +58,7 @@ export type RecurringRuleView = {
   categoryId: number
   frequency: RecurrenceFrequency
   scheduleStartsOn: string
+  scheduleEndsOn: string | null
   nextOccurrenceOn: string
   lastOccurrenceOn: string | null
   anchorDay: number
@@ -149,6 +151,7 @@ const recurringRuleSelect = `
     r.category_id AS categoryId,
     r.frequency,
     r.schedule_starts_on AS scheduleStartsOn,
+    r.schedule_ends_on AS scheduleEndsOn,
     r.next_occurrence_on AS nextOccurrenceOn,
     r.last_occurrence_on AS lastOccurrenceOn,
     r.anchor_day AS anchorDay,
@@ -175,6 +178,14 @@ const recurringRuleSelect = `
 
 export function hktCalendarDate(timestamp = Date.now()) {
   return new Date(timestamp + HKT_OFFSET_MS).toISOString().slice(0, 10)
+}
+
+function occursAfterScheduleEnd(occurrenceOn: string, scheduleEndsOn: string | null) {
+  return scheduleEndsOn !== null && occurrenceOn > scheduleEndsOn
+}
+
+function isCompletedRule(rule: Pick<RuleRow, 'nextOccurrenceOn' | 'scheduleEndsOn'>) {
+  return occursAfterScheduleEnd(rule.nextOccurrenceOn, rule.scheduleEndsOn)
 }
 
 export async function listRecurringRules(database: D1Database) {
@@ -221,6 +232,8 @@ export async function createRecurringRule(
     input.frequency,
     anchorDay,
   )
+  const scheduleEndsOn = input.scheduleEndsOn ?? null
+  const isActive = input.isActive && !occursAfterScheduleEnd(nextOccurrenceOn, scheduleEndsOn)
   const inserted = await database
     .prepare(`
       INSERT INTO recurring_rules(
@@ -233,13 +246,14 @@ export async function createRecurringRule(
         category_id,
         frequency,
         schedule_starts_on,
+        schedule_ends_on,
         next_occurrence_on,
         anchor_day,
         is_active,
         payee,
         note
       )
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE EXISTS (
         SELECT 1
         FROM accounts
@@ -262,9 +276,10 @@ export async function createRecurringRule(
       input.categoryId,
       input.frequency,
       input.scheduleStartsOn,
+      scheduleEndsOn,
       nextOccurrenceOn,
       anchorDay,
-      input.isActive ? 1 : 0,
+      isActive ? 1 : 0,
       input.payee,
       input.note,
       input.accountId,
@@ -313,6 +328,16 @@ export async function updateRecurringRule(
   )
   if (referenceError) return { kind: 'reference_invalid', code: referenceError }
 
+  // A cached older client cannot see or intentionally clear scheduleEndsOn. Reject a
+  // base-date change that would otherwise erase the user's finite-schedule intent.
+  if (
+    input.scheduleEndsOn === undefined
+    && current.scheduleEndsOn !== null
+    && current.scheduleEndsOn < input.scheduleStartsOn
+  ) {
+    return { kind: 'version_conflict' }
+  }
+
   const anchorDay = recurrenceAnchorDay(input.scheduleStartsOn)
   const lowerBound = current.lastOccurrenceOn
     ? [today, advanceOccurrence(current.lastOccurrenceOn, 'daily')].sort().at(-1) ?? today
@@ -323,6 +348,10 @@ export async function updateRecurringRule(
     input.frequency,
     anchorDay,
   )
+  const scheduleEndsOn = input.scheduleEndsOn === undefined
+    ? current.scheduleEndsOn
+    : input.scheduleEndsOn
+  const isActive = input.isActive && !occursAfterScheduleEnd(nextOccurrenceOn, scheduleEndsOn)
   const result = await database
     .prepare(`
       UPDATE recurring_rules
@@ -335,6 +364,7 @@ export async function updateRecurringRule(
         category_id = ?,
         frequency = ?,
         schedule_starts_on = ?,
+        schedule_ends_on = ?,
         next_occurrence_on = ?,
         anchor_day = ?,
         is_active = ?,
@@ -366,9 +396,10 @@ export async function updateRecurringRule(
       input.categoryId,
       input.frequency,
       input.scheduleStartsOn,
+      scheduleEndsOn,
       nextOccurrenceOn,
       anchorDay,
-      input.isActive ? 1 : 0,
+      isActive ? 1 : 0,
       input.payee,
       input.note,
       id,
@@ -410,7 +441,7 @@ export async function setRecurringRuleStatus(
   if (!current || current.deletedAt) return { kind: 'not_found' }
   if (current.revision !== input.revision) return { kind: 'version_conflict' }
 
-  if (input.isActive) {
+  if (input.isActive && !isCompletedRule(current)) {
     const referenceError = await validateReferences(
       database,
       current.accountId,
@@ -430,6 +461,8 @@ export async function setRecurringRuleStatus(
       current.anchorDay,
     )
   }
+  const isActive = input.isActive
+    && !occursAfterScheduleEnd(nextOccurrenceOn, current.scheduleEndsOn)
 
   const result = await database
     .prepare(`
@@ -457,11 +490,11 @@ export async function setRecurringRuleStatus(
         ))
     `)
     .bind(
-      input.isActive ? 1 : 0,
+      isActive ? 1 : 0,
       nextOccurrenceOn,
       id,
       input.revision,
-      input.isActive ? 1 : 0,
+      isActive ? 1 : 0,
       current.accountId,
       current.currency,
       current.categoryId,
@@ -473,7 +506,7 @@ export async function setRecurringRuleStatus(
     const latest = await findRule(database, id, true)
     if (!latest || latest.deletedAt) return { kind: 'not_found' }
     if (latest.revision !== input.revision) return { kind: 'version_conflict' }
-    if (input.isActive) {
+    if (isActive) {
       const currentReferenceError = await validateReferences(
         database,
         current.accountId,
@@ -505,17 +538,21 @@ export async function skipRecurringRuleOccurrence(
   ) {
     return { kind: 'version_conflict' }
   }
+  if (isCompletedRule(current)) return { kind: 'updated', rule: toRuleView(current) }
 
   const nextOccurrenceOn = advanceOccurrence(
     current.nextOccurrenceOn,
     current.frequency,
     current.anchorDay,
   )
+  const isActive = current.isActive === 1
+    && !occursAfterScheduleEnd(nextOccurrenceOn, current.scheduleEndsOn)
   const result = await database
     .prepare(`
       UPDATE recurring_rules
       SET
         next_occurrence_on = ?,
+        is_active = ?,
         last_error_code = NULL,
         last_error_at = NULL,
         revision = revision + 1,
@@ -530,6 +567,7 @@ export async function skipRecurringRuleOccurrence(
     `)
     .bind(
       nextOccurrenceOn,
+      isActive ? 1 : 0,
       id,
       input.revision,
       current.cursorVersion,
@@ -593,6 +631,7 @@ export async function runDueRecurringRules(
         r.deleted_at IS NULL
         AND r.is_active = 1
         AND r.next_occurrence_on <= ?
+        AND (r.schedule_ends_on IS NULL OR r.next_occurrence_on <= r.schedule_ends_on)
       ORDER BY r.next_occurrence_on ASC, r.id ASC
     `)
     .bind(asOf)
@@ -715,10 +754,11 @@ function toRuleView(row: RuleRow): RecurringRuleView {
     categoryId: row.categoryId,
     frequency: row.frequency,
     scheduleStartsOn: row.scheduleStartsOn,
+    scheduleEndsOn: row.scheduleEndsOn,
     nextOccurrenceOn: row.nextOccurrenceOn,
     lastOccurrenceOn: row.lastOccurrenceOn,
     anchorDay: row.anchorDay,
-    isActive: row.isActive === 1,
+    isActive: row.isActive === 1 && !isCompletedRule(row),
     payee: row.payee,
     note: row.note,
     generatedCount: row.generatedCount,
@@ -732,6 +772,8 @@ function toRuleView(row: RuleRow): RecurringRuleView {
 }
 
 function matchesCreateInput(row: RuleRow, input: RecurringRuleCreateInput) {
+  const scheduleEndsOn = input.scheduleEndsOn ?? null
+  const isActive = input.isActive && !occursAfterScheduleEnd(row.nextOccurrenceOn, scheduleEndsOn)
   return (
     row.id === input.id &&
     row.name === input.name &&
@@ -742,7 +784,8 @@ function matchesCreateInput(row: RuleRow, input: RecurringRuleCreateInput) {
     row.categoryId === input.categoryId &&
     row.frequency === input.frequency &&
     row.scheduleStartsOn === input.scheduleStartsOn &&
-    row.isActive === (input.isActive ? 1 : 0) &&
+    row.scheduleEndsOn === scheduleEndsOn &&
+    row.isActive === (isActive ? 1 : 0) &&
     row.payee === input.payee &&
     row.note === input.note
   )
@@ -805,7 +848,10 @@ function planOccurrences(rows: RuleRow[], asOf: string) {
   let selectedCount = 0
   while (selectedCount < GENERATION_CAP) {
     const next = states
-      .filter((state) => state.nextOn <= asOf)
+      .filter((state) => (
+        state.nextOn <= asOf
+        && !occursAfterScheduleEnd(state.nextOn, state.row.scheduleEndsOn)
+      ))
       .sort((left, right) => {
         const dateOrder = left.nextOn.localeCompare(right.nextOn)
         return dateOrder === 0 ? left.row.id.localeCompare(right.row.id) : dateOrder
@@ -844,7 +890,10 @@ function planOccurrences(rows: RuleRow[], asOf: string) {
   return {
     selected,
     updates,
-    truncated: states.filter((state) => state.nextOn <= asOf).length,
+    truncated: states.filter((state) => (
+      state.nextOn <= asOf
+      && !occursAfterScheduleEnd(state.nextOn, state.row.scheduleEndsOn)
+    )).length,
   }
 }
 
@@ -923,6 +972,7 @@ async function executeGenerationPlan(
         AND r.revision = planned.revision
         AND r.cursor_version = planned.cursor_version
         AND r.next_occurrence_on = planned.expected_next_on
+        AND (r.schedule_ends_on IS NULL OR planned.due_on <= r.schedule_ends_on)
         AND a.is_active = 1
         AND a.currency = r.currency
         AND category.is_active = 1
@@ -944,6 +994,12 @@ async function executeGenerationPlan(
         next_occurrence_on = (
           SELECT planned.next_on FROM planned WHERE planned.rule_id = r.id
         ),
+        is_active = CASE
+          WHEN r.schedule_ends_on IS NOT NULL AND (
+            SELECT planned.next_on FROM planned WHERE planned.rule_id = r.id
+          ) > r.schedule_ends_on THEN 0
+          ELSE r.is_active
+        END,
         last_occurrence_on = (
           SELECT MAX(t.recurrence_due_on)
           FROM transactions t

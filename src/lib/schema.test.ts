@@ -482,11 +482,25 @@ describe('recurring rule validation', () => {
     assert.equal(recurringRuleCreateSchema.safeParse(validRecurringRule).success, true)
     assert.equal(recurringRuleCreateSchema.safeParse({
       ...validRecurringRule,
+      scheduleEndsOn: null,
+    }).success, true)
+    assert.equal(recurringRuleCreateSchema.safeParse({
+      ...validRecurringRule,
+      scheduleEndsOn: '2026-08-01',
+    }).success, true)
+    assert.equal(recurringRuleCreateSchema.safeParse({
+      ...validRecurringRule,
       firstOccurrenceOn: '2026-09-01',
+      scheduleEndsOn: '2026-09-01',
     }).success, true)
     const { id, ...update } = validRecurringRule
     assert.match(id, /-/)
     assert.equal(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success, true)
+    assert.equal(recurringRuleUpdateSchema.safeParse({
+      ...update,
+      scheduleEndsOn: null,
+      revision: 1,
+    }).success, true)
     assert.equal(recurringRuleUpdateSchema.safeParse({
       ...update,
       frequency: 'yearly',
@@ -516,7 +530,13 @@ describe('recurring rule validation', () => {
   for (const [label, patch] of [
     ['unsupported frequency', { frequency: 'quarterly' }],
     ['invalid start date', { scheduleStartsOn: '2026-02-30' }],
+    ['invalid end date', { scheduleEndsOn: '2026-02-30' }],
+    ['end date before the anchor date', { scheduleEndsOn: '2026-07-31' }],
     ['first occurrence before the anchor date', { firstOccurrenceOn: '2026-07-31' }],
+    ['end date before the first occurrence', {
+      firstOccurrenceOn: '2026-09-01',
+      scheduleEndsOn: '2026-08-31',
+    }],
     ['empty rule name', { name: '   ' }],
     ['fractional amount', { amountMinor: 1.5 }],
     ['unknown field', { privateInstruction: 'nope' }],
@@ -525,4 +545,14 @@ describe('recurring rule validation', () => {
       assert.equal(recurringRuleCreateSchema.safeParse({ ...validRecurringRule, ...patch }).success, false)
     })
   }
+
+  it('rejects an update end date before its schedule start', () => {
+    const { id, ...update } = validRecurringRule
+    assert.match(id, /-/)
+    assert.equal(recurringRuleUpdateSchema.safeParse({
+      ...update,
+      scheduleEndsOn: '2026-07-31',
+      revision: 1,
+    }).success, false)
+  })
 })

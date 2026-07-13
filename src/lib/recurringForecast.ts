@@ -17,6 +17,8 @@ export type RecurringForecastRule = {
   frequency: RecurrenceFrequency
   nextOccurrenceOn: string
   anchorDay: number
+  /** Missing only when a cached newer app shell reads an older API response. */
+  scheduleEndsOn?: string | null
 }
 
 export type RecurringForecastTotals = {
@@ -153,7 +155,9 @@ export function recurringForecastForMonth(
       rule.frequency,
       rule.anchorDay,
     )
-    if (firstOccurrenceOn >= end) return []
+    if (firstOccurrenceOn >= end || (rule.scheduleEndsOn && firstOccurrenceOn > rule.scheduleEndsOn)) {
+      return []
+    }
 
     const occurrenceDates = dueOccurrences(
       firstOccurrenceOn,
@@ -161,7 +165,7 @@ export function recurringForecastForMonth(
       rule.frequency,
       rule.anchorDay,
       32,
-    ).occurrences.filter((date) => date < end)
+    ).occurrences.filter((date) => date < end && (!rule.scheduleEndsOn || date <= rule.scheduleEndsOn))
     const occurrenceCount = occurrenceDates.length
 
     return [{
