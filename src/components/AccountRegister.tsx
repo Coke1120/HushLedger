@@ -1,13 +1,22 @@
-import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Landmark, ReceiptText } from 'lucide-react'
-import { useMemo } from 'react'
+import { ArrowDownLeft, ArrowLeft, ArrowUpRight, Landmark, ReceiptText, Scale } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
-import type { AccountRegister as AccountRegisterData, AccountTransfer, Transaction } from '../lib/schema'
+import { parseSignedAmount } from '../lib/money'
+import { calculateReconciliationDifference } from '../lib/reconciliation'
+import type {
+  AccountBalance,
+  AccountRegister as AccountRegisterData,
+  AccountTransfer,
+  Transaction,
+} from '../lib/schema'
 
 type AccountRegisterProps = {
   register: AccountRegisterData | null
+  balance: AccountBalance | null
   transactions: Transaction[]
   transfers: AccountTransfer[]
   loading: boolean
+  reconcileInitially: boolean
   onClose: () => void
   onEditTransaction: (transaction: Transaction) => void
   onEditTransfer: (transfer: AccountTransfer) => void
@@ -15,14 +24,18 @@ type AccountRegisterProps = {
 
 export function AccountRegister({
   register,
+  balance,
   transactions,
   transfers,
   loading,
+  reconcileInitially,
   onClose,
   onEditTransaction,
   onEditTransfer,
 }: AccountRegisterProps) {
-  const { formatDate, formatMoney, formatMonth, localizeEntityName, t } = useI18n()
+  const { formatDate, formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const [reconciling, setReconciling] = useState(reconcileInitially)
+  const [statementValue, setStatementValue] = useState('')
   const transactionsById = useMemo(
     () => new Map(transactions.map((transaction) => [transaction.id, transaction])),
     [transactions],
@@ -31,6 +44,19 @@ export function AccountRegister({
     () => new Map(transfers.map((transfer) => [transfer.id, transfer])),
     [transfers],
   )
+  const clearedBalance = balance?.clearedBalance
+  const statementResult = useMemo(() => {
+    if (!statementValue.trim()) return null
+    if (clearedBalance === null || clearedBalance === undefined) return null
+    try {
+      return calculateReconciliationDifference(
+        parseSignedAmount(statementValue, locale),
+        clearedBalance,
+      )
+    } catch {
+      return undefined
+    }
+  }, [clearedBalance, locale, statementValue])
 
   if (loading || !register) {
     return (
@@ -61,6 +87,17 @@ export function AccountRegister({
           <h2 id="account-register-title">{t('accountRegisterTitle', { account: accountName })}</h2>
           <p>{t('accountRegisterHelp', { month: formatMonth(register.month) })}</p>
         </div>
+        <button
+          className="button button-secondary account-register-reconcile-toggle"
+          type="button"
+          onClick={() => setReconciling((current) => !current)}
+          disabled={balance?.clearedBalance === null || balance?.clearedBalance === undefined}
+          aria-expanded={reconciling}
+          aria-controls="account-reconciliation"
+        >
+          <Scale aria-hidden="true" />
+          {t(reconciling ? 'closeStatementComparison' : 'compareStatement')}
+        </button>
       </header>
 
       <dl className="account-register-summary">
@@ -83,6 +120,61 @@ export function AccountRegister({
           <dd>{register.entryCount}</dd>
         </div>
       </dl>
+
+      {reconciling && balance?.clearedBalance !== null && balance?.clearedBalance !== undefined ? (
+        <section className="account-reconciliation" id="account-reconciliation" aria-labelledby="account-reconciliation-title">
+          <header>
+            <div>
+              <h3 id="account-reconciliation-title">{t('reconciliationTitle')}</h3>
+              <p>{t('reconciliationHelp')}</p>
+            </div>
+            <span>{t('reconciliationLocalOnly')}</span>
+          </header>
+          <dl className="account-reconciliation-balances">
+            <div>
+              <dt>{t('recordedBalance')}</dt>
+              <dd>{formatMoney(balance.recordedBalance ?? 0)}</dd>
+            </div>
+            <div>
+              <dt>{t('clearedBalance')}</dt>
+              <dd>{formatMoney(balance.clearedBalance)}</dd>
+            </div>
+            <div>
+              <dt>{t('unclearedBalance')}</dt>
+              <dd>{formatMoney(balance.unclearedBalance ?? 0)}</dd>
+            </div>
+          </dl>
+          <div className="statement-comparison">
+            <label>
+              <span>{t('statementEndingBalance')}</span>
+              <input
+                type={privacyMode ? 'password' : 'text'}
+                inputMode="decimal"
+                value={statementValue}
+                onChange={(event) => setStatementValue(event.target.value)}
+                placeholder={t('statementBalancePlaceholder')}
+                autoFocus
+              />
+            </label>
+            <div className="statement-comparison-result" aria-live="polite">
+              {statementResult === undefined ? (
+                <span className="is-error">{t('invalidStatementBalance')}</span>
+              ) : statementResult === null ? (
+                <span>{t('statementComparisonHelp')}</span>
+              ) : statementResult === 0 ? (
+                <strong className="is-match">{t('statementBalancesMatch')}</strong>
+              ) : (
+                <strong>{t('statementDifference', { amount: formatMoney(statementResult) })}</strong>
+              )}
+            </div>
+          </div>
+          <p className="account-reconciliation-review">
+            {t('reconciliationReviewHelp', {
+              count: register.entries.filter(({ cleared }) => cleared === false).length,
+            })}
+          </p>
+        </section>
+      ) : null}
 
       {register.availableFrom ? (
         <p className="account-register-boundary">
@@ -161,7 +253,7 @@ export function AccountRegister({
               <li key={entry.entryId}>
                 {editable ? (
                   <button
-                    className="account-register-row"
+                    className={`account-register-row${entry.cleared === false ? ' is-uncleared' : ''}`}
                     type="button"
                     onClick={() => transaction
                       ? onEditTransaction(transaction)

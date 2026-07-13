@@ -45,10 +45,11 @@ knowledge and explains every command and dashboard click.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
   month. An optional dated opening balance anchors incomplete history, and an
-  in-app statement comparison shows the exact difference without locking or
-  changing transactions. One tap opens a dedicated monthly account register that
-  merges ordinary transactions with both transfer legs and shows the exact
-  recorded balance after every entry.
+  in-app month-end reconciliation workspace compares the statement against the
+  exact cleared balance. It keeps the statement value only on screen, highlights
+  uncleared entries for direct review, and never claims to lock the ledger. The
+  same monthly account register merges ordinary transactions with both transfer
+  legs and shows the exact recorded balance after every entry.
 - A six-month recorded net-worth trend across every active and inactive account,
   including negative debts. Months with unknown pre-opening history are marked
   unavailable instead of silently omitting an account, and selecting a month
@@ -168,8 +169,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   backups upgrade to that null state rather than inventing a baseline.
 - Account balances include income, expenses, and both sides of transfers before
   the selected month-end cutoff. Cleared balances include only posted movements;
-  the statement comparison is read-only and does not claim an irreversible
-  reconciliation lock.
+  the reconciliation workspace stores no statement value and does not claim an
+  irreversible reconciliation lock. Changing a posting status still requires an
+  explicit save through the existing transaction or transfer editor.
 - Recorded net worth is the exact sum of all available signed account balances at
   each month end. Transfers therefore have zero net effect. If any account balance
   is unavailable for a month, the complete net-worth point is unavailable too.

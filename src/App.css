@@ -1683,6 +1683,11 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
+.account-register-reconcile-toggle {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 .account-register-summary {
   display: grid;
   padding: 0;
@@ -1714,6 +1719,88 @@ textarea:focus-visible {
   font-size: 17px;
   font-weight: 760;
   font-variant-numeric: tabular-nums;
+}
+
+.account-reconciliation {
+  padding: 16px;
+  margin: 0 0 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.account-reconciliation > header {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.account-reconciliation h3,
+.account-reconciliation p {
+  margin: 0;
+}
+
+.account-reconciliation h3 {
+  color: var(--brand-strong);
+  font-size: 17px;
+}
+
+.account-reconciliation header p,
+.account-reconciliation-review {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.account-reconciliation > header > span {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.account-reconciliation-balances {
+  display: grid;
+  padding: 12px 0;
+  margin: 12px 0 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  gap: 14px;
+}
+
+.account-reconciliation-balances div {
+  min-width: 0;
+}
+
+.account-reconciliation-balances dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-reconciliation-balances dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.account-reconciliation .statement-comparison {
+  padding-inline: 0;
+  background: transparent;
+  border: 0;
+}
+
+.account-reconciliation-review {
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
 }
 
 .account-register-boundary,
@@ -1758,6 +1845,15 @@ textarea:focus-visible {
 
 button.account-register-row:hover {
   background: var(--surface-soft);
+}
+
+button.account-register-row.is-uncleared {
+  background: var(--warning-bg);
+  box-shadow: inset 4px 0 0 #d9b650;
+}
+
+button.account-register-row.is-uncleared:hover {
+  background: #fff4c7;
 }
 
 button.account-register-row:focus-visible {
@@ -5031,6 +5127,16 @@ button.account-register-row:focus-visible {
     font-size: 21px;
   }
 
+  .account-register-heading {
+    flex-wrap: wrap;
+  }
+
+  .account-register-reconcile-toggle {
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+  }
+
   .account-register-summary {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -5038,6 +5144,23 @@ button.account-register-row:focus-visible {
   .account-register-summary > div + div {
     border-top: 1px solid var(--line);
     border-left: 0;
+  }
+
+  .account-reconciliation {
+    padding: 14px 12px;
+  }
+
+  .account-reconciliation > header {
+    display: grid;
+  }
+
+  .account-reconciliation > header > span {
+    width: fit-content;
+  }
+
+  .account-reconciliation-balances {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
   .account-register-row {

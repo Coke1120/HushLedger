@@ -64,6 +64,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [clearingFilter, setClearingFilter] = useState<TransactionClearingFilter>('all')
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
   const [registerAccountId, setRegisterAccountId] = useState<number | null>(null)
+  const [registerMode, setRegisterMode] = useState<'review' | 'reconcile'>('review')
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -209,7 +210,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     changeView('transactions')
   }, [changeView, data.categories])
 
-  const openAccountTransactions = useCallback((accountId: number) => {
+  const openAccountRegister = useCallback((accountId: number, mode: 'review' | 'reconcile') => {
     if (!data.accounts.some((account) => account.id === accountId)) return
     setSearch('')
     setTagFilter(null)
@@ -218,6 +219,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     if (data.source === 'live' && data.online) {
       setAccountFilterId(null)
       setRegisterAccountId(accountId)
+      setRegisterMode(mode)
     } else {
       setAccountFilterId(accountId)
       setRegisterAccountId(null)
@@ -228,9 +230,18 @@ function App({ initialMonth }: { initialMonth: string }) {
     changeView('transactions')
   }, [changeView, data.accounts, data.online, data.source])
 
+  const openAccountTransactions = useCallback((accountId: number) => {
+    openAccountRegister(accountId, 'review')
+  }, [openAccountRegister])
+
+  const openAccountReconciliation = useCallback((accountId: number) => {
+    openAccountRegister(accountId, 'reconcile')
+  }, [openAccountRegister])
+
   const closeAccountRegister = useCallback(() => {
     setAccountFilterId(registerAccountId)
     setRegisterAccountId(null)
+    setRegisterMode('review')
   }, [registerAccountId])
 
   const changeTagFilter = useCallback((tag: string | null) => {
@@ -396,7 +407,9 @@ function App({ initialMonth }: { initialMonth: string }) {
                   balances={data.accountBalances}
                   month={month}
                   loading={loading}
+                  canReconcile={data.source === 'live' && data.online}
                   onReview={openAccountTransactions}
+                  onCompare={openAccountReconciliation}
                 />
                 <NetWorthTrend
                   points={data.netWorthTrend}
@@ -525,9 +538,11 @@ function App({ initialMonth }: { initialMonth: string }) {
             {view === 'transactions' && registerAccountId !== null ? (
               <AccountRegister
                 register={data.accountRegister}
+                balance={data.accountBalances.find(({ accountId }) => accountId === registerAccountId) ?? null}
                 transactions={data.transactions}
                 transfers={data.accountTransfers}
                 loading={loading}
+                reconcileInitially={registerMode === 'reconcile'}
                 onClose={closeAccountRegister}
                 onEditTransaction={openTransaction}
                 onEditTransfer={openTransferDialog}

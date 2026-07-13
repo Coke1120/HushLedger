@@ -1,39 +1,25 @@
 import { Landmark, List, Scale } from 'lucide-react'
-import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
-import { parseSignedAmount } from '../lib/money'
 import type { AccountBalance } from '../lib/schema'
 
 type AccountBalancesProps = {
   balances: AccountBalance[]
   month: string
   loading: boolean
+  canReconcile: boolean
   onReview: (accountId: number) => void
+  onCompare: (accountId: number) => void
 }
 
-export function AccountBalances({ balances, month, loading, onReview }: AccountBalancesProps) {
-  const { formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
-  const [comparisonAccountId, setComparisonAccountId] = useState<number | null>(null)
-  const [statementValue, setStatementValue] = useState('')
-  const selected = balances.find(({ accountId }) => accountId === comparisonAccountId)
-  const statementMinor = useMemo(() => {
-    if (!statementValue.trim()) return null
-    try {
-      return parseSignedAmount(statementValue, locale)
-    } catch {
-      return undefined
-    }
-  }, [locale, statementValue])
-  const difference = selected?.clearedBalance !== null
-    && selected?.clearedBalance !== undefined
-    && typeof statementMinor === 'number'
-    ? statementMinor - selected.clearedBalance
-    : null
-
-  function compare(accountId: number) {
-    setComparisonAccountId((current) => current === accountId ? null : accountId)
-    setStatementValue('')
-  }
+export function AccountBalances({
+  balances,
+  month,
+  loading,
+  canReconcile,
+  onReview,
+  onCompare,
+}: AccountBalancesProps) {
+  const { formatMoney, formatMonth, localizeEntityName, t } = useI18n()
 
   return (
     <section
@@ -65,7 +51,6 @@ export function AccountBalances({ balances, month, loading, onReview }: AccountB
             const available = account.recordedBalance !== null
               && account.clearedBalance !== null
               && account.unclearedBalance !== null
-            const comparing = comparisonAccountId === account.accountId
             return (
               <li key={account.accountId} className={!account.isActive ? 'is-inactive' : undefined}>
                 <div className="account-balance-row">
@@ -105,42 +90,15 @@ export function AccountBalances({ balances, month, loading, onReview }: AccountB
                     <button
                       className="button button-secondary"
                       type="button"
-                      onClick={() => compare(account.accountId)}
-                      disabled={!available}
-                      aria-expanded={comparing}
+                      onClick={() => onCompare(account.accountId)}
+                      disabled={!available || !canReconcile}
+                      title={!canReconcile ? t('reconciliationUnavailable') : undefined}
                     >
                       <Scale aria-hidden="true" />
-                      {comparing ? t('closeStatementComparison') : t('compareStatement')}
+                      {t('compareStatement')}
                     </button>
                   </div>
                 </div>
-
-                {comparing && available ? (
-                  <div className="statement-comparison">
-                    <label>
-                      <span>{t('statementEndingBalance')}</span>
-                      <input
-                        type={privacyMode ? 'password' : 'text'}
-                        inputMode="decimal"
-                        value={statementValue}
-                        onChange={(event) => setStatementValue(event.target.value)}
-                        placeholder={t('statementBalancePlaceholder')}
-                        autoFocus
-                      />
-                    </label>
-                    <div className="statement-comparison-result" aria-live="polite">
-                      {statementMinor === undefined ? (
-                        <span className="is-error">{t('invalidStatementBalance')}</span>
-                      ) : difference === null ? (
-                        <span>{t('statementComparisonHelp')}</span>
-                      ) : difference === 0 ? (
-                        <strong className="is-match">{t('statementBalancesMatch')}</strong>
-                      ) : (
-                        <strong>{t('statementDifference', { amount: formatMoney(difference) })}</strong>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
               </li>
             )
           })}

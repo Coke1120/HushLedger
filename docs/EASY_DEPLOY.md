@@ -300,7 +300,11 @@ and enter the statement balance immediately before the chosen start date. Enter
 both the signed balance and date; leaving both blank calculates from all recorded
 history. The six-month net-worth trend adds every signed account balance and marks
 older points unavailable when the complete history is not knowable. The Overview
-statement comparison is a read-only check and stores nothing by itself.
+**Compare statement** action opens that account's monthly register. Enter the
+month-end statement balance to see the exact difference from the cleared ledger,
+then select highlighted uncleared entries to review their posting status. The
+statement value stays only on that screen and is never written to D1; each status
+change still requires an explicit save.
 
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).
