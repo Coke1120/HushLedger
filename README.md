@@ -51,6 +51,9 @@ knowledge and explains every command and dashboard click.
 - Review the exact match count, income, expense, and net amount for the current
   transaction filters. These totals cover every match, not only the 200 rows kept
   in the interactive list.
+- Save up to eight named transaction views in the current browser and reapply
+  their type, clearing, account, category, search, and tag filters in any month.
+  Saved views contain filter criteria only and do not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state.
@@ -113,6 +116,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 
 - The default currency is HKD.
 - HK$123.45 is stored as `12345` in `amount_minor`.
+- Named transaction views live only in browser storage. They exclude the selected
+  month, transactions, and amounts, are validated before reuse, and are not
+  included in CSV exports or full-ledger backups.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
 - Duplicating a transaction opens a separate create-mode draft for review. It

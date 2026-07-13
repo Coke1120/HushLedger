@@ -12,6 +12,7 @@ import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
 import { RecurringForecast } from './components/RecurringForecast'
+import { SavedTransactionViews } from './components/SavedTransactionViews'
 import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
 import { SpendingTrend } from './components/SpendingTrend'
@@ -28,6 +29,13 @@ import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
+import {
+  addSavedTransactionView,
+  parseSavedTransactionViews,
+  SAVED_TRANSACTION_VIEWS_STORAGE_KEY,
+  serializeSavedTransactionViews,
+  type SavedTransactionView,
+} from './lib/savedTransactionViews'
 import type { RecurringRuleCreateInput, Transaction, TransactionInput } from './lib/schema'
 import { duplicateTransactionDraft } from './lib/transactionDraft'
 
@@ -53,6 +61,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
+  const [savedTransactionViews, setSavedTransactionViews] = useState<SavedTransactionView[]>([])
   const [ledgerGeneration, setLedgerGeneration] = useState(0)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
@@ -182,6 +191,81 @@ function App({ initialMonth }: { initialMonth: string }) {
     return refreshed
   }, [refreshMoneyData])
 
+  const storeSavedTransactionViews = useCallback(
+    (update: (current: SavedTransactionView[]) => SavedTransactionView[]) => {
+      setSavedTransactionViews((current) => {
+        const next = update(current)
+        try {
+          window.localStorage.setItem(
+            SAVED_TRANSACTION_VIEWS_STORAGE_KEY,
+            serializeSavedTransactionViews(next),
+          )
+        } catch {
+          // The saved view remains available for this tab when browser storage is unavailable.
+        }
+        return next
+      })
+    },
+    [],
+  )
+
+  const saveTransactionView = useCallback((name: string) => {
+    const candidate: SavedTransactionView = {
+      id: crypto.randomUUID(),
+      name,
+      type: filter,
+      status: clearingFilter,
+      accountId: accountFilterId,
+      categoryId: categoryFilterId,
+      search: search.trim(),
+      tag: tagFilter,
+    }
+    storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
+  }, [accountFilterId, categoryFilterId, clearingFilter, filter, search, storeSavedTransactionViews, tagFilter])
+
+  const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
+    const accountId = savedView.accountId !== null
+      && data.accounts.some(({ id }) => id === savedView.accountId)
+      ? savedView.accountId
+      : null
+    const category = savedView.categoryId === null
+      ? undefined
+      : data.categories.find(({ id }) => id === savedView.categoryId)
+    const categoryId = category && (savedView.type === 'all' || category.type === savedView.type)
+      ? category.id
+      : null
+    setFilter(savedView.type)
+    setClearingFilter(savedView.status)
+    setAccountFilterId(accountId)
+    setCategoryFilterId(categoryId)
+    setSearch(savedView.search)
+    setTagFilter(savedView.tag)
+    setImportMode(null)
+  }, [data.accounts, data.categories])
+
+  const resetTransactionFilters = useCallback(() => {
+    setFilter('all')
+    setClearingFilter('all')
+    setAccountFilterId(null)
+    setCategoryFilterId(null)
+    setSearch('')
+    setTagFilter(null)
+    setImportMode(null)
+  }, [])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        setSavedTransactionViews(parseSavedTransactionViews(
+          window.localStorage.getItem(SAVED_TRANSACTION_VIEWS_STORAGE_KEY),
+        ))
+      } catch {
+        // Saved views are optional when browser storage is unavailable.
+      }
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [])
+
   useEffect(() => {
     if (initialViewRef.current) {
       initialViewRef.current = false
@@ -304,10 +388,31 @@ function App({ initialMonth }: { initialMonth: string }) {
                 aiImportButtonRef={aiImportButtonRef}
               />
               {view === 'transactions' ? (
-                <TransactionFilterSummary
-                  summary={data.transactionFilterSummary}
-                  loading={loading}
-                />
+                <>
+                  <TransactionFilterSummary
+                    summary={data.transactionFilterSummary}
+                    loading={loading}
+                  />
+                  <SavedTransactionViews
+                    views={savedTransactionViews}
+                    accounts={data.accounts}
+                    categories={data.categories}
+                    canSave={
+                      filter !== 'all'
+                      || clearingFilter !== 'all'
+                      || accountFilterId !== null
+                      || categoryFilterId !== null
+                      || search.trim().length > 0
+                      || tagFilter !== null
+                    }
+                    onSave={saveTransactionView}
+                    onApply={applySavedTransactionView}
+                    onDelete={(id) => storeSavedTransactionViews(
+                      (current) => current.filter((view) => view.id !== id),
+                    )}
+                    onReset={resetTransactionFilters}
+                  />
+                </>
               ) : null}
             </div>
             {view === 'transactions' && importMode === 'csv' ? (

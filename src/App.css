@@ -824,6 +824,187 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.saved-transaction-views {
+  width: 100%;
+  min-width: 0;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.saved-transaction-views > summary {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  cursor: pointer;
+  justify-content: space-between;
+}
+
+.saved-transaction-views > summary::marker {
+  color: var(--brand);
+}
+
+.saved-transaction-views-heading {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.saved-transaction-views-heading strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.saved-transaction-views-heading small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.saved-transaction-view-empty,
+.saved-transaction-view-status {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.saved-transaction-views-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.saved-transaction-views-content {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.saved-transaction-view-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.saved-transaction-view-actions .button {
+  min-height: 42px;
+}
+
+.saved-transaction-view-form {
+  display: grid;
+  margin-top: 14px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.saved-transaction-view-form label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.saved-transaction-view-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+}
+
+.saved-transaction-view-list {
+  display: grid;
+  margin-top: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.saved-transaction-view {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.saved-transaction-view > button:first-child {
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  padding: 9px 12px;
+  background: transparent;
+  border: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+}
+
+.saved-transaction-view > button:first-child:hover {
+  background: var(--surface-soft);
+}
+
+.saved-transaction-view strong,
+.saved-transaction-view small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-transaction-view strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.saved-transaction-view small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.saved-transaction-view-delete {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line);
+  place-items: center;
+}
+
+.saved-transaction-view-delete:hover {
+  color: var(--danger);
+  background: var(--surface-soft);
+}
+
+.saved-transaction-view-delete svg {
+  width: 16px;
+}
+
+.saved-transaction-view-status {
+  min-height: 18px;
+}
+
 .view-transactions .search-field {
   width: auto;
   min-width: 220px;
@@ -3665,6 +3846,29 @@ textarea:focus-visible {
   .transaction-filter-summary-item {
     min-height: 62px;
     padding: 9px 11px;
+  }
+
+  .saved-transaction-views {
+    padding: 13px;
+  }
+
+  .saved-transaction-views > summary,
+  .saved-transaction-view-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .saved-transaction-view-actions .button {
+    width: 100%;
+  }
+
+  .saved-transaction-view-form,
+  .saved-transaction-view-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .saved-transaction-view-form .button {
+    width: 100%;
   }
 }
 

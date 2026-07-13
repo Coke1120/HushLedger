@@ -50,6 +50,9 @@ not operate an independent database server or a multi-user identity system.
   category filters when the selected transaction type changes.
 - Show exact count, income, expense, and signed net for every transaction matching
   the current filters, independently of the interactive 200-row display cap.
+- Save up to eight validated, named filter combinations in the current browser
+  and reapply them to any selected month without storing transaction amounts or
+  adding cloud metadata.
 - Export all transactions matching the selected month and filters as CSV without
   the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
@@ -279,7 +282,7 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
   account/category/type/clearing/search filters, matching filtered transaction
-  aggregate and CSV export,
+  aggregate and CSV export, browser-local saved filter views,
   ranked category-spending drilldown, monthly plan-versus-actual review,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,

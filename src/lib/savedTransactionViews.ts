@@ -1,0 +1,79 @@
+import { z } from 'zod'
+import { transactionClearingStatusSchema, transactionTypeSchema } from './schema'
+import { isTransactionTagName } from './transactionTags'
+
+export const SAVED_TRANSACTION_VIEWS_STORAGE_KEY = 'hushledger:transaction-views:v1'
+export const MAX_SAVED_TRANSACTION_VIEWS = 8
+
+const savedTransactionViewSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().trim().min(1).max(40),
+  type: transactionTypeSchema.or(z.literal('all')),
+  status: transactionClearingStatusSchema.or(z.literal('all')),
+  accountId: z.number().int().positive().nullable(),
+  categoryId: z.number().int().positive().nullable(),
+  search: z.string().trim().max(80),
+  tag: z.string()
+    .refine((value) => value.startsWith('#') && isTransactionTagName(value.slice(1)))
+    .nullable(),
+}).strict().refine((view) => (
+  view.type !== 'all'
+  || view.status !== 'all'
+  || view.accountId !== null
+  || view.categoryId !== null
+  || view.search.length > 0
+  || view.tag !== null
+), 'A saved view must contain at least one filter')
+
+export type SavedTransactionView = z.infer<typeof savedTransactionViewSchema>
+
+export type AddSavedTransactionViewResult =
+  | { kind: 'saved'; views: SavedTransactionView[] }
+  | { kind: 'duplicate' | 'invalid' | 'limit'; views: SavedTransactionView[] }
+
+const comparableName = (name: string) => name.trim().toLowerCase()
+
+export function parseSavedTransactionViews(raw: string | null): SavedTransactionView[] {
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const views: SavedTransactionView[] = []
+  const ids = new Set<string>()
+  const names = new Set<string>()
+  for (const candidate of parsed) {
+    const result = savedTransactionViewSchema.safeParse(candidate)
+    if (!result.success) continue
+    const name = comparableName(result.data.name)
+    if (ids.has(result.data.id) || names.has(name)) continue
+    ids.add(result.data.id)
+    names.add(name)
+    views.push(result.data)
+    if (views.length === MAX_SAVED_TRANSACTION_VIEWS) break
+  }
+  return views
+}
+
+export function addSavedTransactionView(
+  current: SavedTransactionView[],
+  candidate: unknown,
+): AddSavedTransactionViewResult {
+  const parsed = savedTransactionViewSchema.safeParse(candidate)
+  if (!parsed.success) return { kind: 'invalid', views: current }
+  if (current.length >= MAX_SAVED_TRANSACTION_VIEWS) return { kind: 'limit', views: current }
+  if (current.some(({ id }) => id === parsed.data.id)) return { kind: 'invalid', views: current }
+  if (current.some(({ name }) => comparableName(name) === comparableName(parsed.data.name))) {
+    return { kind: 'duplicate', views: current }
+  }
+  return { kind: 'saved', views: [...current, parsed.data] }
+}
+
+export function serializeSavedTransactionViews(views: SavedTransactionView[]) {
+  return JSON.stringify(parseSavedTransactionViews(JSON.stringify(views)))
+}
