@@ -361,6 +361,10 @@ export const compatibleLedgerBackupSchema = z.union([
   }).strict(),
 ])
 
+export const ledgerBackupExportRequestSchema = z.object({
+  mode: z.literal('export'),
+}).strict()
+
 export const ledgerRestoreRequestSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('preview'),
@@ -388,6 +392,7 @@ export type LedgerBackup = z.infer<typeof ledgerBackupSchema>
 export type PreviousLedgerBackupPayload = z.infer<typeof previousLedgerBackupPayloadSchema>
 export type CompatibleLedgerBackupPayload = z.infer<typeof compatibleLedgerBackupPayloadSchema>
 export type CompatibleLedgerBackup = z.infer<typeof compatibleLedgerBackupSchema>
+export type LedgerBackupExportRequest = z.infer<typeof ledgerBackupExportRequestSchema>
 export type LedgerRestoreRequest = z.infer<typeof ledgerRestoreRequestSchema>
 
 export const ledgerTableCountsSchema = z.object({

@@ -126,11 +126,12 @@ knowledge and explains every command and dashboard click.
   source row from returning after deletion. Repeated imports can explicitly
   remember column, date, amount, and sign choices for the exact same headers in
   this browser without storing file contents, accounts, or categories.
-- Download a versioned full-ledger JSON backup from Settings. Restore first shows
-  a checksum-verified replacement report, then requires an explicit destructive
-  confirmation before one transactional D1 replacement. A browser-local health
-  record shows the last prepared backup download and integrity check, and warns
-  after 30 days without a download.
+- Download a versioned full-ledger JSON backup from Settings through an explicit
+  same-origin action; direct `GET` navigation cannot start a plaintext download.
+  Restore first shows a checksum-verified replacement report, then requires an
+  explicit destructive confirmation before one transactional D1 replacement. A
+  browser-local health record shows the last prepared backup download and integrity
+  check, and warns after 30 days without a download.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Before a manual create or edit, warn when the local ledger already contains an
@@ -630,8 +631,8 @@ PUT    /api/transfers/:id
 DELETE /api/transfers/:id
 POST   /api/exports/transactions  (primary private CSV export; JSON filters in the body)
 GET    /api/exports/transactions?...  (legacy compatibility; URL query filters)
-GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
-POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
+POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
+POST   /api/backups/ledger  (`preview` or `commit`: preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
 
 GET    /api/recurring-rules
@@ -717,10 +718,12 @@ JSON backup for app-level full-ledger portability, and the encrypted D1 export
 and restore process in the [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
 for database-level disaster recovery.
 
-The ledger backup `GET` is the other successful response without the normal JSON
-envelope. The restore `POST` uses the normal envelope, a separate 8 MiB request
-ceiling, strict same-origin validation, a dry-run report, checksum verification,
-typed `RESTORE` confirmation, and a revision guard inside the D1 transaction.
+The ledger backup `POST` export mode is the other successful response without the
+normal JSON envelope. It requires an explicit same-origin JSON action; `GET` is
+unavailable so a cross-site top-level navigation cannot trigger a plaintext file
+download. Restore modes use the normal envelope, a separate 8 MiB request ceiling,
+strict same-origin validation, a dry-run report, checksum verification, typed
+`RESTORE` confirmation, and a revision guard inside the D1 transaction.
 
 The UI performs mutations through typed, Zod-validated Server Actions. Compatibility
 mutation routes remain available and require a same-origin request, a JSON content

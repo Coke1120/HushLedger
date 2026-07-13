@@ -443,6 +443,14 @@ async function api(baseUrl, path, { method = 'GET', body, origin = baseUrl } = {
   return { response, payload, bytes }
 }
 
+function downloadLedgerBackup(baseUrl, { origin = baseUrl } = {}) {
+  return api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    origin,
+    body: { mode: 'export' },
+  })
+}
+
 function rawHttpGet(baseUrl, headers) {
   const url = new URL(baseUrl)
   return new Promise((resolveResponse, reject) => {
@@ -687,7 +695,7 @@ async function verifyPristineCurrencyApi() {
     assert.equal(createdAccount.payload.data.openingBalanceOn, null)
     createdAccountId = createdAccount.payload.data.id
 
-    const usdBackupDownload = await api(baseUrl, '/api/backups/ledger')
+    const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
     assert.equal(usdBackup.schemaVersion, 14)
@@ -716,7 +724,7 @@ async function verifyPristineCurrencyApi() {
     assert.equal(restoredAccounts.response.status, 200)
     assert(restoredAccounts.payload.data.every(({ currency }) => currency === 'HKD'))
 
-    const hkdBackupDownload = await api(baseUrl, '/api/backups/ledger')
+    const hkdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(hkdBackupDownload.response.status, 200, JSON.stringify(hkdBackupDownload.payload))
     const hkdBackup = hkdBackupDownload.payload
     assert.equal(hkdBackup.data.currency, 'HKD')
@@ -3288,7 +3296,17 @@ async function verifyWorkerApi() {
   const afterRepeatedCron = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterRepeatedCron.payload.data.filter((item) => item.recurringRuleId === ruleIds.cron).length, 1)
 
-  const backupDownload = await api(baseUrl, '/api/backups/ledger')
+  const navigationBackupDownload = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(navigationBackupDownload.response.status, 404)
+  assert.equal(navigationBackupDownload.payload.error.code, 'NOT_FOUND')
+
+  const crossOriginBackupDownload = await downloadLedgerBackup(baseUrl, {
+    origin: 'https://attacker.invalid',
+  })
+  assert.equal(crossOriginBackupDownload.response.status, 403)
+  assert.equal(crossOriginBackupDownload.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const backupDownload = await downloadLedgerBackup(baseUrl)
   assert.equal(backupDownload.response.status, 200)
   assert.match(backupDownload.response.headers.get('cache-control') ?? '', /no-store/)
   assert.match(backupDownload.response.headers.get('content-disposition') ?? '', /hushledger-ledger-.*\.json/)
@@ -3456,7 +3474,7 @@ async function verifyWorkerApi() {
   const { id: restoredGoalId, ...expectedRestoredEmergencyFundGoal } = backup.data.emergencyFundGoals[0]
   assert.equal(restoredGoalId, 1)
   assert.deepEqual(restoredEmergencyFundGoal.payload.data, expectedRestoredEmergencyFundGoal)
-  const restoredBackup = await api(baseUrl, '/api/backups/ledger')
+  const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
   const schema13Backup = structuredClone(backup)
@@ -3479,7 +3497,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
-  const upgradedSchema13Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema13Backup.payload.schemaVersion, 14)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
@@ -3505,7 +3523,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema12Restore.response.status, 200, JSON.stringify(schema12Restore.payload))
-  const upgradedSchema12Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema12Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema12Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema12Backup.payload.data.emergencyFundGoals, [])
 
@@ -3533,7 +3551,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema11Restore.response.status, 200, JSON.stringify(schema11Restore.payload))
-  const upgradedSchema11Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema11Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema11Backup.payload.data.currency, 'HKD')
   assert.equal(upgradedSchema11Backup.payload.data.accountTransfers.length, 1)
   assert.deepEqual(upgradedSchema11Backup.payload.data.emergencyFundGoals, [])
@@ -3567,7 +3585,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema10Restore.response.status, 200, JSON.stringify(schema10Restore.payload))
-  const upgradedSchema10Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema10Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema10Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema10Backup.payload.data.accountTransfers, [])
   assert.deepEqual(upgradedSchema10Backup.payload.data.emergencyFundGoals, [])
@@ -3606,7 +3624,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema9Restore.response.status, 200, JSON.stringify(schema9Restore.payload))
-  const upgradedSchema9Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema9Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema9Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema9Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema9Backup.payload.data.categories.every(
@@ -3650,7 +3668,7 @@ async function verifyWorkerApi() {
     },
   })
   assert.equal(schema8Restore.response.status, 200, JSON.stringify(schema8Restore.payload))
-  const upgradedSchema8Backup = await api(baseUrl, '/api/backups/ledger')
+  const upgradedSchema8Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema8Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema8Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema8Backup.payload.data.categories.every(

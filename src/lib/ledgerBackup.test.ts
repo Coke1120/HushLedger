@@ -15,6 +15,7 @@ import {
   compatibleLedgerBackupSchema,
   countLedgerData,
   digestLedgerData,
+  ledgerBackupExportRequestSchema,
   ledgerBackupTransactionSchema,
   ledgerRestorePreviewSchema,
   upgradeLedgerBackupData,
@@ -202,6 +203,18 @@ function ledgerDataWithoutTransfers(data: LedgerBackupData) {
 }
 
 describe('ledger backups', () => {
+  it('requires an explicit and strict export request', () => {
+    assert.deepEqual(
+      ledgerBackupExportRequestSchema.parse({ mode: 'export' }),
+      { mode: 'export' },
+    )
+    assert.equal(ledgerBackupExportRequestSchema.safeParse({}).success, false)
+    assert.equal(
+      ledgerBackupExportRequestSchema.safeParse({ mode: 'export', redirect: true }).success,
+      false,
+    )
+  })
+
   it('hashes canonical content independently of object property order', async () => {
     assert.equal(
       canonicalJson({ beta: 2, alpha: { delta: 4, charlie: 3 } }),

@@ -152,6 +152,9 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
     setStatusKey(null)
     try {
       const response = await fetch('/api/backups/ledger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'export' }),
         cache: 'no-store',
         credentials: 'same-origin',
       })

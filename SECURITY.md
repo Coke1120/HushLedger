@@ -36,7 +36,10 @@ The Settings JSON backup contains plaintext financial data. Its SHA-256 value is
 an integrity check, not encryption, a signature, or proof of origin. Keep backup
 files only in encrypted storage and never attach them to public issues, logs, test
 fixtures, or pull requests. AI provider credentials and browser preferences are
-not included.
+not included. Creating the download requires an explicit same-origin JSON `POST`;
+the endpoint does not support `GET`, preventing cross-site navigation from causing
+an authenticated browser to write a plaintext backup into Downloads or synchronized
+storage.
 
 Restore accepts only the current versioned HushLedger format, enforces the same-
 origin and body-size boundary, validates table relationships and the checksum,

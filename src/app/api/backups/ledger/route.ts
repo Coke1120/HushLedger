@@ -9,6 +9,7 @@ import {
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   MAX_LEDGER_BACKUP_REQUEST_BYTES,
+  ledgerBackupExportRequestSchema,
   ledgerRestoreRequestSchema,
 } from '../../../../lib/ledgerBackup'
 import { getDatabase } from '../../../../server/db'
@@ -30,17 +31,7 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-export const GET = apiRoute(async () => {
-  const backup = await exportLedgerBackup(await getDatabase())
-  return new Response(`${JSON.stringify(backup, null, 2)}\n`, {
-    headers: {
-      'Cache-Control': 'private, no-store',
-      'Content-Disposition': `attachment; filename="hushledger-ledger-${backup.exportedAt.slice(0, 10)}.json"`,
-      'Content-Type': 'application/json; charset=utf-8',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  })
-})
+export const GET = apiNotFound
 
 export const POST = apiRoute(async (request) => {
   const guarded = guardMutationRequest(request, MAX_LEDGER_BACKUP_REQUEST_BYTES)
@@ -48,6 +39,19 @@ export const POST = apiRoute(async (request) => {
 
   const body = await readApiJson(request, MAX_LEDGER_BACKUP_REQUEST_BYTES)
   if (!body.ok) return body.response
+
+  const exportRequest = ledgerBackupExportRequestSchema.safeParse(body.data)
+  if (exportRequest.success) {
+    const backup = await exportLedgerBackup(await getDatabase())
+    return new Response(`${JSON.stringify(backup, null, 2)}\n`, {
+      headers: {
+        'Cache-Control': 'private, no-store',
+        'Content-Disposition': `attachment; filename="hushledger-ledger-${backup.exportedAt.slice(0, 10)}.json"`,
+        'Content-Type': 'application/json; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
+  }
 
   const compatibilityError = backupCompatibilityError(body.data)
   if (compatibilityError) return compatibilityError

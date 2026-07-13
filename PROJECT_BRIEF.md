@@ -304,8 +304,8 @@ POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
 POST   /api/imports/ai  (preview or commit reviewed drafts, 200 rows maximum)
-GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
-POST   /api/backups/ledger  (preview or confirmed transactional restore)
+POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
+POST   /api/backups/ledger  (`preview` or `commit`: preview or confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM
 
 GET    /api/recurring-rules
@@ -364,7 +364,9 @@ reminder does not prove that a backup file was retained off-platform.
 - Warn after 30 days without preparing an in-app backup download, while keeping
   that maintenance record browser-local and treating it only as a reminder.
 - In-app JSON backups are plaintext. Their checksum proves integrity only, not
-  confidentiality or authenticity.
+  confidentiality or authenticity. Export requires an explicit same-origin JSON
+  `POST`; `GET` stays unavailable so cross-site navigation cannot trigger a
+  plaintext download into a browser or synchronized Downloads folder.
 - Only the non-sensitive offline/demo shell and fingerprinted static assets may be
   cached. API, Server Action, RSC, personalized navigation, and financial responses
   are never cached. Offline writes and multi-device conflict sync are not claimed.
