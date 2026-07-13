@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { formatAmountInput, formatMoney, parseAmount } from './money'
+import {
+  formatAmountInput,
+  formatMoney,
+  formatSignedAmountInput,
+  parseAmount,
+  parseSignedAmount,
+} from './money'
 
 describe('HKD money helpers', () => {
   it('formats integer minor units as HKD with two decimal places', () => {
@@ -70,5 +76,20 @@ describe('HKD money helpers', () => {
 
   it('rejects unsafe minor units when preparing an edit value', () => {
     assert.throws(() => formatAmountInput(Number.MAX_SAFE_INTEGER + 1))
+  })
+
+  it('parses and formats signed balances without floating-point arithmetic', () => {
+    assert.equal(parseSignedAmount('-123.45'), -12_345)
+    assert.equal(parseSignedAmount('0'), 0)
+    assert.equal(parseSignedAmount('10 - 25'), -1_500)
+    assert.equal(parseSignedAmount('-12,50', 'fr'), -1_250)
+    assert.equal(formatSignedAmountInput(-12_345), '-123.45')
+    assert.equal(formatSignedAmountInput(-12_345, 'fr'), '-123,45')
+  })
+
+  it('rejects malformed or unsafe signed balances', () => {
+    assert.throws(() => parseSignedAmount(''))
+    assert.throws(() => parseSignedAmount('1.234'))
+    assert.throws(() => parseSignedAmount('90071992547409.92'))
   })
 })

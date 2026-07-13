@@ -4,6 +4,7 @@ import { noteHasTransactionTag } from './transactionTags'
 import type { MessageKey, Translator } from '../i18n'
 import type {
   Account,
+  AccountBalance,
   Category,
   ExpenseCategorySummary,
   MonthlySpendingSummary,
@@ -17,10 +18,10 @@ import type {
 } from './schema'
 
 export const demoAccounts: Account[] = [
-  { id: 1, name: '現金', type: 'cash', currency: 'HKD', isActive: true, sortOrder: 10, localizationKey: 'account.cash', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 2, name: '銀行戶口', type: 'bank', currency: 'HKD', isActive: true, sortOrder: 20, localizationKey: 'account.bank', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 3, name: '信用卡', type: 'credit_card', currency: 'HKD', isActive: true, sortOrder: 30, localizationKey: 'account.credit_card', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 4, name: '八達通', type: 'wallet', currency: 'HKD', isActive: true, sortOrder: 40, localizationKey: 'account.wallet', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 1, name: '現金', type: 'cash', currency: 'HKD', isActive: true, sortOrder: 10, localizationKey: 'account.cash', openingBalanceMinor: null, openingBalanceOn: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 2, name: '銀行戶口', type: 'bank', currency: 'HKD', isActive: true, sortOrder: 20, localizationKey: 'account.bank', openingBalanceMinor: null, openingBalanceOn: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 3, name: '信用卡', type: 'credit_card', currency: 'HKD', isActive: true, sortOrder: 30, localizationKey: 'account.credit_card', openingBalanceMinor: null, openingBalanceOn: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 4, name: '八達通', type: 'wallet', currency: 'HKD', isActive: true, sortOrder: 40, localizationKey: 'account.wallet', openingBalanceMinor: null, openingBalanceOn: null, updatedAt: '2026-07-11T10:30:00.000Z' },
 ]
 
 export const demoCategories: Category[] = [
@@ -180,6 +181,37 @@ export let demoTransactions: Transaction[] = [
     updatedAt: createdAt,
   },
 ]
+
+export function demoAccountBalances(month: string): AccountBalance[] {
+  const { end } = monthRangeDates(month)
+  return demoAccounts.map((account) => {
+    const movements = demoTransactions.filter((transaction) => (
+      transaction.accountId === account.id && transaction.occurredOn < end
+    ))
+    const recordedBalance = movements.reduce(
+      (total, transaction) => total + (transaction.type === 'income' ? transaction.amountMinor : -transaction.amountMinor),
+      0,
+    )
+    const clearedBalance = movements.reduce(
+      (total, transaction) => transaction.cleared
+        ? total + (transaction.type === 'income' ? transaction.amountMinor : -transaction.amountMinor)
+        : total,
+      0,
+    )
+    return {
+      accountId: account.id,
+      accountName: account.name,
+      accountLocalizationKey: account.localizationKey,
+      accountType: account.type,
+      isActive: account.isActive,
+      openingBalanceMinor: null,
+      openingBalanceOn: null,
+      recordedBalance,
+      clearedBalance,
+      unclearedBalance: recordedBalance - clearedBalance,
+    }
+  })
+}
 
 const demoTransactionCopy: Readonly<
   Record<string, { payee: MessageKey; note?: MessageKey }>

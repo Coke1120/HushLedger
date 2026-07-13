@@ -43,6 +43,10 @@ knowledge and explains every command and dashboard click.
   plus exact scheduled income, expense, and net totals. Forecast values never
   change the recorded monthly balance before their entries are generated.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
+- Per-account recorded, cleared, and uncleared balances at the end of the selected
+  month. An optional dated opening balance anchors incomplete history, and an
+  in-app statement comparison shows the exact difference without locking or
+  changing transactions.
 - Record money moved between two accounts as one atomic transfer with independent
   source and destination posting states. Transfers stay outside income, expense,
   balance, category, plan, trend, and CSV transaction reports, so withdrawals and
@@ -94,6 +98,8 @@ knowledge and explains every command and dashboard click.
 - Create and rename accounts and categories from Settings, and disable or
   re-enable them without deleting transaction history. Arrow controls reorder
   accounts within the same status and categories within the same type/status.
+  Accounts can also store an optional signed opening balance and its effective
+  date; credit-card debt can therefore begin below zero without a fake expense.
   Active recurring rules and the last usable account/category are protected
   from accidental disabling.
 - Custom payees and notes, with private suggestions that can reuse a known
@@ -112,7 +118,6 @@ knowledge and explains every command and dashboard click.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
-  Japanese, and French. The preference is stored only in the current browser.
 
 HushLedger starts with cash, bank, credit-card, wallet, income, and expense
 defaults. Settings can add custom accounts and categories, rename them, change a
@@ -151,6 +156,14 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Existing categories and schema-8/9 backups receive no monthly plan by default.
   A plan can only be a positive safe-integer HKD amount on an expense category;
   it never represents reserved or available cash.
+- An account opening balance is the balance immediately before its paired
+  `YYYY-MM-DD` date. The two values are both present or both null. Null means the
+  app derives the balance from all recorded history; schema-8 through schema-11
+  backups upgrade to that null state rather than inventing a baseline.
+- Account balances include income, expenses, and both sides of transfers before
+  the selected month-end cutoff. Cleared balances include only posted movements;
+  the statement comparison is read-only and does not claim an irreversible
+  reconciliation lock.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
@@ -397,7 +410,7 @@ draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
 The same gate exports and restores a complete six-table JSON ledger, upgrades
-schema-10 backups with no invented transfers, schema-9 backups with neither
+schema-11 backups with no invented opening balances, schema-10 backups with no invented transfers, schema-9 backups with neither
 invented transfers nor category plans, and schema-8 backups with cleared legacy
 history, rejects a modified checksum and a
 stale preview, and proves that the final re-export exactly matches the pre-restore
@@ -424,6 +437,7 @@ npm run types:worker
 | `0009_transaction_clearing_status.sql` | Adds cleared/uncleared bank-posting status, preserving existing history as cleared. |
 | `0010_category_monthly_plans.sql` | Adds optional positive monthly spending plans to expense categories without implying reserved cash or rollover. |
 | `0011_account_transfers.sql` | Adds atomic account-to-account transfers with independent source and destination posting states and backup revision triggers. |
+| `0012_account_opening_balances.sql` | Adds optional signed, dated account opening balances with database guards requiring the amount and date together. |
 
 Apply migrations locally:
 
@@ -443,6 +457,7 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 ```text
 GET    /api/health
 GET    /api/accounts
+GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
 POST   /api/accounts
 PATCH  /api/accounts  (reorder one complete active/inactive group)
 GET    /api/accounts/:id
@@ -488,7 +503,8 @@ POST   /api/imports/csv  (preview or commit normalized HushLedger/bank CSV rows,
 
 Item-level account/category `PATCH` changes `isActive`; collection-level `PATCH`
 reorders one complete account status group or category type/status group. `PUT`
-renames an entry and may also change an account type. Mutations use `updatedAt`
+renames an entry and may also change an account type or its paired opening
+balance/date. Mutations use `updatedAt`
 for optimistic concurrency. Reordering normalizes positions in one guarded SQL
 statement, so a stale or partial list writes nothing. There is no account/category
 `DELETE`: disabling preserves historical foreign-key links, and the server rejects
@@ -508,6 +524,12 @@ accounts. Editing preserves an existing archived source or destination, uses the
 same optimistic `updatedAt` guard as transactions, and records source and
 destination posting independently. Transfer routes are strict, same-origin, and
 never included in transaction CSV exports.
+
+Account balance aggregation is read-only and uses the end of the requested month
+as an exclusive cutoff. It includes transfers in each account but never feeds
+them back into income, expense, category, plan, trend, or CSV totals. A statement
+value entered in the UI stays in component memory only and is compared with the
+cleared balance; it is not sent to an API or written to D1.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income

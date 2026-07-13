@@ -213,6 +213,11 @@ has a SHA-256 integrity check, so move it immediately to encrypted storage. The
 in-app restore validates and previews first, but it still replaces the current
 ledger; use a separate test deployment for restore drills.
 
+Account opening balances and their dates are part of the account rows in this
+backup. After migration `0012`, verify one account-balance panel against a known
+statement in the test deployment. The comparison itself is read-only and is not
+stored; only an opening balance deliberately saved in Settings is persisted.
+
 Create an encrypted, off-platform backup before migrations and on a regular
 schedule. This database-level SQL export remains the recovery path for backups
 larger than the 7 MiB in-app limit and for complete operational archives:

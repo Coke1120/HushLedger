@@ -4,6 +4,7 @@ import {
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
+  PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   MAX_LEDGER_BACKUP_REQUEST_BYTES,
   ledgerRestoreRequestSchema,
@@ -102,6 +103,7 @@ function backupCompatibilityError(value: unknown) {
     (
       candidate.schemaVersion !== LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== PREVIOUS_LEDGER_SCHEMA_VERSION &&
+      candidate.schemaVersion !== PRE_TRANSFERS_LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== LEGACY_LEDGER_SCHEMA_VERSION
     )

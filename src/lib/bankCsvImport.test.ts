@@ -18,6 +18,8 @@ const accounts: Account[] = [{
   isActive: true,
   sortOrder: 10,
   localizationKey: null,
+  openingBalanceMinor: null,
+  openingBalanceOn: null,
   updatedAt,
 }]
 const categories: Category[] = [

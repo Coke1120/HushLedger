@@ -140,12 +140,45 @@ const updatedReferenceSchema = z.object({
 })
 
 export const referenceIdSchema = z.coerce.number().int().positive()
+const signedMinorSchema = z
+  .number()
+  .int()
+  .min(-Number.MAX_SAFE_INTEGER)
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable()
+const accountOpeningFields = {
+  openingBalanceMinor: signedMinorSchema,
+  openingBalanceOn: calendarDateSchema.nullable(),
+}
+const validateAccountOpeningBalance = (
+  value: { openingBalanceMinor: number | null; openingBalanceOn: string | null },
+  context: z.RefinementCtx,
+) => {
+  if ((value.openingBalanceMinor === null) !== (value.openingBalanceOn === null)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['openingBalanceOn'],
+      message: '期初結餘及日期必須同時提供或同時留空',
+    })
+  }
+}
 export const accountCreateSchema = z
-  .object({ name: referenceNameSchema, type: accountTypeSchema })
+  .object({
+    name: referenceNameSchema,
+    type: accountTypeSchema,
+    openingBalanceMinor: signedMinorSchema.default(null),
+    openingBalanceOn: calendarDateSchema.nullable().default(null),
+  })
   .strict()
-export const accountUpdateSchema = accountCreateSchema
+  .superRefine(validateAccountOpeningBalance)
+export const accountUpdateSchema = z.object({
+  name: referenceNameSchema,
+  type: accountTypeSchema,
+  ...accountOpeningFields,
+})
   .extend(updatedReferenceSchema.shape)
   .strict()
+  .superRefine(validateAccountOpeningBalance)
 const categoryMonthlyPlanSchema = z
   .number()
   .int()
@@ -394,7 +427,22 @@ export type Account = {
   isActive: boolean
   sortOrder: number
   localizationKey: AccountLocalizationKey | null
+  openingBalanceMinor: number | null
+  openingBalanceOn: string | null
   updatedAt: string
+}
+
+export type AccountBalance = {
+  accountId: number
+  accountName: string
+  accountLocalizationKey: AccountLocalizationKey | null
+  accountType: AccountType
+  isActive: boolean
+  openingBalanceMinor: number | null
+  openingBalanceOn: string | null
+  recordedBalance: number | null
+  clearedBalance: number | null
+  unclearedBalance: number | null
 }
 
 export type Category = {

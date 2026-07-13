@@ -6,6 +6,7 @@ import { AppHeader } from './components/AppHeader'
 import { BankImportPanel } from './components/BankImportPanel'
 import { AccountTransferDialog } from './components/AccountTransferDialog'
 import { AccountTransferList } from './components/AccountTransferList'
+import { AccountBalances } from './components/AccountBalances'
 import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
@@ -358,6 +359,11 @@ function App({ initialMonth }: { initialMonth: string }) {
             <SummaryCards summary={data.summary} loading={loading} />
             {view === 'overview' ? (
               <>
+                <AccountBalances
+                  balances={data.accountBalances}
+                  month={month}
+                  loading={loading}
+                />
                 <SpendingTrend
                   summary={data.summary}
                   loading={loading}

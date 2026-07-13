@@ -6,6 +6,7 @@ import {
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
+  PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
   checksumLedgerBackupPayload,
@@ -32,6 +33,8 @@ function ledgerData(): LedgerBackupData {
         isActive: true,
         sortOrder: 10,
         localizationKey: 'account.bank',
+        openingBalanceMinor: 125_000,
+        openingBalanceOn: '2026-07-01',
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -43,6 +46,8 @@ function ledgerData(): LedgerBackupData {
         isActive: true,
         sortOrder: 20,
         localizationKey: 'account.cash',
+        openingBalanceMinor: null,
+        openingBalanceOn: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -139,13 +144,25 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
-function ledgerDataWithoutTransfers(data: LedgerBackupData) {
+function ledgerDataBeforeOpeningBalances(data: LedgerBackupData) {
   return {
-    accounts: data.accounts,
-    categories: data.categories,
-    recurringRules: data.recurringRules,
-    transactions: data.transactions,
-    transactionImportKeys: data.transactionImportKeys,
+    ...data,
+    accounts: data.accounts.map(({
+      openingBalanceMinor: _openingBalanceMinor,
+      openingBalanceOn: _openingBalanceOn,
+      ...account
+    }) => account),
+  }
+}
+
+function ledgerDataWithoutTransfers(data: LedgerBackupData) {
+  const beforeOpening = ledgerDataBeforeOpeningBalances(data)
+  return {
+    accounts: beforeOpening.accounts,
+    categories: beforeOpening.categories,
+    recurringRules: beforeOpening.recurringRules,
+    transactions: beforeOpening.transactions,
+    transactionImportKeys: beforeOpening.transactionImportKeys,
   }
 }
 
@@ -191,9 +208,9 @@ describe('ledger backups', () => {
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
 
-  it('upgrades schema 10 backups without inventing transfers', async () => {
+  it('upgrades schema 11 backups without inventing opening balances', async () => {
     const current = ledgerData()
-    const previousData = ledgerDataWithoutTransfers(current)
+    const previousData = ledgerDataBeforeOpeningBalances(current)
     const previousPayload = {
       format: LEDGER_BACKUP_FORMAT,
       version: LEDGER_BACKUP_VERSION,
@@ -210,7 +227,34 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.accountTransfers.length, 1)
+    assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
+    assert.equal(upgraded.accounts[0]?.openingBalanceOn, null)
+    assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
+    assert.equal(upgraded.transactions[0]?.cleared, false)
+  })
+
+  it('upgrades schema 10 backups without inventing transfers or opening balances', async () => {
+    const current = ledgerData()
+    const previousData = ledgerDataWithoutTransfers(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
     assert.deepEqual(upgraded.accountTransfers, [])
+    assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
     assert.equal(upgraded.transactions[0]?.cleared, false)
   })

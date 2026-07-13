@@ -53,6 +53,14 @@ function backupChecksum({ format, version, exportedAt, schemaVersion, data }) {
     .digest('hex')
 }
 
+function withoutAccountOpeningBalances(accounts) {
+  return accounts.map(({ openingBalanceMinor, openingBalanceOn, ...account }) => {
+    assert(openingBalanceMinor === null || Number.isSafeInteger(openingBalanceMinor))
+    assert(openingBalanceOn === null || typeof openingBalanceOn === 'string')
+    return account
+  })
+}
+
 async function availablePort() {
   const server = createNetServer()
   await new Promise((resolveReady, reject) => {
@@ -232,7 +240,10 @@ async function verifyUpgradeMigration() {
     upgradeState,
     '--command',
     `SELECT id, occurred_on AS occurredOn, cleared FROM transactions WHERE id = '${sentinelId}';
-     SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
+     SELECT name, localization_key AS localizationKey,
+       opening_balance_minor AS openingBalanceMinor,
+       opening_balance_on AS openingBalanceOn
+     FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
@@ -245,8 +256,8 @@ async function verifyUpgradeMigration() {
   assert.equal(statements[0].results[0].occurredOn, '2026-07-10')
   assert.equal(statements[0].results[0].cleared, 1)
   assert.deepEqual(statements[1].results, [
-    { name: 'Integration custom account', localizationKey: null },
-    { name: '日常帳戶', localizationKey: 'account.bank' },
+    { name: 'Integration custom account', localizationKey: null, openingBalanceMinor: null, openingBalanceOn: null },
+    { name: '日常帳戶', localizationKey: 'account.bank', openingBalanceMinor: null, openingBalanceOn: null },
   ])
   assert.deepEqual(statements[2].results, [
     { name: 'Integration custom category', localizationKey: null, monthlyPlanMinor: null },
@@ -496,6 +507,9 @@ async function verifyWorkerApi() {
   assert.equal(categoriesResult.response.status, 200)
   assert.match(accountsResult.response.headers.get('cache-control') ?? '', /no-store/)
   assert(accountsResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
+  assert(accountsResult.payload.data.every(({ openingBalanceMinor, openingBalanceOn }) => (
+    openingBalanceMinor === null && openingBalanceOn === null
+  )))
   assert(categoriesResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
 
   const payeeSuggestions = await api(baseUrl, '/api/payee-suggestions')
@@ -670,11 +684,25 @@ async function verifyWorkerApi() {
 
   const createdAccount = await api(baseUrl, '/api/accounts', {
     method: 'POST',
-    body: { name: 'Integration savings', type: 'bank' },
+    body: {
+      name: 'Integration savings',
+      type: 'bank',
+      openingBalanceMinor: 100_000,
+      openingBalanceOn: today,
+    },
   })
   assert.equal(createdAccount.response.status, 201)
   assert.equal(createdAccount.payload.data.localizationKey, null)
   assert.equal(createdAccount.payload.data.isActive, true)
+  assert.equal(createdAccount.payload.data.openingBalanceMinor, 100_000)
+  assert.equal(createdAccount.payload.data.openingBalanceOn, today)
+
+  const incompleteOpeningBalance = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: { name: 'Invalid opening', type: 'bank', openingBalanceMinor: 100_000 },
+  })
+  assert.equal(incompleteOpeningBalance.response.status, 400)
+  assert.equal(incompleteOpeningBalance.payload.error.code, 'VALIDATION_ERROR')
 
   const duplicateAccount = await api(baseUrl, '/api/accounts', {
     method: 'POST',
@@ -688,6 +716,8 @@ async function verifyWorkerApi() {
     body: {
       name: 'Integration wallet',
       type: 'wallet',
+      openingBalanceMinor: createdAccount.payload.data.openingBalanceMinor,
+      openingBalanceOn: createdAccount.payload.data.openingBalanceOn,
       updatedAt: createdAccount.payload.data.updatedAt,
     },
   })
@@ -701,6 +731,8 @@ async function verifyWorkerApi() {
     body: {
       name: 'Stale account edit',
       type: 'cash',
+      openingBalanceMinor: createdAccount.payload.data.openingBalanceMinor,
+      openingBalanceOn: createdAccount.payload.data.openingBalanceOn,
       updatedAt: createdAccount.payload.data.updatedAt,
     },
   })
@@ -946,6 +978,28 @@ async function verifyWorkerApi() {
   assert(expenseCategory)
   assert(transferDestination)
 
+  const invalidBalanceMonth = await api(baseUrl, '/api/accounts/balances?month=2026-13')
+  assert.equal(invalidBalanceMonth.response.status, 400)
+  assert.equal(invalidBalanceMonth.payload.error.code, 'INVALID_QUERY')
+  const duplicateBalanceMonth = await api(
+    baseUrl,
+    `/api/accounts/balances?month=${month}&month=${month}`,
+  )
+  assert.equal(duplicateBalanceMonth.response.status, 400)
+  const balancesBeforeTransfer = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  assert.equal(balancesBeforeTransfer.response.status, 200, JSON.stringify(balancesBeforeTransfer.payload))
+  const sourceBalanceBefore = balancesBeforeTransfer.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  const destinationBalanceBefore = balancesBeforeTransfer.payload.data.find(
+    ({ accountId }) => accountId === transferDestination.id,
+  )
+  assert(sourceBalanceBefore)
+  assert(destinationBalanceBefore)
+  assert.equal(sourceBalanceBefore.recordedBalance, 100_000)
+  assert.equal(sourceBalanceBefore.clearedBalance, 100_000)
+  assert.equal(sourceBalanceBefore.unclearedBalance, 0)
+
   const summaryBeforeTransfer = await api(baseUrl, `/api/transactions/summary?month=${month}`)
   assert.equal(summaryBeforeTransfer.response.status, 200)
   const transferBody = {
@@ -983,6 +1037,27 @@ async function verifyWorkerApi() {
   assert.equal(createdTransfer.payload.data.toAccountName, transferDestination.name)
   assert.equal(createdTransfer.payload.data.fromCleared, false)
   assert.equal(createdTransfer.payload.data.toCleared, false)
+
+  const balancesWithUnclearedTransfer = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  const sourceWithUnclearedTransfer = balancesWithUnclearedTransfer.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  const destinationWithUnclearedTransfer = balancesWithUnclearedTransfer.payload.data.find(
+    ({ accountId }) => accountId === transferDestination.id,
+  )
+  assert(sourceWithUnclearedTransfer)
+  assert(destinationWithUnclearedTransfer)
+  assert.equal(sourceWithUnclearedTransfer.recordedBalance, 50_000)
+  assert.equal(sourceWithUnclearedTransfer.clearedBalance, 100_000)
+  assert.equal(sourceWithUnclearedTransfer.unclearedBalance, -50_000)
+  assert.equal(
+    destinationWithUnclearedTransfer.recordedBalance,
+    destinationBalanceBefore.recordedBalance + 50_000,
+  )
+  assert.equal(
+    destinationWithUnclearedTransfer.clearedBalance,
+    destinationBalanceBefore.clearedBalance,
+  )
 
   const repeatedTransfer = await api(baseUrl, '/api/transfers', {
     method: 'POST',
@@ -1022,6 +1097,24 @@ async function verifyWorkerApi() {
   assert.equal(updatedTransfer.response.status, 200, JSON.stringify(updatedTransfer.payload))
   assert.equal(updatedTransfer.payload.data.fromCleared, true)
   assert.equal(updatedTransfer.payload.data.toCleared, true)
+
+  const balancesWithPostedTransfer = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  const sourceWithPostedTransfer = balancesWithPostedTransfer.payload.data.find(
+    ({ accountId }) => accountId === account.id,
+  )
+  const destinationWithPostedTransfer = balancesWithPostedTransfer.payload.data.find(
+    ({ accountId }) => accountId === transferDestination.id,
+  )
+  assert(sourceWithPostedTransfer)
+  assert(destinationWithPostedTransfer)
+  assert.equal(sourceWithPostedTransfer.recordedBalance, 50_000)
+  assert.equal(sourceWithPostedTransfer.clearedBalance, 50_000)
+  assert.equal(sourceWithPostedTransfer.unclearedBalance, 0)
+  assert.equal(
+    destinationWithPostedTransfer.clearedBalance,
+    destinationBalanceBefore.clearedBalance + 50_000,
+  )
+  assert.equal(destinationWithPostedTransfer.unclearedBalance, destinationBalanceBefore.unclearedBalance)
 
   const staleTransferUpdate = await api(baseUrl, `/api/transfers/${transferBody.id}`, {
     method: 'PUT',
@@ -1752,12 +1845,19 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 11)
+  assert.equal(backup.schemaVersion, 12)
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
   assert(backup.data.categories.every(({ monthlyPlanMinor }) => (
     monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor)
+  )))
+  assert(backup.data.accounts.every(({ openingBalanceMinor, openingBalanceOn }) => (
+    (openingBalanceMinor === null && openingBalanceOn === null)
+    || (Number.isSafeInteger(openingBalanceMinor) && typeof openingBalanceOn === 'string')
+  )))
+  assert(backup.data.accounts.some(({ openingBalanceMinor, openingBalanceOn }) => (
+    openingBalanceMinor === 100_000 && openingBalanceOn === today
   )))
   assert.equal(backup.data.accountTransfers.length, 1)
   assert.equal(backup.data.accountTransfers[0].id, transferBody.id)
@@ -1849,8 +1949,37 @@ async function verifyWorkerApi() {
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema11Backup = structuredClone(backup)
+  schema11Backup.schemaVersion = 11
+  schema11Backup.data.accounts = withoutAccountOpeningBalances(schema11Backup.data.accounts)
+  schema11Backup.checksum.digest = backupChecksum(schema11Backup)
+  const schema11Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema11Backup },
+  })
+  assert.equal(schema11Preview.response.status, 200, JSON.stringify(schema11Preview.payload))
+  assert.equal(schema11Preview.payload.data.backupCounts.accountTransfers, 1)
+  const schema11Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema11Backup,
+      expectedCurrentDigest: schema11Preview.payload.data.currentDigest,
+      expectedRevision: schema11Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema11Restore.response.status, 200, JSON.stringify(schema11Restore.payload))
+  const upgradedSchema11Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema11Backup.payload.data.accountTransfers.length, 1)
+  assert(upgradedSchema11Backup.payload.data.accounts.every(({
+    openingBalanceMinor,
+    openingBalanceOn,
+  }) => openingBalanceMinor === null && openingBalanceOn === null))
+
   const schema10Backup = structuredClone(backup)
   schema10Backup.schemaVersion = 10
+  schema10Backup.data.accounts = withoutAccountOpeningBalances(schema10Backup.data.accounts)
   delete schema10Backup.data.accountTransfers
   schema10Backup.checksum.digest = backupChecksum(schema10Backup)
   const schema10Preview = await api(baseUrl, '/api/backups/ledger', {
@@ -1878,6 +2007,7 @@ async function verifyWorkerApi() {
 
   const schema9Backup = structuredClone(backup)
   schema9Backup.schemaVersion = 9
+  schema9Backup.data.accounts = withoutAccountOpeningBalances(schema9Backup.data.accounts)
   delete schema9Backup.data.accountTransfers
   schema9Backup.data.categories = schema9Backup.data.categories.map(({
     monthlyPlanMinor,
@@ -1911,6 +2041,7 @@ async function verifyWorkerApi() {
 
   const schema8Backup = structuredClone(backup)
   schema8Backup.schemaVersion = 8
+  schema8Backup.data.accounts = withoutAccountOpeningBalances(schema8Backup.data.accounts)
   delete schema8Backup.data.accountTransfers
   schema8Backup.data.categories = schema8Backup.data.categories.map(({
     monthlyPlanMinor,
@@ -1974,7 +2105,10 @@ async function verifyWorkerApi() {
     csvAtomicRollbacks: 1,
     accountTransferLifecycles: 1,
     accountTransferGuards: 5,
+    accountBalanceQueries: 3,
+    accountBalanceGuards: 3,
     ledgerBackupTables: 6,
+    ledgerSchema11Restores: 1,
     ledgerSchema10Restores: 1,
     ledgerSchema9Restores: 1,
     ledgerSchema8Restores: 1,
@@ -2175,8 +2309,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0011',
-      upgradeMigration: '0004-to-0011-preserved-data-names-clearing-null-plans-and-transfers',
+      freshMigrations: '0001-0012',
+      upgradeMigration: '0004-to-0012-preserved-data-names-clearing-null-plans-transfers-and-openings',
       ...apiEvidence,
       ...nextAiEvidence,
     }),

@@ -12,6 +12,8 @@ const accounts: Account[] = [
     isActive: true,
     sortOrder: 10,
     localizationKey: null,
+    openingBalanceMinor: null,
+    openingBalanceOn: null,
     updatedAt: '2026-07-13T00:00:00.000Z',
   },
   {
@@ -22,6 +24,8 @@ const accounts: Account[] = [
     isActive: false,
     sortOrder: 20,
     localizationKey: null,
+    openingBalanceMinor: null,
+    openingBalanceOn: null,
     updatedAt: '2026-07-13T00:00:00.000Z',
   },
 ]

@@ -13,6 +13,7 @@ import {
   addDemo,
   deleteDemo,
   demoAccounts,
+  demoAccountBalances,
   demoCategories,
   demoSummary,
   getDemoTransactions,
@@ -21,6 +22,7 @@ import {
 } from '../lib/demo'
 import type {
   Account,
+  AccountBalance,
   AccountTransfer,
   AccountTransferInput,
   Category,
@@ -39,6 +41,7 @@ export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 type Snapshot = {
   transactions: Transaction[]
   accountTransfers: AccountTransfer[]
+  accountBalances: AccountBalance[]
   transactionFilterSummary: TransactionFilterSummary
   summary: Summary
   accounts: Account[]
@@ -58,6 +61,7 @@ function demoSnapshot(
   return {
     transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status, sort),
     accountTransfers: [],
+    accountBalances: demoAccountBalances(month),
     transactionFilterSummary: summarizeDemoTransactions(
       month,
       type,
@@ -107,15 +111,16 @@ export function useMoneyData(
     const transactionQuery = new URLSearchParams(query)
     if (sort !== 'date_desc') transactionQuery.set('sort', sort)
 
-    const [transactions, accountTransfers, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
+    const [transactions, accountTransfers, accountBalances, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
       api<AccountTransfer[]>(`/api/transfers?month=${encodeURIComponent(month)}`),
+      api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
       api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
     ])
-    return { transactions, accountTransfers, transactionFilterSummary, summary, accounts, categories }
+    return { transactions, accountTransfers, accountBalances, transactionFilterSummary, summary, accounts, categories }
   }, [accountId, categoryId, month, search, sort, status, tag, type])
 
   const refresh = useCallback(

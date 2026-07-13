@@ -5,8 +5,9 @@ export const LEDGER_BACKUP_FORMAT = 'hushledger-ledger-backup' as const
 export const LEDGER_BACKUP_VERSION = 1 as const
 export const LEGACY_LEDGER_SCHEMA_VERSION = 8 as const
 export const PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION = 9 as const
-export const PREVIOUS_LEDGER_SCHEMA_VERSION = 10 as const
-export const LEDGER_SCHEMA_VERSION = 11 as const
+export const PRE_TRANSFERS_LEDGER_SCHEMA_VERSION = 10 as const
+export const PREVIOUS_LEDGER_SCHEMA_VERSION = 11 as const
+export const LEDGER_SCHEMA_VERSION = 12 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -35,7 +36,7 @@ const categoryLocalizationKeySchema = z
   .regex(/^category\.[a-z_]+$/)
   .nullable()
 
-export const ledgerBackupAccountSchema = z.object({
+const ledgerBackupAccountFields = {
   id: safePositiveIntegerSchema,
   name: trimmedNameSchema,
   type: z.enum(['cash', 'bank', 'credit_card', 'wallet']),
@@ -45,7 +46,28 @@ export const ledgerBackupAccountSchema = z.object({
   localizationKey: accountLocalizationKeySchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-}).strict()
+}
+
+const previousLedgerBackupAccountSchema = z.object(ledgerBackupAccountFields).strict()
+
+export const ledgerBackupAccountSchema = z.object({
+  ...ledgerBackupAccountFields,
+  openingBalanceMinor: z
+    .number()
+    .int()
+    .min(-Number.MAX_SAFE_INTEGER)
+    .max(Number.MAX_SAFE_INTEGER)
+    .nullable(),
+  openingBalanceOn: calendarDateSchema.nullable(),
+}).strict().superRefine((account, context) => {
+  if ((account.openingBalanceMinor === null) !== (account.openingBalanceOn === null)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['openingBalanceOn'],
+      message: 'Opening balance and date must both be present or null',
+    })
+  }
+})
 
 const ledgerBackupCategoryFields = {
   id: safePositiveIntegerSchema,
@@ -202,11 +224,15 @@ export const ledgerBackupDataSchema = z.object({
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-const previousLedgerBackupDataSchema = ledgerBackupDataSchema.omit({
+const previousLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+  accounts: z.array(previousLedgerBackupAccountSchema),
+}).strict()
+
+const preTransfersLedgerBackupDataSchema = previousLedgerBackupDataSchema.omit({
   accountTransfers: true,
 }).strict()
 
-const preMonthlyPlanLedgerBackupDataSchema = previousLedgerBackupDataSchema.extend({
+const preMonthlyPlanLedgerBackupDataSchema = preTransfersLedgerBackupDataSchema.extend({
   categories: z.array(previousLedgerBackupCategorySchema),
 }).strict()
 
@@ -239,6 +265,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preTransfersLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_TRANSFERS_LEDGER_SCHEMA_VERSION),
+  data: preTransfersLedgerBackupDataSchema,
+}).strict()
+
 const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION),
   data: preMonthlyPlanLedgerBackupDataSchema,
@@ -247,6 +278,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
   previousLedgerBackupPayloadSchema,
+  preTransfersLedgerBackupPayloadSchema,
   preMonthlyPlanLedgerBackupPayloadSchema,
   ledgerBackupPayloadSchema.extend({
     schemaVersion: z.literal(LEGACY_LEDGER_SCHEMA_VERSION),
@@ -259,6 +291,11 @@ const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preTransfersLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_TRANSFERS_LEDGER_SCHEMA_VERSION),
+  data: preTransfersLedgerBackupDataSchema,
+}).strict()
+
 const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION),
   data: preMonthlyPlanLedgerBackupDataSchema,
@@ -267,6 +304,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
   previousLedgerBackupSchema,
+  preTransfersLedgerBackupSchema,
   preMonthlyPlanLedgerBackupSchema,
   ledgerBackupSchema.extend({
     schemaVersion: z.literal(LEGACY_LEDGER_SCHEMA_VERSION),
@@ -359,8 +397,15 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
   return ledgerBackupDataSchema.parse({
     ...backup.data,
-    accountTransfers: [],
-    categories: backup.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION
+    accounts: backup.data.accounts.map((account) => ({
+      ...account,
+      openingBalanceMinor: null,
+      openingBalanceOn: null,
+    })),
+    accountTransfers: backup.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION
+      ? backup.data.accountTransfers
+      : [],
+    categories: backup.schemaVersion >= PRE_TRANSFERS_LEDGER_SCHEMA_VERSION
       ? backup.data.categories
       : backup.data.categories.map((category) => ({
         ...category,

@@ -20,7 +20,12 @@ import {
   type MessageKey,
 } from '../i18n'
 import type { Account, AccountType, Category, TransactionType } from '../lib/schema'
-import { formatAmountInput, parseAmount } from '../lib/money'
+import {
+  formatAmountInput,
+  formatSignedAmountInput,
+  parseAmount,
+  parseSignedAmount,
+} from '../lib/money'
 import {
   canMoveReference,
   orderedReferenceGroup,
@@ -43,6 +48,10 @@ type Editor =
       rawName: string
       type: AccountType
       originalType: AccountType
+      openingBalance: string
+      originalOpeningBalance: string
+      openingBalanceOn: string
+      originalOpeningBalanceOn: string
       updatedAt: string
     }
   | {
@@ -63,9 +72,11 @@ export function ReferenceDataSettings({
   enabled,
   onRefresh,
 }: ReferenceDataSettingsProps) {
-  const { formatMoney, locale, localizeEntityName, t } = useI18n()
+  const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [accountName, setAccountName] = useState('')
   const [accountType, setAccountType] = useState<AccountType>('bank')
+  const [accountOpeningBalance, setAccountOpeningBalance] = useState('')
+  const [accountOpeningBalanceOn, setAccountOpeningBalanceOn] = useState('')
   const [categoryName, setCategoryName] = useState('')
   const [categoryType, setCategoryType] = useState<TransactionType>('expense')
   const [categoryMonthlyPlan, setCategoryMonthlyPlan] = useState('')
@@ -99,12 +110,30 @@ export function ReferenceDataSettings({
 
   async function addAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const opening = parseOptionalOpeningBalance(
+      accountOpeningBalance,
+      accountOpeningBalanceOn,
+      locale,
+    )
+    if (!opening) {
+      setFeedback(message('invalidOpeningBalance'))
+      setFeedbackError(true)
+      return
+    }
     const saved = await mutate(
       'account-new',
-      () => actionData(createAccountAction({ name: accountName, type: accountType })),
+      () => actionData(createAccountAction({
+        name: accountName,
+        type: accountType,
+        ...opening,
+      })),
       'referenceCreated',
     )
-    if (saved) setAccountName('')
+    if (saved) {
+      setAccountName('')
+      setAccountOpeningBalance('')
+      setAccountOpeningBalanceOn('')
+    }
   }
 
   async function addCategory(event: FormEvent<HTMLFormElement>) {
@@ -167,12 +196,21 @@ export function ReferenceDataSettings({
       setFeedbackError(true)
       return
     }
+    const opening = editor.kind === 'account'
+      ? parseOptionalOpeningBalance(editor.openingBalance, editor.openingBalanceOn, locale)
+      : null
+    if (editor.kind === 'account' && !opening) {
+      setFeedback(message('invalidOpeningBalance'))
+      setFeedbackError(true)
+      return
+    }
     const saved = editor.kind === 'account'
       ? await mutate(
           `account-${editor.id}`,
           () => actionData(updateAccountAction(editor.id, {
             name,
             type: editor.type,
+            ...(opening ?? { openingBalanceMinor: null, openingBalanceOn: null }),
             updatedAt: editor.updatedAt,
           })),
           'referenceUpdated',
@@ -200,6 +238,14 @@ export function ReferenceDataSettings({
       rawName: account.name,
       type: account.type,
       originalType: account.type,
+      openingBalance: account.openingBalanceMinor === null
+        ? ''
+        : formatSignedAmountInput(account.openingBalanceMinor, locale),
+      originalOpeningBalance: account.openingBalanceMinor === null
+        ? ''
+        : formatSignedAmountInput(account.openingBalanceMinor, locale),
+      openingBalanceOn: account.openingBalanceOn ?? '',
+      originalOpeningBalanceOn: account.openingBalanceOn ?? '',
       updatedAt: account.updatedAt,
     })
   }
@@ -267,6 +313,29 @@ export function ReferenceDataSettings({
                 ))}
               </select>
             </label>
+            <label>
+              <span>{t('openingBalanceOptional')}</span>
+              <input
+                type={privacyMode ? 'password' : 'text'}
+                inputMode="decimal"
+                autoComplete="off"
+                maxLength={80}
+                value={accountOpeningBalance}
+                onChange={(event) => setAccountOpeningBalance(event.target.value)}
+                placeholder={t('openingBalancePlaceholder')}
+                disabled={!enabled || busy !== null}
+              />
+            </label>
+            <label>
+              <span>{t('openingBalanceOnOptional')}</span>
+              <input
+                type="date"
+                value={accountOpeningBalanceOn}
+                onChange={(event) => setAccountOpeningBalanceOn(event.target.value)}
+                disabled={!enabled || busy !== null}
+              />
+              <small>{t('openingBalanceHelp')}</small>
+            </label>
             <button className="button button-secondary" type="submit" disabled={!enabled || busy !== null}>
               <Plus aria-hidden="true" />
               {busy === 'account-new' ? t('saving') : t('addAccount')}
@@ -278,7 +347,12 @@ export function ReferenceDataSettings({
               <li key={account.id}>
                 <ReferenceRow
                   name={localizeEntityName(account.name, account.localizationKey)}
-                  detail={accountTypeLabel(t, account.type)}
+                  detail={`${accountTypeLabel(t, account.type)} · ${account.openingBalanceMinor === null
+                    ? t('balanceFromRecordedHistory')
+                    : t('openingBalanceValue', {
+                        amount: formatMoney(account.openingBalanceMinor),
+                        date: account.openingBalanceOn ?? '',
+                      })}`}
                   active={account.isActive}
                   editing={editor?.kind === 'account' && editor.id === account.id}
                   disabled={
@@ -353,7 +427,10 @@ export function ReferenceDataSettings({
               <label>
                 <span>{t('monthlySpendingPlanOptional')}</span>
                 <input
+                  type={privacyMode ? 'password' : 'text'}
                   inputMode="decimal"
+                  autoComplete="off"
+                  maxLength={80}
                   value={categoryMonthlyPlan}
                   onChange={(event) => setCategoryMonthlyPlan(event.target.value)}
                   placeholder={t('monthlySpendingPlanPlaceholder')}
@@ -503,11 +580,13 @@ type EditorFormProps = {
 }
 
 function EditorForm({ editor, busy, onChange, onCancel, onSubmit }: EditorFormProps) {
-  const { t } = useI18n()
+  const { privacyMode, t } = useI18n()
   const unchanged = editor.name.trim() === editor.originalDisplayName
     && (editor.kind === 'category'
       ? editor.monthlyPlan.trim() === editor.originalMonthlyPlan
-      : editor.type === editor.originalType)
+      : editor.type === editor.originalType
+        && editor.openingBalance.trim() === editor.originalOpeningBalance
+        && editor.openingBalanceOn === editor.originalOpeningBalanceOn)
   return (
     <form className="reference-editor" onSubmit={onSubmit}>
       <label>
@@ -522,23 +601,51 @@ function EditorForm({ editor, busy, onChange, onCancel, onSubmit }: EditorFormPr
         />
       </label>
       {editor.kind === 'account' ? (
-        <label>
-          <span>{t('accountType')}</span>
-          <select
-            value={editor.type}
-            onChange={(event) => onChange({ ...editor, type: event.target.value as AccountType })}
-            disabled={busy}
-          >
-            {accountTypes.map((type) => (
-              <option value={type} key={type}>{accountTypeLabel(t, type)}</option>
-            ))}
-          </select>
-        </label>
+        <>
+          <label>
+            <span>{t('accountType')}</span>
+            <select
+              value={editor.type}
+              onChange={(event) => onChange({ ...editor, type: event.target.value as AccountType })}
+              disabled={busy}
+            >
+              {accountTypes.map((type) => (
+                <option value={type} key={type}>{accountTypeLabel(t, type)}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{t('openingBalanceOptional')}</span>
+            <input
+              type={privacyMode ? 'password' : 'text'}
+              inputMode="decimal"
+              autoComplete="off"
+              maxLength={80}
+              value={editor.openingBalance}
+              onChange={(event) => onChange({ ...editor, openingBalance: event.target.value })}
+              placeholder={t('openingBalancePlaceholder')}
+              disabled={busy}
+            />
+          </label>
+          <label>
+            <span>{t('openingBalanceOnOptional')}</span>
+            <input
+              type="date"
+              value={editor.openingBalanceOn}
+              onChange={(event) => onChange({ ...editor, openingBalanceOn: event.target.value })}
+              disabled={busy}
+            />
+            <small>{t('openingBalanceHelp')}</small>
+          </label>
+        </>
       ) : editor.type === 'expense' ? (
         <label>
           <span>{t('monthlySpendingPlanOptional')}</span>
           <input
+            type={privacyMode ? 'password' : 'text'}
             inputMode="decimal"
+            autoComplete="off"
+            maxLength={80}
             value={editor.monthlyPlan}
             onChange={(event) => onChange({ ...editor, monthlyPlan: event.target.value })}
             placeholder={t('monthlySpendingPlanPlaceholder')}
@@ -575,6 +682,23 @@ function parseOptionalMonthlyPlan(value: string, locale: string) {
   if (!value.trim()) return null
   try {
     return parseAmount(value, locale)
+  } catch {
+    return undefined
+  }
+}
+
+function parseOptionalOpeningBalance(balance: string, on: string, locale: string) {
+  const trimmedBalance = balance.trim()
+  const trimmedOn = on.trim()
+  if (!trimmedBalance && !trimmedOn) {
+    return { openingBalanceMinor: null, openingBalanceOn: null }
+  }
+  if (!trimmedBalance || !trimmedOn) return undefined
+  try {
+    return {
+      openingBalanceMinor: parseSignedAmount(trimmedBalance, locale),
+      openingBalanceOn: trimmedOn,
+    }
   } catch {
     return undefined
   }

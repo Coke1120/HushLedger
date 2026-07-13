@@ -54,7 +54,7 @@ function decimalTokenToRational(token: string): Rational {
   return rational(BigInt(`${major}${fraction}`), denominator)
 }
 
-export function evaluateAmountExpression(expression: string) {
+export function evaluateAmountExpression(expression: string, allowSignedResult = false) {
   if (expression.length === 0 || expression.length > maxExpressionLength) {
     throw new Error('Amount calculation is outside the supported length')
   }
@@ -115,13 +115,20 @@ export function evaluateAmountExpression(expression: string) {
   const result = parseExpression()
   skipSpaces()
   if (index !== expression.length) throw new Error('Amount calculation contains unsupported text')
-  if (result.numerator <= 0n) throw new Error('Amount must be greater than zero')
+  if (!allowSignedResult && result.numerator <= 0n) {
+    throw new Error('Amount must be greater than zero')
+  }
 
-  const scaledNumerator = result.numerator * 100n
+  const sign = result.numerator < 0n ? -1n : 1n
+  const scaledNumerator = (result.numerator < 0n ? -result.numerator : result.numerator) * 100n
   const quotient = scaledNumerator / result.denominator
   const remainder = scaledNumerator % result.denominator
-  const roundedMinor = remainder * 2n >= result.denominator ? quotient + 1n : quotient
-  if (roundedMinor <= 0n || roundedMinor > BigInt(Number.MAX_SAFE_INTEGER)) {
+  const magnitude = remainder * 2n >= result.denominator ? quotient + 1n : quotient
+  const roundedMinor = magnitude * sign
+  if (
+    (!allowSignedResult && roundedMinor <= 0n)
+    || magnitude > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
     throw new Error('Amount exceeds the safe integer range')
   }
   return Number(roundedMinor)

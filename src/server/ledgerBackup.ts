@@ -76,6 +76,8 @@ const accountQuery = `
     is_active AS isActive,
     sort_order AS sortOrder,
     localization_key AS localizationKey,
+    opening_balance_minor AS openingBalanceMinor,
+    opening_balance_on AS openingBalanceOn,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM accounts
@@ -180,7 +182,8 @@ const revisionQuery = 'SELECT revision FROM ledger_state WHERE id = 1'
 
 const accountInsert = `
   INSERT INTO accounts(
-    id, name, type, currency, is_active, sort_order, localization_key, created_at, updated_at
+    id, name, type, currency, is_active, sort_order, localization_key,
+    opening_balance_minor, opening_balance_on, created_at, updated_at
   )
   SELECT
     json_extract(value, '$.id'),
@@ -190,6 +193,8 @@ const accountInsert = `
     json_extract(value, '$.isActive'),
     json_extract(value, '$.sortOrder'),
     json_extract(value, '$.localizationKey'),
+    json_extract(value, '$.openingBalanceMinor'),
+    json_extract(value, '$.openingBalanceOn'),
     json_extract(value, '$.createdAt'),
     json_extract(value, '$.updatedAt')
   FROM json_each(?)

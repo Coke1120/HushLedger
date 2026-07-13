@@ -520,6 +520,133 @@ textarea:focus-visible {
   background: #f7edce;
 }
 
+.account-balances-heading-icon {
+  color: #315f75;
+  background: #e7f1f5;
+}
+
+.account-balances-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.account-balances-list > li {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-balances-list > li.is-inactive {
+  opacity: 0.72;
+}
+
+.account-balance-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 2fr) auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.account-balance-name,
+.account-balance-values div {
+  min-width: 0;
+}
+
+.account-balance-name strong,
+.account-balance-name span,
+.account-balance-values dt,
+.account-balance-values dd {
+  display: block;
+}
+
+.account-balance-name strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-balance-name span,
+.account-balance-values dt,
+.account-balance-unavailable,
+.statement-comparison-result {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-balance-values {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.account-balance-values dt {
+  margin-bottom: 4px;
+}
+
+.account-balance-values dd {
+  overflow: hidden;
+  margin: 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-balance-unavailable {
+  margin: 0;
+}
+
+.account-reconcile-button {
+  white-space: nowrap;
+}
+
+.statement-comparison {
+  display: grid;
+  padding: 14px;
+  margin-top: 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.statement-comparison label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.statement-comparison input {
+  width: 100%;
+}
+
+.statement-comparison-result {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+
+.statement-comparison-result strong {
+  color: var(--ink);
+}
+
+.statement-comparison-result .is-match {
+  color: var(--income);
+}
+
+.statement-comparison-result .is-error {
+  color: var(--expense);
+}
+
 .category-spending-heading h2,
 .category-spending-heading p,
 .category-spending-more {
@@ -4463,6 +4590,32 @@ textarea:focus-visible {
     padding-inline: 4px;
   }
 
+  .account-balance-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .account-balance-values {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    gap: 8px;
+  }
+
+  .account-balance-unavailable {
+    grid-column: 1 / -1;
+  }
+
+  .account-reconcile-button {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .statement-comparison {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
   .transactions-panel {
     border-radius: 14px;
     box-shadow: none;
@@ -4862,6 +5015,26 @@ textarea:focus-visible {
 
   .summary-balance strong {
     font-size: 31px;
+  }
+
+  .account-balance-values {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-balance-values div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .account-balance-values dt {
+    margin-bottom: 0;
+  }
+
+  .account-balance-values dd {
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .form-grid {

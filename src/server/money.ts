@@ -8,6 +8,7 @@ import {
 import { buildMonthlySpendingTrend } from '../lib/spendingTrend'
 import type {
   Account,
+  AccountBalance,
   AccountLocalizationKey,
   Category,
   CategoryLocalizationKey,
@@ -142,12 +143,104 @@ export async function listAccounts(database: D1Database): Promise<Account[]> {
       is_active AS isActive,
       sort_order AS sortOrder,
       localization_key AS localizationKey,
+      opening_balance_minor AS openingBalanceMinor,
+      opening_balance_on AS openingBalanceOn,
       updated_at AS updatedAt
     FROM accounts
     ORDER BY is_active DESC, sort_order ASC, id ASC
   `).all<AccountRow>()
 
   return result.results.map((row) => ({ ...row, isActive: row.isActive === 1 }))
+}
+
+type AccountBalanceRow = Omit<AccountBalance, 'isActive'> & { isActive: number }
+
+export async function listAccountBalances(
+  database: D1Database,
+  month: string,
+): Promise<AccountBalance[]> {
+  const { end } = monthRangeDates(month)
+  const result = await database.prepare(`
+    WITH movements AS (
+      SELECT
+        account_id AS accountId,
+        occurred_on AS occurredOn,
+        CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END AS recordedAmount,
+        CASE
+          WHEN cleared = 1 THEN CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END
+          ELSE 0
+        END AS clearedAmount
+      FROM transactions
+
+      UNION ALL
+
+      SELECT
+        from_account_id AS accountId,
+        occurred_on AS occurredOn,
+        -amount_minor AS recordedAmount,
+        CASE WHEN from_cleared = 1 THEN -amount_minor ELSE 0 END AS clearedAmount
+      FROM account_transfers
+
+      UNION ALL
+
+      SELECT
+        to_account_id AS accountId,
+        occurred_on AS occurredOn,
+        amount_minor AS recordedAmount,
+        CASE WHEN to_cleared = 1 THEN amount_minor ELSE 0 END AS clearedAmount
+      FROM account_transfers
+    ), totals AS (
+      SELECT
+        account.id AS accountId,
+        COALESCE(SUM(CASE
+          WHEN movement.occurredOn < ?
+            AND (account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on)
+          THEN movement.recordedAmount
+          ELSE 0
+        END), 0) AS recordedMovement,
+        COALESCE(SUM(CASE
+          WHEN movement.occurredOn < ?
+            AND (account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on)
+          THEN movement.clearedAmount
+          ELSE 0
+        END), 0) AS clearedMovement
+      FROM accounts AS account
+      LEFT JOIN movements AS movement ON movement.accountId = account.id
+      GROUP BY account.id
+    )
+    SELECT
+      account.id AS accountId,
+      account.name AS accountName,
+      account.localization_key AS accountLocalizationKey,
+      account.type AS accountType,
+      account.is_active AS isActive,
+      account.opening_balance_minor AS openingBalanceMinor,
+      account.opening_balance_on AS openingBalanceOn,
+      CASE
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        ELSE COALESCE(account.opening_balance_minor, 0) + totals.recordedMovement
+      END AS recordedBalance,
+      CASE
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        ELSE COALESCE(account.opening_balance_minor, 0) + totals.clearedMovement
+      END AS clearedBalance,
+      CASE
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        ELSE totals.recordedMovement - totals.clearedMovement
+      END AS unclearedBalance
+    FROM accounts AS account
+    INNER JOIN totals ON totals.accountId = account.id
+    ORDER BY account.is_active DESC, account.sort_order ASC, account.id ASC
+  `).bind(end, end, end, end, end).all<AccountBalanceRow>()
+
+  return result.results.map((row) => {
+    for (const value of [row.recordedBalance, row.clearedBalance, row.unclearedBalance]) {
+      if (value !== null && !Number.isSafeInteger(value)) {
+        throw new Error('Account balance exceeds the safe integer range')
+      }
+    }
+    return { ...row, isActive: row.isActive === 1 }
+  })
 }
 
 export async function listCategories(database: D1Database): Promise<Category[]> {

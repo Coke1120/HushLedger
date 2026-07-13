@@ -295,6 +295,12 @@ After the private ledger is working, open Settings and download a full-ledger
 JSON backup. It is plaintext financial data: keep it in encrypted storage and
 download a fresh copy before migrations or an in-app restore.
 
+If you only imported part of an account’s history, edit that account in Settings
+and enter the statement balance immediately before the chosen start date. Enter
+both the signed balance and date; leaving both blank calculates from all recorded
+history. The Overview statement comparison is a read-only check and stores
+nothing by itself.
+
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).
 

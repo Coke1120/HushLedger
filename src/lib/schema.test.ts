@@ -30,8 +30,16 @@ describe('reference data validation', () => {
     assert.deepEqual(accountCreateSchema.parse({ name: 'Savings', type: 'bank' }), {
       name: 'Savings',
       type: 'bank',
+      openingBalanceMinor: null,
+      openingBalanceOn: null,
     })
-    assert.equal(accountUpdateSchema.safeParse({ name: 'Cash', type: 'cash', updatedAt }).success, true)
+    assert.equal(accountUpdateSchema.safeParse({
+      name: 'Cash',
+      type: 'cash',
+      openingBalanceMinor: -12_345,
+      openingBalanceOn: '2026-07-01',
+      updatedAt,
+    }).success, true)
     assert.deepEqual(categoryCreateSchema.parse({
       name: 'Education',
       type: 'expense',
@@ -62,6 +70,18 @@ describe('reference data validation', () => {
   it('rejects empty names, unknown types, and extra fields', () => {
     assert.equal(accountCreateSchema.safeParse({ name: ' ', type: 'bank' }).success, false)
     assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan' }).success, false)
+    assert.equal(accountCreateSchema.safeParse({
+      name: 'Card',
+      type: 'credit_card',
+      openingBalanceMinor: -10_000,
+    }).success, false)
+    assert.equal(accountUpdateSchema.safeParse({
+      name: 'Cash',
+      type: 'cash',
+      openingBalanceMinor: null,
+      openingBalanceOn: '2026-07-01',
+      updatedAt,
+    }).success, false)
     assert.equal(categoryCreateSchema.safeParse({ name: 'Food', type: 'transfer' }).success, false)
     assert.equal(
       categoryCreateSchema.safeParse({

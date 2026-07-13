@@ -32,6 +32,8 @@ const accountSelect = `
     is_active AS isActive,
     sort_order AS sortOrder,
     localization_key AS localizationKey,
+    opening_balance_minor AS openingBalanceMinor,
+    opening_balance_on AS openingBalanceOn,
     updated_at AS updatedAt
   FROM accounts
 `
@@ -172,18 +174,29 @@ export async function createAccountReference(
   input: AccountCreateInput,
 ): Promise<ReferenceMutationResult<Account>> {
   const inserted = await database.prepare(`
-    INSERT OR IGNORE INTO accounts(name, type, currency, is_active, sort_order, localization_key)
+    INSERT OR IGNORE INTO accounts(
+      name, type, currency, is_active, sort_order, localization_key,
+      opening_balance_minor, opening_balance_on
+    )
     SELECT
       ?,
       ?,
       'HKD',
       1,
       COALESCE((SELECT MAX(sort_order) + 10 FROM accounts), 10),
-      NULL
+      NULL,
+      ?,
+      ?
     WHERE NOT EXISTS (
       SELECT 1 FROM accounts WHERE name = ? COLLATE NOCASE
     )
-  `).bind(input.name, input.type, input.name).run()
+  `).bind(
+    input.name,
+    input.type,
+    input.openingBalanceMinor,
+    input.openingBalanceOn,
+    input.name,
+  ).run()
 
   if (Number(inserted.meta.changes) === 0) return { kind: 'name_conflict' }
   const item = await getAccountByName(database, input.name)
@@ -201,6 +214,8 @@ export async function updateAccountReference(
     SET
       name = ?,
       type = ?,
+      opening_balance_minor = ?,
+      opening_balance_on = ?,
       localization_key = CASE WHEN name = ? THEN localization_key ELSE NULL END,
       updated_at = ${nextUpdatedAt}
     WHERE id = ? AND updated_at = ?
@@ -209,7 +224,17 @@ export async function updateAccountReference(
         FROM accounts AS other
         WHERE other.name = ? COLLATE NOCASE AND other.id <> ?
       )
-  `).bind(input.name, input.type, input.name, id, input.updatedAt, input.name, id).run()
+  `).bind(
+    input.name,
+    input.type,
+    input.openingBalanceMinor,
+    input.openingBalanceOn,
+    input.name,
+    id,
+    input.updatedAt,
+    input.name,
+    id,
+  ).run()
 
   if (Number(updated.meta.changes) === 0) {
     return diagnoseAccountMutation(database, id, input.updatedAt, input.name)
