@@ -17,6 +17,7 @@ import {
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
+  transactionClearingBatchSchema,
   transactionDuplicateCheckSchema,
   transactionInputSchema,
   transactionQuerySchema,
@@ -168,6 +169,38 @@ describe('transaction validation', () => {
     const updatedAt = '2026-07-11T10:30:00.000Z'
     assert.equal(transactionUpdateSchema.safeParse({ ...fields, updatedAt }).success, true)
     assert.equal(transactionDeleteSchema.safeParse({ updatedAt }).success, true)
+  })
+
+  it('accepts only bounded, unique transaction versions for bulk clearing', () => {
+    const updatedAt = '2026-07-11T10:30:00.000Z'
+    const transactions = [
+      { id: valid.id, updatedAt },
+      { id: '019f5087-229b-7ce3-a76f-95c833dcf252', updatedAt },
+    ]
+    assert.deepEqual(transactionClearingBatchSchema.parse({ cleared: true, transactions }), {
+      cleared: true,
+      transactions,
+    })
+    assert.equal(transactionClearingBatchSchema.safeParse({ cleared: true, transactions: [] }).success, false)
+    assert.equal(transactionClearingBatchSchema.safeParse({
+      cleared: false,
+      transactions: [transactions[0], transactions[0]],
+    }).success, false)
+    assert.equal(transactionClearingBatchSchema.safeParse({
+      cleared: false,
+      transactions: [{ ...transactions[0], updatedAt: 'yesterday' }],
+    }).success, false)
+    assert.equal(transactionClearingBatchSchema.safeParse({
+      cleared: false,
+      transactions: [{ ...transactions[0], note: 'not accepted' }],
+    }).success, false)
+    assert.equal(transactionClearingBatchSchema.safeParse({
+      cleared: false,
+      transactions: Array.from({ length: 201 }, (_, index) => ({
+        id: `30000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+        updatedAt,
+      })),
+    }).success, false)
   })
 
   it('rejects an update that tries to replace its immutable ID', () => {

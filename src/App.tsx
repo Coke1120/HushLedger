@@ -108,6 +108,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     refresh: refreshMoneyData,
     removeTransaction,
     removeAccountTransfer,
+    setSelectedTransactionsClearing,
     saveAccountTransfer,
     saveTransaction: saveMoneyTransaction,
   } = data
@@ -589,12 +590,27 @@ function App({ initialMonth }: { initialMonth: string }) {
             ) : null}
             {registerAccountId === null ? (
               <TransactionList
+                key={[
+                  month,
+                  view,
+                  filter,
+                  clearingFilter,
+                  accountFilterId,
+                  categoryFilterId,
+                  deferredSearch,
+                  tagFilter,
+                  duplicatesOnly,
+                  transactionSort,
+                ].join('|')}
                 transactions={transactions}
                 loading={loading}
                 tagFilter={tagFilter}
                 duplicateReview={duplicatesOnly}
+                allowBulkActions={view === 'transactions'}
+                saving={data.saving}
                 onEdit={openTransaction}
                 onTagSelect={changeTagFilter}
+                onSetClearing={setSelectedTransactionsClearing}
               />
             ) : null}
           </section>

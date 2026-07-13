@@ -18,6 +18,7 @@ import {
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
+  transactionClearingBatchSchema,
   transactionIdSchema,
   transactionInputSchema,
   transactionUpdateSchema,
@@ -37,6 +38,7 @@ import { sanitizeValidationIssues } from '../server/http'
 import {
   createTransaction,
   deleteTransaction,
+  setTransactionsClearing,
   updateTransaction,
   type TransactionView,
   type UpdateTransactionResult,
@@ -258,6 +260,26 @@ export async function deleteTransactionAction(
       return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
     }
     return revalidatedSuccess({ id: result.id, deleted: true })
+  })
+}
+
+export async function setTransactionsClearingAction(
+  input: unknown,
+): Promise<ActionResult<{ updated: number; cleared: boolean }>> {
+  const denied = await accessDenied<{ updated: number; cleared: boolean }>()
+  if (denied) return denied
+
+  const parsed = transactionClearingBatchSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('批次交易狀態資料不正確', parsed.error.issues)
+  }
+
+  return runAction('set_transactions_clearing', async () => {
+    const result = await setTransactionsClearing(await getDatabase(), parsed.data)
+    if (result.kind === 'version_conflict') {
+      return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
+    }
+    return revalidatedSuccess({ updated: result.count, cleared: parsed.data.cleared })
   })
 }
 

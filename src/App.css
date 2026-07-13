@@ -1489,6 +1489,44 @@ textarea:focus-visible {
   list-style: none;
 }
 
+.transaction-bulk-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  background: var(--surface-soft);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-bulk-toolbar.is-active {
+  justify-content: space-between;
+}
+
+.transaction-selected-count {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.transaction-bulk-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.transaction-bulk-toolbar .button {
+  min-height: 40px;
+}
+
+.transaction-bulk-toolbar svg {
+  width: 17px;
+  height: 17px;
+}
+
 .account-transfers {
   margin: 0 24px 20px;
   overflow: hidden;
@@ -2042,6 +2080,10 @@ button.account-register-row:focus-visible {
   background: #fbfcfb;
 }
 
+.transaction-row.is-selected {
+  background: var(--income-soft);
+}
+
 .transaction-row:focus-visible {
   position: relative;
   z-index: 1;
@@ -2061,6 +2103,27 @@ button.account-register-row:focus-visible {
   width: 20px;
   height: 20px;
   stroke-width: 2;
+}
+
+.transaction-selection-indicator {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  color: #ffffff;
+  background: var(--surface);
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.transaction-selection-indicator.is-selected {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.transaction-selection-indicator svg {
+  width: 20px;
+  height: 20px;
 }
 
 .transaction-main {
@@ -5356,10 +5419,38 @@ button.account-register-row:focus-visible {
     padding: 13px 14px;
   }
 
+  .transaction-bulk-toolbar,
+  .transaction-bulk-toolbar.is-active {
+    align-items: stretch;
+    padding: 12px 14px;
+    flex-direction: column;
+  }
+
+  .transaction-bulk-toolbar > .button,
+  .transaction-bulk-buttons .button {
+    width: 100%;
+  }
+
+  .transaction-bulk-buttons {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .transaction-bulk-buttons .button:first-child,
+  .transaction-bulk-buttons .button:last-child {
+    grid-column: 1 / -1;
+  }
+
   .category-icon {
     grid-row: 1 / 3;
     width: 40px;
     height: 40px;
+  }
+
+  .transaction-selection-indicator {
+    width: 40px;
+    height: 40px;
+    grid-row: 1 / 3;
   }
 
   .transaction-main {

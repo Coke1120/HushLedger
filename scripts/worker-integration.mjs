@@ -1428,6 +1428,75 @@ async function verifyWorkerApi() {
   assert.equal(referenceFilteredCsvExport.response.status, 200)
   assert.equal(referenceFilteredCsvExport.payload.trimEnd().split('\r\n').length - 1, 205)
 
+  const bulkClearingIds = [
+    '30000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000002',
+  ]
+  const bulkClearingBefore = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkClearingBefore.every(({ response, payload }) => (
+    response.status === 200 && payload.data.cleared === true
+  )))
+  const bulkClearingVersions = bulkClearingBefore.map(({ payload }) => ({
+    id: payload.data.id,
+    updatedAt: payload.data.updatedAt,
+  }))
+  const crossOriginBulkClearing = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    origin: 'https://attacker.invalid',
+    body: { cleared: false, transactions: bulkClearingVersions },
+  })
+  assert.equal(crossOriginBulkClearing.response.status, 403)
+  assert.equal(crossOriginBulkClearing.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const duplicateBulkClearing = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: { cleared: false, transactions: [bulkClearingVersions[0], bulkClearingVersions[0]] },
+  })
+  assert.equal(duplicateBulkClearing.response.status, 400)
+  assert.equal(duplicateBulkClearing.payload.error.code, 'VALIDATION_ERROR')
+
+  const unclearedBulk = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: { cleared: false, transactions: bulkClearingVersions },
+  })
+  assert.equal(unclearedBulk.response.status, 200, JSON.stringify(unclearedBulk.payload))
+  assert.deepEqual(unclearedBulk.payload.data, { updated: 2, cleared: false })
+  const bulkClearingAfter = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkClearingAfter.every(({ payload }) => payload.data.cleared === false))
+  const currentBulkClearingVersions = bulkClearingAfter.map(({ payload }) => ({
+    id: payload.data.id,
+    updatedAt: payload.data.updatedAt,
+  }))
+  const staleBulkClearing = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: {
+      cleared: true,
+      transactions: [bulkClearingVersions[0], currentBulkClearingVersions[1]],
+    },
+  })
+  assert.equal(staleBulkClearing.response.status, 409)
+  assert.equal(staleBulkClearing.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+  const bulkClearingAfterConflict = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkClearingAfterConflict.every(({ payload }) => payload.data.cleared === false))
+
+  const restoredBulkClearing = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: {
+      cleared: true,
+      transactions: bulkClearingAfterConflict.map(({ payload }) => ({
+        id: payload.data.id,
+        updatedAt: payload.data.updatedAt,
+      })),
+    },
+  })
+  assert.equal(restoredBulkClearing.response.status, 200)
+  assert.deepEqual(restoredBulkClearing.payload.data, { updated: 2, cleared: true })
+
   const transaction = {
     id: '10000000-0000-4000-8000-000000000001',
     type: 'expense',
@@ -2328,6 +2397,8 @@ async function verifyWorkerApi() {
     transactionFilterSummaries: 3,
     transactionDuplicateChecks: 5,
     transactionDuplicateReviews: 4,
+    transactionBulkClearingGuards: 3,
+    transactionBulkClearingWrites: 2,
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,

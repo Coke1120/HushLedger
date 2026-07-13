@@ -48,6 +48,33 @@ export const transactionDeleteSchema = z
   .object({ updatedAt: z.string().datetime({ offset: true }) })
   .strict()
 
+const transactionVersionSchema = z
+  .object({
+    id: transactionIdSchema,
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+
+export const transactionClearingBatchSchema = z
+  .object({
+    cleared: z.boolean(),
+    transactions: z.array(transactionVersionSchema).min(1).max(200),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const ids = new Set<string>()
+    value.transactions.forEach((transaction, index) => {
+      if (ids.has(transaction.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['transactions', index, 'id'],
+          message: '每筆交易只能選取一次',
+        })
+      }
+      ids.add(transaction.id)
+    })
+  })
+
 export const transactionDuplicateCheckSchema = transactionFieldsSchema
   .extend({ excludeId: transactionIdSchema.optional() })
   .strict()
@@ -132,6 +159,7 @@ export const transactionQuerySchema = z
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
+export type TransactionClearingBatchInput = z.infer<typeof transactionClearingBatchSchema>
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
 export type AccountTransferUpdateInput = z.infer<typeof accountTransferUpdateSchema>

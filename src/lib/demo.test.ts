@@ -6,6 +6,7 @@ import {
   deleteDemo,
   demoSummary,
   getDemoTransactions,
+  setDemoTransactionsClearing,
   summarizeDemoTransactions,
   updateDemo,
 } from './demo'
@@ -56,6 +57,43 @@ describe('localized demo data', () => {
 
     assert.equal(uncleared.length, 1)
     assert.equal(uncleared[0]?.cleared, false)
+  })
+
+  it('changes selected clearing states atomically with version checks', () => {
+    const originals = getDemoTransactions('2026-07', 'all', '').filter(({ cleared }) => cleared).slice(0, 2)
+    assert.equal(originals.length, 2)
+    const versions = originals.map(({ id, updatedAt }) => ({ id, updatedAt }))
+
+    try {
+      assert.deepEqual(setDemoTransactionsClearing({
+        cleared: false,
+        transactions: versions.map((version, index) => (
+          index === 1 ? { ...version, updatedAt: '2026-01-01T00:00:00.000Z' } : version
+        )),
+      }), { kind: 'version_conflict' })
+      assert(originals.every(({ id }) => (
+        getDemoTransactions('2026-07', 'all', '').find((item) => item.id === id)?.cleared === true
+      )))
+
+      assert.deepEqual(setDemoTransactionsClearing({ cleared: false, transactions: versions }), {
+        kind: 'updated',
+        count: 2,
+      })
+      assert(originals.every(({ id }) => (
+        getDemoTransactions('2026-07', 'all', '').find((item) => item.id === id)?.cleared === false
+      )))
+    } finally {
+      const current = getDemoTransactions('2026-07', 'all', '')
+      const restored = setDemoTransactionsClearing({
+        cleared: true,
+        transactions: originals.map(({ id }) => {
+          const transaction = current.find((item) => item.id === id)
+          assert(transaction)
+          return { id, updatedAt: transaction.updatedAt }
+        }),
+      })
+      assert.equal(restored.kind, 'updated')
+    }
   })
 
   it('sorts demo transactions with the same bounded ordering choices as the live ledger', () => {

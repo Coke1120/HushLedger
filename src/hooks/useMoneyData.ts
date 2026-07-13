@@ -4,6 +4,7 @@ import {
   createTransactionAction,
   deleteAccountTransferAction,
   deleteTransactionAction,
+  setTransactionsClearingAction,
   updateAccountTransferAction,
   updateTransactionAction,
 } from '../app/actions'
@@ -18,6 +19,7 @@ import {
   demoNetWorthTrend,
   demoSummary,
   getDemoTransactions,
+  setDemoTransactionsClearing,
   summarizeDemoTransactions,
   updateDemo,
 } from '../lib/demo'
@@ -298,6 +300,59 @@ export function useMoneyData(
     [accountId, categoryId, duplicatesOnly, month, refresh, search, sort, source, status, tag, type],
   )
 
+  const setSelectedTransactionsClearing = useCallback(
+    async (transactions: Transaction[], cleared: boolean) => {
+      if (submitting.current || transactions.length === 0) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      const input = {
+        cleared,
+        transactions: transactions.map(({ id, updatedAt }) => ({ id, updatedAt })),
+      }
+
+      try {
+        if (!navigator.onLine) {
+          setSaveError(message('transactionOfflineError'))
+          return false
+        }
+
+        if (source === 'demo') {
+          const result = setDemoTransactionsClearing(input)
+          if (result.kind === 'version_conflict') {
+            setSaveError(message('errorTransactionVersionConflict'))
+            return false
+          }
+          setSnapshot(demoSnapshot(
+            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly,
+          ))
+        } else {
+          await actionData(setTransactionsClearingAction(input))
+          const refreshed = await refresh(false)
+          if (!refreshed) {
+            setActionMessage(message('transactionSavedRefreshFailed'))
+            return true
+          }
+        }
+
+        setActionMessage(message('bulkTransactionsClearingUpdated', {
+          count: transactions.length,
+          status: message(cleared ? 'cleared' : 'uncleared'),
+        }))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transactionBulkClearingFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [accountId, categoryId, duplicatesOnly, month, refresh, search, sort, source, status, tag, type],
+  )
+
   const saveAccountTransfer = useCallback(
     async (input: AccountTransferInput, original?: AccountTransfer) => {
       if (submitting.current) return false
@@ -403,6 +458,7 @@ export function useMoneyData(
     refresh,
     saveTransaction,
     removeTransaction,
+    setSelectedTransactionsClearing,
     saveAccountTransfer,
     removeAccountTransfer,
     clearActionMessage,

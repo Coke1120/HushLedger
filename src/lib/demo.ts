@@ -12,6 +12,7 @@ import type {
   MonthlySpendingSummary,
   Summary,
   Transaction,
+  TransactionClearingBatchInput,
   TransactionClearingStatus,
   TransactionFilterSummary,
   TransactionInput,
@@ -403,6 +404,23 @@ export function updateDemo(input: TransactionInput) {
   editedDemoTransactionIds.add(input.id)
   demoTransactions = demoTransactions.map((item) => item.id === input.id ? transaction : item)
   return transaction
+}
+
+export function setDemoTransactionsClearing(input: TransactionClearingBatchInput) {
+  const currentById = new Map(demoTransactions.map((transaction) => [transaction.id, transaction]))
+  const allCurrent = input.transactions.every(({ id, updatedAt }) => (
+    currentById.get(id)?.updatedAt === updatedAt
+  ))
+  if (!allCurrent) return { kind: 'version_conflict' as const }
+
+  const selectedIds = new Set(input.transactions.map(({ id }) => id))
+  const updatedAt = new Date().toISOString()
+  demoTransactions = demoTransactions.map((transaction) => (
+    selectedIds.has(transaction.id)
+      ? { ...transaction, cleared: input.cleared, updatedAt }
+      : transaction
+  ))
+  return { kind: 'updated' as const, count: input.transactions.length }
 }
 
 export function deleteDemo(id: string) {

@@ -20,6 +20,7 @@ import type {
   PayeeSuggestion,
   Summary,
   Transaction,
+  TransactionClearingBatchInput,
   TransactionClearingStatus,
   TransactionFilterSummary,
   TransactionInput,
@@ -102,6 +103,10 @@ export type UpdateTransactionResult =
 export type DeleteTransactionResult =
   | { kind: 'deleted'; id: string }
   | { kind: 'not_found' }
+  | { kind: 'version_conflict' }
+
+export type SetTransactionsClearingResult =
+  | { kind: 'updated'; count: number }
   | { kind: 'version_conflict' }
 
 const transactionSelect = `
@@ -606,6 +611,49 @@ export async function updateTransaction(
   const transaction = await getTransaction(database, id)
   if (!transaction) throw new Error('Transaction update did not produce a row')
   return { kind: 'updated', transaction }
+}
+
+export async function setTransactionsClearing(
+  database: D1Database,
+  input: TransactionClearingBatchInput,
+): Promise<SetTransactionsClearingResult> {
+  const desired = JSON.stringify(input.transactions)
+  const updated = await database.prepare(`
+    WITH
+    desired AS (
+      SELECT
+        json_extract(value, '$.id') AS desired_id,
+        json_extract(value, '$.updatedAt') AS expected_updated_at
+      FROM json_each(?)
+    ),
+    clearing_guard AS (
+      SELECT
+        (SELECT COUNT(*) FROM desired) AS desired_count,
+        (
+          SELECT COUNT(*)
+          FROM desired
+          INNER JOIN transactions AS current ON current.id = desired.desired_id
+          WHERE current.updated_at = desired.expected_updated_at
+        ) AS matched_count
+    )
+    UPDATE transactions
+    SET
+      cleared = ?,
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
+    WHERE id IN (SELECT desired_id FROM desired)
+      AND (
+        SELECT desired_count = matched_count
+        FROM clearing_guard
+      )
+  `).bind(desired, input.cleared ? 1 : 0).run()
+
+  return Number(updated.meta.changes) > 0
+    ? { kind: 'updated', count: input.transactions.length }
+    : { kind: 'version_conflict' }
 }
 
 export async function deleteTransaction(

@@ -81,6 +81,10 @@ knowledge and explains every command and dashboard click.
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
   account register can switch a transaction or the displayed side of a transfer
   directly, while its row still opens the full editor.
+- Explicitly select any of the 200 visible ledger rows and mark them cleared or
+  uncleared together. The change is all-or-none: if any selected row has changed
+  in another session, HushLedger leaves the complete selection untouched. Hidden
+  matches are never included, and bulk delete is deliberately unavailable.
 - Add case-sensitive, whitespace-delimited `#tags` to transaction notes. Tag
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
@@ -200,6 +204,10 @@ credit card, or a digital wallet. It is not an additional transaction type.
   transaction times.
 - Transaction edits preserve recurring-rule provenance and use `updated_at` as an
   optimistic concurrency token; stale updates and deletes are rejected.
+- Bulk clearing accepts only explicit transaction IDs paired with their
+  `updated_at` versions, is bounded to 200 rows, and runs as one guarded SQL
+  statement. A missing or stale row makes the complete update fail without a
+  partial posting-status change.
 - Account transfers use client-generated UUIDs, require two distinct compatible
   accounts, and use `updated_at` conflict detection. A transfer is one atomic row,
   not a pair of income/expense transactions; its two clearing flags can represent
@@ -512,6 +520,7 @@ GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|unclea
 GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
+PATCH  /api/transactions/clearing  (atomic cleared/uncleared update for 1-200 explicitly versioned rows)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
