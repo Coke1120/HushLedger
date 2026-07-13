@@ -72,16 +72,18 @@ const accountTransferSelect = `
 
 export async function listAccountTransfers(
   database: D1Database,
-  month: string,
+  query: { month: string; accountId?: number },
 ): Promise<AccountTransfer[]> {
-  const { start, end } = monthRangeDates(month)
+  const { start, end } = monthRangeDates(query.month)
+  const accountId = query.accountId ?? null
   const result = await database.prepare(`
     ${accountTransferSelect}
     WHERE transfer.occurred_on >= ? AND transfer.occurred_on < ?
+      AND (? IS NULL OR transfer.from_account_id = ? OR transfer.to_account_id = ?)
     ORDER BY transfer.occurred_on DESC, transfer.created_at DESC, transfer.id DESC
     LIMIT 200
   `)
-    .bind(start, end)
+    .bind(start, end, accountId, accountId, accountId)
     .all<AccountTransferRow>()
 
   return result.results.map(accountTransferView)

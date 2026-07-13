@@ -747,7 +747,13 @@ textarea:focus-visible {
   margin: 0;
 }
 
-.account-reconcile-button {
+.account-balance-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.account-balance-actions .button {
+  justify-content: center;
   white-space: nowrap;
 }
 
@@ -4775,10 +4781,15 @@ textarea:focus-visible {
     grid-column: 1 / -1;
   }
 
-  .account-reconcile-button {
+  .account-balance-actions {
     grid-column: 1;
     grid-row: 2;
-    justify-self: start;
+  }
+
+  .account-balance-actions .button {
+    padding-inline: 7px;
+    font-size: 12px;
+    white-space: normal;
   }
 
   .statement-comparison {

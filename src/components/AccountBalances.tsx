@@ -1,4 +1,4 @@
-import { Landmark, Scale } from 'lucide-react'
+import { Landmark, List, Scale } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import { parseSignedAmount } from '../lib/money'
@@ -8,9 +8,10 @@ type AccountBalancesProps = {
   balances: AccountBalance[]
   month: string
   loading: boolean
+  onReview: (accountId: number) => void
 }
 
-export function AccountBalances({ balances, month, loading }: AccountBalancesProps) {
+export function AccountBalances({ balances, month, loading, onReview }: AccountBalancesProps) {
   const { formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [comparisonAccountId, setComparisonAccountId] = useState<number | null>(null)
   const [statementValue, setStatementValue] = useState('')
@@ -92,16 +93,26 @@ export function AccountBalances({ balances, month, loading }: AccountBalancesPro
                       {t('accountBalanceStartsOn', { date: account.openingBalanceOn ?? '' })}
                     </p>
                   )}
-                  <button
-                    className="button button-secondary account-reconcile-button"
-                    type="button"
-                    onClick={() => compare(account.accountId)}
-                    disabled={!available}
-                    aria-expanded={comparing}
-                  >
-                    <Scale aria-hidden="true" />
-                    {comparing ? t('closeStatementComparison') : t('compareStatement')}
-                  </button>
+                  <div className="account-balance-actions">
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      onClick={() => onReview(account.accountId)}
+                    >
+                      <List aria-hidden="true" />
+                      {t('reviewAccountActivity')}
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      onClick={() => compare(account.accountId)}
+                      disabled={!available}
+                      aria-expanded={comparing}
+                    >
+                      <Scale aria-hidden="true" />
+                      {comparing ? t('closeStatementComparison') : t('compareStatement')}
+                    </button>
+                  </div>
                 </div>
 
                 {comparing && available ? (

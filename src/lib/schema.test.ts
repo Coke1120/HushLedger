@@ -278,8 +278,13 @@ describe('account transfer validation', () => {
 
   it('requires one strict calendar month query', () => {
     assert.deepEqual(accountTransferQuerySchema.parse({ month: '2026-07' }), { month: '2026-07' })
+    assert.deepEqual(accountTransferQuerySchema.parse({ month: '2026-07', accountId: '2' }), {
+      month: '2026-07',
+      accountId: 2,
+    })
     assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-13' }).success, false)
-    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', accountId: '1' }).success, false)
+    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', accountId: '0' }).success, false)
+    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', other: '1' }).success, false)
   })
 })
 

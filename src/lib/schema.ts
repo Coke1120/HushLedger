@@ -105,6 +105,7 @@ export const accountTransferQuerySchema = z
         return false
       }
     }, '月份格式必須為有效的 YYYY-MM'),
+    accountId: z.coerce.number().int().positive().optional(),
   })
   .strict()
 

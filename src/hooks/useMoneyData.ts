@@ -114,10 +114,12 @@ export function useMoneyData(
     if (status !== 'all') query.set('status', status)
     const transactionQuery = new URLSearchParams(query)
     if (sort !== 'date_desc') transactionQuery.set('sort', sort)
+    const transferQuery = new URLSearchParams({ month })
+    if (accountId !== null) transferQuery.set('accountId', String(accountId))
 
     const [transactions, accountTransfers, accountBalances, netWorthTrend, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
-      api<AccountTransfer[]>(`/api/transfers?month=${encodeURIComponent(month)}`),
+      api<AccountTransfer[]>(`/api/transfers?${transferQuery}`),
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
       api<NetWorthTrendPoint[]>(`/api/reports/net-worth?month=${encodeURIComponent(month)}`),
       api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),

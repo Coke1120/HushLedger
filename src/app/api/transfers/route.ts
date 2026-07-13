@@ -25,7 +25,7 @@ export const GET = apiRoute(async (request) => {
       sanitizeValidationIssues(parsed.error.issues),
     )
   }
-  return jsonSuccess(await listAccountTransfers(await getDatabase(), parsed.data.month))
+  return jsonSuccess(await listAccountTransfers(await getDatabase(), parsed.data))
 })
 
 export const POST = apiRoute(async (request) => {

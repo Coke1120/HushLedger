@@ -203,6 +203,19 @@ function App({ initialMonth }: { initialMonth: string }) {
     changeView('transactions')
   }, [changeView, data.categories])
 
+  const openAccountTransactions = useCallback((accountId: number) => {
+    if (!data.accounts.some((account) => account.id === accountId)) return
+    setSearch('')
+    setTagFilter(null)
+    setFilter('all')
+    setClearingFilter('all')
+    setAccountFilterId(accountId)
+    setCategoryFilterId(null)
+    setTransactionSort('date_desc')
+    setImportMode(null)
+    changeView('transactions')
+  }, [changeView, data.accounts])
+
   const changeTagFilter = useCallback((tag: string | null) => {
     setTagFilter(tag)
     if (!tag) return
@@ -364,6 +377,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                   balances={data.accountBalances}
                   month={month}
                   loading={loading}
+                  onReview={openAccountTransactions}
                 />
                 <NetWorthTrend
                   points={data.netWorthTrend}

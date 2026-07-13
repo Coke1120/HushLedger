@@ -974,9 +974,25 @@ async function verifyWorkerApi() {
   const transferDestination = reorderedAccounts.payload.data.find(({ id, isActive, currency }) => (
     id !== account?.id && isActive && currency === 'HKD'
   ))
+  const unrelatedTransferAccount = reorderedAccounts.payload.data.find(({ id, isActive, currency }) => (
+    id !== account?.id && id !== transferDestination?.id && isActive && currency === 'HKD'
+  ))
   assert(account)
   assert(expenseCategory)
   assert(transferDestination)
+  assert(unrelatedTransferAccount)
+
+  const invalidTransferAccountFilter = await api(
+    baseUrl,
+    `/api/transfers?month=${month}&accountId=0`,
+  )
+  assert.equal(invalidTransferAccountFilter.response.status, 400)
+  assert.equal(invalidTransferAccountFilter.payload.error.code, 'INVALID_QUERY')
+  const duplicateTransferAccountFilter = await api(
+    baseUrl,
+    `/api/transfers?month=${month}&accountId=${account.id}&accountId=${account.id}`,
+  )
+  assert.equal(duplicateTransferAccountFilter.response.status, 400)
 
   const invalidBalanceMonth = await api(baseUrl, '/api/accounts/balances?month=2026-13')
   assert.equal(invalidBalanceMonth.response.status, 400)
@@ -1112,6 +1128,21 @@ async function verifyWorkerApi() {
   const listedTransfers = await api(baseUrl, `/api/transfers?month=${month}`)
   assert.equal(listedTransfers.response.status, 200)
   assert.deepEqual(listedTransfers.payload.data.map(({ id }) => id), [transferBody.id])
+  const sourceTransfers = await api(
+    baseUrl,
+    `/api/transfers?month=${month}&accountId=${account.id}`,
+  )
+  const destinationTransfers = await api(
+    baseUrl,
+    `/api/transfers?month=${month}&accountId=${transferDestination.id}`,
+  )
+  const unrelatedTransfers = await api(
+    baseUrl,
+    `/api/transfers?month=${month}&accountId=${unrelatedTransferAccount.id}`,
+  )
+  assert.deepEqual(sourceTransfers.payload.data.map(({ id }) => id), [transferBody.id])
+  assert.deepEqual(destinationTransfers.payload.data.map(({ id }) => id), [transferBody.id])
+  assert.deepEqual(unrelatedTransfers.payload.data, [])
 
   const transferUpdateFields = {
     amountMinor: transferBody.amountMinor,
@@ -2140,7 +2171,8 @@ async function verifyWorkerApi() {
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
     accountTransferLifecycles: 1,
-    accountTransferGuards: 5,
+    accountTransferGuards: 7,
+    accountTransferFilterQueries: 3,
     accountBalanceQueries: 3,
     accountBalanceGuards: 3,
     netWorthTrendQueries: 2,

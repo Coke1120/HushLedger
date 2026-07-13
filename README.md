@@ -46,7 +46,8 @@ knowledge and explains every command and dashboard click.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
   month. An optional dated opening balance anchors incomplete history, and an
   in-app statement comparison shows the exact difference without locking or
-  changing transactions.
+  changing transactions. One tap opens that account's ordinary transactions and
+  both incoming and outgoing transfer activity for the same month.
 - A six-month recorded net-worth trend across every active and inactive account,
   including negative debts. Months with unknown pre-opening history are marked
   unavailable instead of silently omitting an account, and selecting a month
@@ -187,6 +188,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   accounts, and use `updated_at` conflict detection. A transfer is one atomic row,
   not a pair of income/expense transactions; its two clearing flags can represent
   money that has left one account but has not yet reached the other.
+- Account activity drilldown filters transactions and transfers on the server.
+  The 200-transfer display limit is applied after the account filter, rather than
+  fetching an unrelated global slice and hiding rows in the browser.
 - Disabled accounts and categories are unavailable to new entries. An existing
   transaction may keep and edit against its archived references until the user
   explicitly reassigns them to active ones.
@@ -487,7 +491,7 @@ POST   /api/transactions/duplicates  (exact local-ledger match count; no transac
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/transfers?month=YYYY-MM  (latest 200 account transfers)
+GET    /api/transfers?month=YYYY-MM[&accountId=ID]  (latest 200 matching account transfers)
 POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
