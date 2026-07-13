@@ -35,6 +35,13 @@ export function shiftMonth(month: string, amount: number) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+export function trailingTwelveMonthRange(month: string) {
+  return {
+    start: `${shiftMonth(month, -11)}-01`,
+    end: inclusiveMonthRangeDates(month).end,
+  }
+}
+
 export function isValidCalendarDate(value: string) {
   if (!datePattern.test(value)) return false
   const parsed = new Date(`${value}T00:00:00.000Z`)

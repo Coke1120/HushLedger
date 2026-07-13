@@ -6064,7 +6064,7 @@ button.account-register-row:focus-visible {
 
   .transaction-reference-filters {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .transaction-date-scope,
@@ -6075,6 +6075,10 @@ button.account-register-row:focus-visible {
 
   .transaction-custom-range {
     min-width: 0;
+  }
+
+  .transaction-reference-filters > .transaction-reference-filter:last-of-type {
+    grid-column: 1 / -1;
   }
 
   .transaction-row {

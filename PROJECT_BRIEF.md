@@ -55,10 +55,11 @@ not operate an independent database server or a multi-user identity system.
   period that may be shorter. Keep exact income, expense, and net forecast totals separate from
   recorded or available balance, and direct the user to the provider statement
   for the actual date and amount.
-- Browse the latest 200 matching transactions for the selected month, an
-  inclusive fixed date range, or all history; the UI explicitly discloses the
-  cap when it is reached. Widening the transaction date scope does not change
-  monthly reports or account math.
+- Browse the latest 200 matching transactions for the selected month, a one-click
+  fixed range of 12 complete calendar months through it, any other inclusive
+  fixed date range, or all history; the UI explicitly discloses the cap when it
+  is reached. Widening the transaction date scope does not change monthly reports
+  or account math.
 - Search payee, note, account, or category.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.

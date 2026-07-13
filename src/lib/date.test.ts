@@ -7,6 +7,7 @@ import {
   isValidCalendarDate,
   monthRangeDates,
   shiftMonth,
+  trailingTwelveMonthRange,
 } from './date'
 
 describe('Hong Kong date helpers', () => {
@@ -38,6 +39,17 @@ describe('Hong Kong date helpers', () => {
   it('moves across year boundaries', () => {
     assert.equal(shiftMonth('2026-01', -1), '2025-12')
     assert.equal(shiftMonth('2026-12', 1), '2027-01')
+  })
+
+  it('builds twelve complete calendar months ending at the selected month', () => {
+    assert.deepEqual(trailingTwelveMonthRange('2026-07'), {
+      start: '2025-08-01',
+      end: '2026-07-31',
+    })
+    assert.deepEqual(trailingTwelveMonthRange('2024-02'), {
+      start: '2023-03-01',
+      end: '2024-02-29',
+    })
   })
 
   for (const [date, expected] of [

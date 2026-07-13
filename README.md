@@ -81,10 +81,12 @@ knowledge and explains every command and dashboard click.
   to assistive technology; HushLedger does not capture global single-letter keys.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
   possible-duplicate filters across the 200 most recent matching transactions.
-  Review the selected month, an inclusive custom date range, or all history
-  without changing the monthly overview, balances, transfers, plans, or
-  forecasts. Inactive references remain available for historical review, and
-  the result limit is disclosed explicitly.
+  Review the selected month, one-click 12 complete calendar months through it,
+  an inclusive custom date range, or all history without changing the monthly
+  overview, balances, transfers, plans, or forecasts. The 12-month preset becomes
+  a visible fixed inclusive range, so later month navigation does not silently
+  move it. Inactive references remain available for historical review, and the
+  result limit is disclosed explicitly.
   Duplicate review is read-only and marks candidates instead of deleting either
   entry.
 - Order a transaction review by newest or oldest date, largest or smallest

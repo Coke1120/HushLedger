@@ -1,6 +1,7 @@
 import { AlertTriangle, Download, FileUp, Search, Sparkles, X } from 'lucide-react'
 import { useState, type RefObject } from 'react'
 import { useI18n } from '../i18n'
+import { trailingTwelveMonthRange } from '../lib/date'
 import type {
   Account,
   Category,
@@ -14,6 +15,7 @@ import { transactionQueryFromFilters } from '../lib/transactionQuery'
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
+type TransactionDateScopeOption = TransactionDateScope | 'trailing12'
 
 type TransactionToolbarProps = {
   search: string
@@ -96,6 +98,12 @@ export function TransactionToolbar({
 }: TransactionToolbarProps) {
   const { localizeEntityName, t } = useI18n()
   const [exportState, setExportState] = useState<ExportState>('idle')
+  const trailingTwelveMonths = trailingTwelveMonthRange(month)
+  const dateScopeOption: TransactionDateScopeOption = (
+    dateScope === 'range'
+    && dateFrom === trailingTwelveMonths.start
+    && dateTo === trailingTwelveMonths.end
+  ) ? 'trailing12' : dateScope
   const filters: Array<{ value: TransactionFilter; label: string }> = [
     { value: 'all', label: t('all') },
     { value: 'expense', label: t('expense') },
@@ -233,11 +241,21 @@ export function TransactionToolbar({
           <label className="transaction-reference-filter transaction-date-scope">
             <span className="sr-only">{t('transactionDateScope')}</span>
             <select
-              value={dateScope}
-              onChange={(event) => onDateScopeChange(event.target.value as TransactionDateScope)}
+              value={dateScopeOption}
+              onChange={(event) => {
+                const nextScope = event.target.value as TransactionDateScopeOption
+                if (nextScope === 'trailing12') {
+                  onDateFromChange(trailingTwelveMonths.start)
+                  onDateToChange(trailingTwelveMonths.end)
+                  onDateScopeChange('range')
+                  return
+                }
+                onDateScopeChange(nextScope)
+              }}
               title={t('transactionDateScopeHelp')}
             >
               <option value="month">{t('selectedMonth')}</option>
+              <option value="trailing12">{t('trailingTwelveMonths')}</option>
               <option value="range">{t('customRange')}</option>
               <option value="all">{t('allHistory')}</option>
             </select>
