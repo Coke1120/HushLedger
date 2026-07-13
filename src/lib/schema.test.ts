@@ -231,6 +231,7 @@ describe('transaction query validation', () => {
     assert.deepEqual(
       transactionQuerySchema.parse({
         month: '2026-07',
+        scope: 'all',
         type: 'expense',
         status: 'uncleared',
         accountId: '2',
@@ -242,6 +243,7 @@ describe('transaction query validation', () => {
       }),
       {
         month: '2026-07',
+        scope: 'all',
         type: 'expense',
         status: 'uncleared',
         accountId: 2,
@@ -252,6 +254,7 @@ describe('transaction query validation', () => {
         sort: 'amount_desc',
       },
     )
+    assert.equal(transactionQuerySchema.parse({ month: '2026-07' }).scope, 'month')
   })
 
   for (const [index, query] of [
@@ -265,6 +268,7 @@ describe('transaction query validation', () => {
     { tag: '#trip' },
     { month: '2026-07', duplicates: 'fuzzy' },
     { month: '2026-07', sort: 'amount; DROP TABLE transactions' },
+    { month: '2026-07', scope: 'year' },
   ].entries()) {
     it(`rejects invalid query ${index}`, () => {
       assert.equal(transactionQuerySchema.safeParse(query).success, false)

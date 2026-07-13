@@ -11,6 +11,7 @@ import {
 const validView: SavedTransactionView = {
   id: '248e3e55-d864-4a32-bf48-46bd3608060f',
   name: 'Uncleared card',
+  scope: 'month',
   type: 'expense',
   status: 'uncleared',
   accountId: 3,
@@ -23,9 +24,15 @@ const validView: SavedTransactionView = {
 
 describe('saved transaction views', () => {
   it('normalizes valid browser data and drops malformed or duplicate entries', () => {
-    const { sort: legacySort, duplicates: legacyDuplicates, ...legacyView } = validView
+    const {
+      sort: legacySort,
+      duplicates: legacyDuplicates,
+      scope: legacyScope,
+      ...legacyView
+    } = validView
     assert.equal(legacySort, 'date_desc')
     assert.equal(legacyDuplicates, false)
+    assert.equal(legacyScope, 'month')
     const parsed = parseSavedTransactionViews(JSON.stringify([
       { ...legacyView, name: '  Uncleared card  ' },
       { ...validView, id: '86192038-dc31-4672-ab86-d750adee2095', name: 'UNCLEARED CARD' },
@@ -58,6 +65,19 @@ describe('saved transaction views', () => {
       accountId: null,
       search: '',
     }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], {
+      ...validView,
+      name: 'All history',
+      scope: 'all',
+      type: 'all',
+      status: 'all',
+      accountId: null,
+      categoryId: null,
+      search: '',
+      tag: null,
+      duplicates: false,
+      sort: 'date_desc',
+    }).kind, 'saved')
     assert.equal(addSavedTransactionView([], {
       ...validView,
       name: 'Largest first',

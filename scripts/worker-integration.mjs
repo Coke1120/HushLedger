@@ -1384,6 +1384,49 @@ async function verifyWorkerApi() {
   const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
   assert.equal(uncappedCsvRows, 205)
 
+  const monthOnlyHistorySearch = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&search=historical%20trend`,
+  )
+  assert.equal(monthOnlyHistorySearch.response.status, 200)
+  assert.deepEqual(monthOnlyHistorySearch.payload.data, [])
+  const allHistorySearch = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&scope=all&search=historical%20trend`,
+  )
+  assert.equal(allHistorySearch.response.status, 200)
+  assert.deepEqual(
+    allHistorySearch.payload.data.map(({ id }) => id),
+    ['30000000-0000-4000-8000-000000999999'],
+  )
+  const allHistorySummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&scope=all&search=historical%20trend`,
+  )
+  assert.equal(allHistorySummary.response.status, 200)
+  assert.deepEqual(allHistorySummary.payload.data, {
+    transactionCount: 1,
+    income: 0,
+    expense: 12_345,
+    net: -12_345,
+  })
+  const allHistoryExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&scope=all&search=historical%20trend`,
+  )
+  assert.equal(allHistoryExport.response.status, 200)
+  assert.equal(
+    allHistoryExport.response.headers.get('content-disposition'),
+    'attachment; filename="hushledger-transactions-all.csv"',
+  )
+  assert.equal(allHistoryExport.payload.trimEnd().split('\r\n').length - 1, 1)
+  const rejectedDateScope = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&scope=year`,
+  )
+  assert.equal(rejectedDateScope.response.status, 400)
+  assert.equal(rejectedDateScope.payload.error.code, 'INVALID_QUERY')
+
   const largestFirst = await api(
     baseUrl,
     `/api/transactions?month=${month}&search=export%20bulk&sort=amount_desc`,
@@ -2395,6 +2438,10 @@ async function verifyWorkerApi() {
     transactionFilterGuards: 4,
     transactionFilterQueries: 4,
     transactionFilterSummaries: 3,
+    transactionDateScopeGuards: 1,
+    transactionDateScopeQueries: 2,
+    transactionDateScopeSummaries: 1,
+    transactionDateScopeExports: 1,
     transactionDuplicateChecks: 5,
     transactionDuplicateReviews: 4,
     transactionBulkClearingGuards: 3,

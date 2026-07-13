@@ -5,6 +5,7 @@ import type {
   Account,
   Category,
   TransactionClearingStatus,
+  TransactionDateScope,
   TransactionSort,
   TransactionType,
 } from '../lib/schema'
@@ -17,6 +18,7 @@ type TransactionToolbarProps = {
   tagFilter: string | null
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
+  dateScope: TransactionDateScope
   duplicatesOnly: boolean
   sort: TransactionSort
   showSort: boolean
@@ -31,6 +33,7 @@ type TransactionToolbarProps = {
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
+  onDateScopeChange: (value: TransactionDateScope) => void
   onDuplicatesOnlyChange: (value: boolean) => void
   onSortChange: (value: TransactionSort) => void
   onAccountFilterChange: (value: number | null) => void
@@ -49,6 +52,7 @@ export function TransactionToolbar({
   tagFilter,
   filter,
   clearingFilter,
+  dateScope,
   duplicatesOnly,
   sort,
   showSort,
@@ -63,6 +67,7 @@ export function TransactionToolbar({
   onTagFilterChange,
   onFilterChange,
   onClearingFilterChange,
+  onDateScopeChange,
   onDuplicatesOnlyChange,
   onSortChange,
   onAccountFilterChange,
@@ -82,6 +87,7 @@ export function TransactionToolbar({
     { value: 'income', label: t('income') },
   ]
   const exportQuery = new URLSearchParams({ month })
+  if (showSort && dateScope === 'all') exportQuery.set('scope', dateScope)
   if (filter !== 'all') exportQuery.set('type', filter)
   if (clearingFilter !== 'all') exportQuery.set('status', clearingFilter)
   if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
@@ -147,6 +153,19 @@ export function TransactionToolbar({
         {t('reviewPossibleDuplicates')}
       </button>
       <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
+        {showSort ? (
+          <label className="transaction-reference-filter transaction-date-scope">
+            <span className="sr-only">{t('transactionDateScope')}</span>
+            <select
+              value={dateScope}
+              onChange={(event) => onDateScopeChange(event.target.value as TransactionDateScope)}
+              title={t('transactionDateScopeHelp')}
+            >
+              <option value="month">{t('selectedMonth')}</option>
+              <option value="all">{t('allHistory')}</option>
+            </select>
+          </label>
+        ) : null}
         {showSort ? (
           <label className="transaction-reference-filter">
             <span className="sr-only">{t('sortTransactions')}</span>

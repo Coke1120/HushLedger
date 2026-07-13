@@ -15,6 +15,8 @@ export const transactionSortSchema = z.enum([
   'payee_desc',
 ])
 export type TransactionSort = z.infer<typeof transactionSortSchema>
+export const transactionDateScopeSchema = z.enum(['month', 'all'])
+export type TransactionDateScope = z.infer<typeof transactionDateScopeSchema>
 export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
 export type AccountType = z.infer<typeof accountTypeSchema>
 export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly'])
@@ -146,6 +148,7 @@ export const transactionQuerySchema = z
         return false
       }
     }, '月份格式必須為有效的 YYYY-MM'),
+    scope: transactionDateScopeSchema.default('month'),
     type: transactionTypeSchema.optional(),
     status: transactionClearingStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),

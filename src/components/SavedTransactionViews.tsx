@@ -44,6 +44,7 @@ export function SavedTransactionViews({
 
   const describe = (view: SavedTransactionView) => {
     const parts: string[] = []
+    if (view.scope === 'all') parts.push(t('allHistory'))
     if (view.type !== 'all') parts.push(t(view.type))
     if (view.status !== 'all') parts.push(t(view.status))
     if (view.accountId !== null) {

@@ -41,23 +41,24 @@ not operate an independent database server or a multi-user identity system.
 - Review active recurring entries that remain ungenerated in the selected month,
   including each rule's next date and exact occurrence count, plus exact income,
   expense, and net forecast totals that remain separate from recorded balance.
-- Browse the latest 200 transactions for a selected month; the UI explicitly
-  discloses the cap when it is reached.
+- Browse the latest 200 matching transactions for either the selected month or
+  all history; the UI explicitly discloses the cap when it is reached. Widening
+  the transaction date scope does not change monthly reports or account math.
 - Search payee, note, account, or category.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.
 - Stack income/expense, cleared/uncleared, account, and category filters; retain
   inactive references as historical filter choices and clear incompatible
   category filters when the selected transaction type changes.
-- Order the current month by date, amount, or payee in either direction while
-  keeping the default newest-first overview and blank payees last.
+- Order the current transaction scope by date, amount, or payee in either
+  direction while keeping the default newest-first overview and blank payees last.
 - Show exact count, income, expense, and signed net for every transaction matching
   the current filters, independently of the interactive 200-row display cap.
-- Save up to eight validated, named filter and ordering combinations in the current browser
-  and reapply them to any selected month without storing transaction amounts or
-  adding cloud metadata.
-- Export all transactions matching the selected month and filters as CSV without
-  the interactive 200-row limit; keep disaster-recovery backups separate.
+- Save up to eight validated, named date-scope, filter, and ordering combinations
+  in the current browser and reapply them without storing a particular month,
+  transaction amounts, or cloud metadata.
+- Export all transactions matching the selected date scope and filters as CSV
+  without the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
   date/description/amount fields, target account, and fallback categories before
   duplicate preview, explicit row selection, and a transactional commit of at
@@ -219,8 +220,8 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
-GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (ordered 200)
-GET    /api/transactions/summary?month=YYYY-MM&type=...&status=...&search=...  (uncapped aggregate)
+GET    /api/transactions?month=YYYY-MM&scope=month|all&type=...&status=...&search=...&sort=amount_desc  (ordered 200)
+GET    /api/transactions/summary?month=YYYY-MM&scope=month|all&type=...&status=...&search=...  (uncapped aggregate)
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact match count only)
 GET    /api/transactions/:id
@@ -231,7 +232,7 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (uncapped CSV)
+GET    /api/exports/transactions?month=YYYY-MM&scope=month|all&type=...&status=...&search=...&sort=amount_desc  (uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
@@ -324,9 +325,10 @@ uses Wrangler D1 export and restore.
   atomic account transfers with two-sided posting review.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
-- Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
-  account/category/type/clearing/search filters, deterministic date/amount/payee
-  ordering, warning-only exact duplicate preflight, matching filtered transaction
+- Responsive dashboard, conflict-safe transaction create/edit/delete,
+  selected-month or all-history account/category/type/clearing/search filters,
+  deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
+  matching filtered transaction
   aggregate and ordered CSV export,
   browser-local saved review views,
   ranked category-spending drilldown, monthly plan-versus-actual review,

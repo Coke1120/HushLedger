@@ -50,6 +50,7 @@ import type {
   AccountTransfer,
   AccountTransferInput,
   Transaction,
+  TransactionDateScope,
   TransactionInput,
   TransactionSort,
 } from './lib/schema'
@@ -73,6 +74,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
+  const [transactionDateScope, setTransactionDateScope] = useState<TransactionDateScope>('month')
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -91,6 +93,9 @@ function App({ initialMonth }: { initialMonth: string }) {
   const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
+  const effectiveTransactionDateScope = view === 'transactions' && registerAccountId === null
+    ? transactionDateScope
+    : 'month'
   const data = useMoneyData(
     month,
     filter,
@@ -101,6 +106,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     clearingFilter,
     view === 'transactions' ? transactionSort : 'date_desc',
     duplicatesOnly,
+    effectiveTransactionDateScope,
     registerAccountId,
   )
   const {
@@ -222,6 +228,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     const category = data.categories.find((item) => item.id === categoryId)
     if (!category) return
     setSearch('')
+    setTransactionDateScope('month')
     setTagFilter(null)
     setDuplicatesOnly(false)
     setFilter(category.type)
@@ -235,6 +242,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const openAccountRegister = useCallback((accountId: number, mode: 'review' | 'reconcile') => {
     if (!data.accounts.some((account) => account.id === accountId)) return
     setSearch('')
+    setTransactionDateScope('month')
     setTagFilter(null)
     setFilter('all')
     setClearingFilter('all')
@@ -270,9 +278,10 @@ function App({ initialMonth }: { initialMonth: string }) {
   const changeTagFilter = useCallback((tag: string | null) => {
     setTagFilter(tag)
     if (!tag) return
+    if (view !== 'transactions') setTransactionDateScope('month')
     setImportMode(null)
     changeView('transactions')
-  }, [changeView])
+  }, [changeView, view])
 
   const openRecurringRules = useCallback(() => {
     setImportMode(null)
@@ -307,6 +316,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     const candidate: SavedTransactionView = {
       id: crypto.randomUUID(),
       name,
+      scope: transactionDateScope,
       type: filter,
       status: clearingFilter,
       accountId: accountFilterId,
@@ -317,7 +327,7 @@ function App({ initialMonth }: { initialMonth: string }) {
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionSort])
+  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionDateScope, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -331,6 +341,7 @@ function App({ initialMonth }: { initialMonth: string }) {
       ? category.id
       : null
     setFilter(savedView.type)
+    setTransactionDateScope(savedView.scope)
     setClearingFilter(savedView.status)
     setAccountFilterId(accountId)
     setCategoryFilterId(categoryId)
@@ -344,6 +355,7 @@ function App({ initialMonth }: { initialMonth: string }) {
 
   const resetTransactionFilters = useCallback(() => {
     setFilter('all')
+    setTransactionDateScope('month')
     setClearingFilter('all')
     setAccountFilterId(null)
     setCategoryFilterId(null)
@@ -477,7 +489,14 @@ function App({ initialMonth }: { initialMonth: string }) {
                 <h2 id="transactions-title">{t('transactionRecords')}</h2>
                 <p>{transactionCountLabel}</p>
               </div>
-              <button className="view-all-button" type="button" onClick={() => changeView('transactions')}>
+              <button
+                className="view-all-button"
+                type="button"
+                onClick={() => {
+                  setTransactionDateScope('month')
+                  changeView('transactions')
+                }}
+              >
                 {t('monthTransactions')}
                 <ChevronRight aria-hidden="true" />
               </button>
@@ -486,6 +505,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 tagFilter={tagFilter}
                 filter={filter}
                 clearingFilter={clearingFilter}
+                dateScope={transactionDateScope}
                 duplicatesOnly={duplicatesOnly}
                 sort={transactionSort}
                 showSort={view === 'transactions'}
@@ -500,6 +520,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
+                onDateScopeChange={setTransactionDateScope}
                 onDuplicatesOnlyChange={setDuplicatesOnly}
                 onSortChange={setTransactionSort}
                 onAccountFilterChange={setAccountFilterId}
@@ -524,6 +545,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                     categories={data.categories}
                     canSave={
                       filter !== 'all'
+                      || transactionDateScope !== 'month'
                       || clearingFilter !== 'all'
                       || accountFilterId !== null
                       || categoryFilterId !== null
@@ -592,6 +614,7 @@ function App({ initialMonth }: { initialMonth: string }) {
               <TransactionList
                 key={[
                   month,
+                  transactionDateScope,
                   view,
                   filter,
                   clearingFilter,

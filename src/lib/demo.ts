@@ -14,6 +14,7 @@ import type {
   Transaction,
   TransactionClearingBatchInput,
   TransactionClearingStatus,
+  TransactionDateScope,
   TransactionFilterSummary,
   TransactionInput,
   TransactionSort,
@@ -260,12 +261,14 @@ function matchesQuery(
   categoryId: number | null,
   tag: string | null,
   status: TransactionClearingStatus | 'all',
+  scope: TransactionDateScope,
 ) {
-  const { start, end } = monthRangeDates(month)
+  const range = scope === 'month' ? monthRangeDates(month) : null
   const needle = search.trim().toLowerCase()
   return (
-    transaction.occurredOn >= start &&
-    transaction.occurredOn < end &&
+    (range === null || (
+      transaction.occurredOn >= range.start && transaction.occurredOn < range.end
+    )) &&
     (type === 'all' || transaction.type === type) &&
     (accountId === null || transaction.accountId === accountId) &&
     (categoryId === null || transaction.categoryId === categoryId) &&
@@ -300,10 +303,13 @@ export function getDemoTransactions(
   status: TransactionClearingStatus | 'all' = 'all',
   sort: TransactionSort = 'date_desc',
   duplicatesOnly = false,
+  scope: TransactionDateScope = 'month',
 ) {
   const localized = demoTransactions.map((transaction) => localizeDemoTransaction(transaction, t))
   return localized
-    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag, status))
+    .filter((transaction) => matchesQuery(
+      transaction, month, type, search, accountId, categoryId, tag, status, scope,
+    ))
     .filter((transaction) => !duplicatesOnly || hasExactDuplicate(transaction, localized))
     .sort((left, right) => compareDemoTransactions(left, right, sort))
 }
@@ -339,6 +345,7 @@ export function summarizeDemoTransactions(
   tag: string | null = null,
   status: TransactionClearingStatus | 'all' = 'all',
   duplicatesOnly = false,
+  scope: TransactionDateScope = 'month',
 ): TransactionFilterSummary {
   const rows = getDemoTransactions(
     month,
@@ -351,6 +358,7 @@ export function summarizeDemoTransactions(
     status,
     'date_desc',
     duplicatesOnly,
+    scope,
   )
   const income = rows.reduce(
     (sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0),

@@ -22,6 +22,7 @@ import type {
   Transaction,
   TransactionClearingBatchInput,
   TransactionClearingStatus,
+  TransactionDateScope,
   TransactionFilterSummary,
   TransactionInput,
   TransactionSort,
@@ -79,6 +80,7 @@ export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRu
 
 export type TransactionQuery = {
   month: string
+  scope: TransactionDateScope
   type?: TransactionType
   accountId?: number
   categoryId?: number
@@ -351,9 +353,14 @@ export async function listTransactionsForExport(
 }
 
 function transactionQueryWhere(query: TransactionQuery) {
-  const { start, end } = monthRangeDates(query.month)
-  const filters = ['t.occurred_on >= ?', 't.occurred_on < ?']
-  const values: Array<string | number> = [start, end]
+  const filters: string[] = []
+  const values: Array<string | number> = []
+
+  if (query.scope === 'month') {
+    const { start, end } = monthRangeDates(query.month)
+    filters.push('t.occurred_on >= ?', 't.occurred_on < ?')
+    values.push(start, end)
+  }
 
   if (query.type) {
     filters.push('t.type = ?')
@@ -410,7 +417,7 @@ function transactionQueryWhere(query: TransactionQuery) {
     )`)
   }
 
-  return { clause: filters.join(' AND '), values }
+  return { clause: filters.length > 0 ? filters.join(' AND ') : '1 = 1', values }
 }
 
 export async function summarizeTransactions(

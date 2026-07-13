@@ -62,20 +62,22 @@ knowledge and explains every command and dashboard click.
   bounded no-eval parser rounds only the final result before storing exact cents,
   with touch-friendly operator buttons for mobile entry.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
-  possible-duplicate filters across the 200 most recent matching transactions in
-  each month, with inactive references still available for historical review and
-  an explicit notice at the result limit. Duplicate review is read-only and marks
-  candidates instead of deleting either entry.
-- Order a monthly review by newest or oldest date, largest or smallest amount,
-  or payee name. The order is strictly validated and also applies to the complete
-  CSV export; blank payees remain last.
+  possible-duplicate filters across the 200 most recent matching transactions.
+  Review either the selected month or all history without changing the monthly
+  overview, balances, transfers, plans, or forecasts. Inactive references remain
+  available for historical review, and the result limit is disclosed explicitly.
+  Duplicate review is read-only and marks candidates instead of deleting either
+  entry.
+- Order a transaction review by newest or oldest date, largest or smallest
+  amount, or payee name. The order is strictly validated and also applies to the
+  complete CSV export; blank payees remain last.
 - Review the exact match count, income, expense, and net amount for the current
   transaction filters. These totals cover every match, not only the 200 rows kept
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
-  their type, clearing, account, category, search, tag, possible-duplicate, and
-  ordering criteria in any month. Saved views contain review criteria only and do
-  not sync to Cloudflare.
+  their selected-month or all-history scope, type, clearing, account, category,
+  search, tag, possible-duplicate, and ordering criteria. Saved views do not keep
+  a particular month, contain review criteria only, and do not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
@@ -88,7 +90,7 @@ knowledge and explains every command and dashboard click.
 - Add case-sensitive, whitespace-delimited `#tags` to transaction notes. Tag
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
-- Export every transaction matching the current month and filters as an
+- Export every transaction matching the current date scope and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
 - Re-import HushLedger CSV files directly, or map a bank CSV's delimiter, date,
@@ -156,10 +158,13 @@ credit card, or a digital wallet. It is not an additional transaction type.
 
 - The default currency is HKD.
 - HK$123.45 is stored as `12345` in `amount_minor`.
-- Named transaction views live only in browser storage. They include a bounded
-  ordering choice but exclude the selected month, transactions, and amounts,
-  are validated before reuse, and are not
+- Named transaction views live only in browser storage. They include the bounded
+  transaction date scope and ordering choice but exclude a particular selected
+  month, transactions, and amounts, are validated before reuse, and are not
   included in CSV exports or full-ledger backups.
+- Transaction queries default to the selected month. `scope=all` widens only the
+  ordinary transaction list, its filtered aggregate, and CSV export; monthly
+  financial reports and account calculations remain anchored to `month`.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
 - Manual duplicate preflight is same-origin, read-only, and exact across type,
@@ -516,8 +521,8 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
-GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
+GET    /api/transactions?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/transactions/summary?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 PATCH  /api/transactions/clearing  (atomic cleared/uncleared update for 1-200 explicitly versioned rows)
@@ -529,7 +534,7 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/exports/transactions?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   transactionClearingStatusSchema,
+  transactionDateScopeSchema,
   transactionSortSchema,
   transactionTypeSchema,
 } from './schema'
@@ -12,6 +13,7 @@ export const MAX_SAVED_TRANSACTION_VIEWS = 8
 const savedTransactionViewSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(40),
+  scope: transactionDateScopeSchema.default('month'),
   type: transactionTypeSchema.or(z.literal('all')),
   status: transactionClearingStatusSchema.or(z.literal('all')),
   accountId: z.number().int().positive().nullable(),
@@ -23,7 +25,8 @@ const savedTransactionViewSchema = z.object({
   duplicates: z.boolean().default(false),
   sort: transactionSortSchema.default('date_desc'),
 }).strict().refine((view) => (
-  view.type !== 'all'
+  view.scope !== 'month'
+  || view.type !== 'all'
   || view.status !== 'all'
   || view.accountId !== null
   || view.categoryId !== null

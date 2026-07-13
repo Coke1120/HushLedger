@@ -59,6 +59,37 @@ describe('localized demo data', () => {
     assert.equal(uncleared[0]?.cleared, false)
   })
 
+  it('keeps monthly review bounded while allowing an explicit all-history search', () => {
+    const original = getDemoTransactions('2026-07', 'all', '')[0]
+    assert(original)
+    const prior = {
+      id: 'f8bab109-1c48-4dc9-b759-d763444bcb1d',
+      type: original.type,
+      amountMinor: original.amountMinor,
+      currency: original.currency,
+      accountId: original.accountId,
+      categoryId: original.categoryId,
+      occurredOn: '2026-06-30',
+      cleared: original.cleared,
+      payee: 'Cross-month needle',
+      note: '',
+    }
+
+    try {
+      addDemo(prior)
+      assert.equal(getDemoTransactions('2026-07', 'all', 'Cross-month needle').length, 0)
+      assert.equal(getDemoTransactions(
+        '2026-07', 'all', 'Cross-month needle', undefined, null, null, null, 'all',
+        'date_desc', false, 'all',
+      ).length, 1)
+      assert.equal(summarizeDemoTransactions(
+        '2026-07', 'all', 'Cross-month needle', undefined, null, null, null, 'all', false, 'all',
+      ).transactionCount, 1)
+    } finally {
+      deleteDemo(prior.id)
+    }
+  })
+
   it('changes selected clearing states atomically with version checks', () => {
     const originals = getDemoTransactions('2026-07', 'all', '').filter(({ cleared }) => cleared).slice(0, 2)
     assert.equal(originals.length, 2)
