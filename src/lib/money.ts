@@ -1,3 +1,5 @@
+import { evaluateAmountExpression } from './amountExpression'
+
 export const DEFAULT_CURRENCY = 'HKD' as const
 
 const amountPattern = /^(?:0|[1-9]\d*)(?:\.(\d{1,2}))?$/
@@ -22,8 +24,9 @@ export function formatAmountInput(minor: number, locale = 'en') {
 
 export function parseAmount(value: string, locale = 'en'): number {
   const normalized = locale.toLowerCase().startsWith('fr')
-    ? value.trim().replace(',', '.')
+    ? value.trim().replaceAll(',', '.')
     : value.trim()
+  if (/[+\-*/]/.test(normalized)) return evaluateAmountExpression(normalized)
   const match = amountPattern.exec(normalized)
   if (!match) throw new Error('Enter a valid amount with no more than two decimal places')
 

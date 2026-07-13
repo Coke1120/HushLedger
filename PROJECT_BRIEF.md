@@ -63,6 +63,8 @@ not operate an independent database server or a multi-user identity system.
 ### Record money
 
 - Add income or expense in a short responsive form.
+- Calculate an amount with touch-friendly arithmetic operators or a typed
+  expression; parse without `eval` and round only the final result to minor units.
 - Correct or delete an existing transaction; reject stale changes made from an
   out-of-date view.
 - Duplicate an existing transaction into a separate reviewable draft when a

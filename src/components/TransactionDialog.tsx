@@ -30,6 +30,13 @@ type TransactionDialogProps = {
   onMakeRecurring: (transaction: Transaction) => void
 }
 
+const calculatorOperators = [
+  { symbol: '+', token: '+', label: 'calculatorAdd' },
+  { symbol: '−', token: '-', label: 'calculatorSubtract' },
+  { symbol: '×', token: '*', label: 'calculatorMultiply' },
+  { symbol: '÷', token: '/', label: 'calculatorDivide' },
+] as const
+
 export function TransactionDialog({
   accounts,
   categories,
@@ -189,6 +196,29 @@ export function TransactionDialog({
     if (event.key === 'Escape' && !saving) onClose()
   }
 
+  const normalizeAmountInput = (reportError: boolean) => {
+    const input = amountRef.current
+    if (!input) return false
+    try {
+      input.value = formatAmountInput(parseAmount(input.value, locale), locale)
+      setLocalError((current) => current === t('invalidAmount') ? '' : current)
+      return true
+    } catch {
+      if (reportError) setLocalError(t('invalidAmount'))
+      return false
+    }
+  }
+
+  const insertAmountToken = (token: string) => {
+    const input = amountRef.current
+    if (!input) return
+    const start = input.selectionStart ?? input.value.length
+    const end = input.selectionEnd ?? start
+    input.setRangeText(` ${token} `, start, end, 'end')
+    setLocalError((current) => current === t('invalidAmount') ? '' : current)
+    input.focus()
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setLocalError('')
@@ -281,24 +311,59 @@ export function TransactionDialog({
             </button>
           </div>
 
-          <label className="amount-field">
-            <span>{t('amount')}</span>
-            <span className="amount-input-wrap">
-              <span>HK$</span>
-              <input
-                ref={amountRef}
-                type={privacyMode ? 'password' : 'text'}
-                name="amount"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder={locale === 'fr' ? '0,00' : '0.00'}
-                pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
-                defaultValue={initialTransaction ? formatAmountInput(initialTransaction.amountMinor, locale) : undefined}
-                aria-invalid={Boolean(error)}
-                required
-              />
-            </span>
-          </label>
+          <div className="amount-field">
+            <label htmlFor="transaction-amount">
+              <span>{t('amount')}</span>
+              <span className="amount-input-wrap">
+                <span>HK$</span>
+                <input
+                  id="transaction-amount"
+                  aria-label={t('amount')}
+                  ref={amountRef}
+                  type={privacyMode ? 'password' : 'text'}
+                  name="amount"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  maxLength={80}
+                  placeholder={locale === 'fr' ? '0,00' : '0.00'}
+                  defaultValue={initialTransaction ? formatAmountInput(initialTransaction.amountMinor, locale) : undefined}
+                  aria-describedby="amount-calculator-help"
+                  aria-invalid={Boolean(error)}
+                  onBlur={(event) => {
+                    if (/[+\-*/]/.test(event.currentTarget.value)) normalizeAmountInput(false)
+                  }}
+                  required
+                />
+              </span>
+            </label>
+            <div className="amount-calculator" role="group" aria-label={t('amountCalculatorOperators')}>
+              {calculatorOperators.map((operator) => (
+                <button
+                  type="button"
+                  key={operator.token}
+                  aria-label={t(operator.label)}
+                  title={t(operator.label)}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => insertAmountToken(operator.token)}
+                >
+                  {operator.symbol}
+                </button>
+              ))}
+              <button
+                className="is-equals"
+                type="button"
+                aria-label={t('calculatorEvaluate')}
+                title={t('calculatorEvaluate')}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => normalizeAmountInput(true)}
+              >
+                =
+              </button>
+            </div>
+            <small className="amount-calculator-help" id="amount-calculator-help">
+              {t('amountCalculatorHelp')}
+            </small>
+          </div>
 
           <div className="form-grid">
             <label>

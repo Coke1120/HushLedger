@@ -1217,6 +1217,8 @@ textarea:focus-visible {
 }
 
 .amount-field {
+  display: grid;
+  gap: 8px;
   padding: 6px 2px 2px;
 }
 
@@ -1247,6 +1249,43 @@ textarea:focus-visible {
 .amount-input-wrap input:focus-visible {
   border-color: var(--focus);
   outline: none;
+}
+
+.amount-calculator {
+  display: grid;
+  grid-template-columns: repeat(5, 44px);
+  gap: 6px;
+}
+
+.amount-calculator button {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--brand-strong);
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 750;
+}
+
+.amount-calculator button:hover,
+.amount-calculator button:focus-visible {
+  background: var(--income-soft);
+  border-color: var(--brand);
+}
+
+.amount-calculator button.is-equals {
+  color: #ffffff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.amount-calculator-help {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .form-grid {

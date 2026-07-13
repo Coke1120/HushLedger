@@ -25,6 +25,22 @@ describe('HKD money helpers', () => {
     assert.equal(parseAmount('123,45', 'fr'), 12_345)
   })
 
+  for (const [expression, expected] of [
+    ['10 + 2.50', 1_250],
+    ['2 + 3 * 4', 1_400],
+    ['16.99 * 1.1', 1_869],
+    ['(100 - 25) / 3', 2_500],
+    ['1 / 3', 33],
+  ] as const) {
+    it(`evaluates ${expression} exactly and rounds only the final result`, () => {
+      assert.equal(parseAmount(expression), expected)
+    })
+  }
+
+  it('supports decimal commas throughout a French expression', () => {
+    assert.equal(parseAmount('10,50 + 1,25', 'fr'), 1_175)
+  })
+
   it('formats exact minor units for editing without floating-point conversion', () => {
     assert.equal(formatAmountInput(12_345), '123.45')
     assert.equal(formatAmountInput(5), '0.05')
@@ -34,6 +50,20 @@ describe('HKD money helpers', () => {
 
   for (const value of ['', '0', '0.00', '-1', '1.234', '1,000', 'abc', '90071992547409.92']) {
     it(`rejects unsafe or invalid amount ${value}`, () => {
+      assert.throws(() => parseAmount(value))
+    })
+  }
+
+  for (const value of [
+    '1 / 0',
+    '1 ++ 2',
+    '2 ** 3',
+    '10 - 10',
+    '1e3 + 1',
+    '1 + abc',
+    '90071992547409.91 + 0.01',
+  ]) {
+    it(`rejects unsafe or invalid expression ${value}`, () => {
       assert.throws(() => parseAmount(value))
     })
   }

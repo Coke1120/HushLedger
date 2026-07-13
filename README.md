@@ -38,6 +38,9 @@ knowledge and explains every command and dashboard click.
 - A selected-month forecast of active recurring entries that have not yet been
   generated, including the next date and exact occurrence count for each rule.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
+- Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
+  bounded no-eval parser rounds only the final result before storing exact cents,
+  with touch-friendly operator buttons for mobile entry.
 - Stack search, income/expense, account, and category filters across the 200 most
   recent matching transactions in each month, with inactive references still
   available for historical review and an explicit notice at the result limit.
