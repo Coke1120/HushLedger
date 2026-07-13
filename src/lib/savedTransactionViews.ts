@@ -20,6 +20,7 @@ const savedTransactionViewSchema = z.object({
   tag: z.string()
     .refine((value) => value.startsWith('#') && isTransactionTagName(value.slice(1)))
     .nullable(),
+  duplicates: z.boolean().default(false),
   sort: transactionSortSchema.default('date_desc'),
 }).strict().refine((view) => (
   view.type !== 'all'
@@ -28,6 +29,7 @@ const savedTransactionViewSchema = z.object({
   || view.categoryId !== null
   || view.search.length > 0
   || view.tag !== null
+  || view.duplicates
   || view.sort !== 'date_desc'
 ), 'A saved view must contain at least one filter or a non-default sort')
 

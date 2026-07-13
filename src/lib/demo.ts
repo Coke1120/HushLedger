@@ -274,6 +274,20 @@ function matchesQuery(
   )
 }
 
+function hasExactDuplicate(transaction: Transaction, transactions: Transaction[]) {
+  return transactions.some((candidate) => (
+    candidate.id !== transaction.id
+    && candidate.type === transaction.type
+    && candidate.amountMinor === transaction.amountMinor
+    && candidate.currency === transaction.currency
+    && candidate.accountId === transaction.accountId
+    && candidate.categoryId === transaction.categoryId
+    && candidate.occurredOn === transaction.occurredOn
+    && candidate.payee === transaction.payee
+    && candidate.note === transaction.note
+  ))
+}
+
 export function getDemoTransactions(
   month: string,
   type: TransactionType | 'all',
@@ -284,10 +298,12 @@ export function getDemoTransactions(
   tag: string | null = null,
   status: TransactionClearingStatus | 'all' = 'all',
   sort: TransactionSort = 'date_desc',
+  duplicatesOnly = false,
 ) {
-  return demoTransactions
-    .map((transaction) => localizeDemoTransaction(transaction, t))
+  const localized = demoTransactions.map((transaction) => localizeDemoTransaction(transaction, t))
+  return localized
     .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag, status))
+    .filter((transaction) => !duplicatesOnly || hasExactDuplicate(transaction, localized))
     .sort((left, right) => compareDemoTransactions(left, right, sort))
 }
 
@@ -321,8 +337,20 @@ export function summarizeDemoTransactions(
   categoryId: number | null = null,
   tag: string | null = null,
   status: TransactionClearingStatus | 'all' = 'all',
+  duplicatesOnly = false,
 ): TransactionFilterSummary {
-  const rows = getDemoTransactions(month, type, search, t, accountId, categoryId, tag, status)
+  const rows = getDemoTransactions(
+    month,
+    type,
+    search,
+    t,
+    accountId,
+    categoryId,
+    tag,
+    status,
+    'date_desc',
+    duplicatesOnly,
+  )
   const income = rows.reduce(
     (sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0),
     0,

@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Banknote,
   CircleDollarSign,
   CircleEllipsis,
@@ -33,6 +34,7 @@ type TransactionListProps = {
   transactions: Transaction[]
   loading: boolean
   tagFilter: string | null
+  duplicateReview: boolean
   onEdit: (transaction: Transaction) => void
   onTagSelect: (tag: string | null) => void
 }
@@ -41,6 +43,7 @@ export function TransactionList({
   transactions,
   loading,
   tagFilter,
+  duplicateReview,
   onEdit,
   onTagSelect,
 }: TransactionListProps) {
@@ -90,6 +93,12 @@ export function TransactionList({
                     <span className="auto-generated-badge" title={generatedLabel}>
                       <Repeat aria-hidden="true" />
                       <span className="sr-only">{generatedLabel}</span>
+                    </span>
+                  ) : null}
+                  {duplicateReview ? (
+                    <span className="possible-duplicate-badge" title={t('possibleDuplicateBadge')}>
+                      <AlertTriangle aria-hidden="true" />
+                      <span className="sr-only">{t('possibleDuplicateBadge')}</span>
                     </span>
                   ) : null}
                 </strong>

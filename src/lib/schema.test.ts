@@ -204,6 +204,7 @@ describe('transaction query validation', () => {
         categoryId: '3',
         search: '超級市場',
         tag: '旅程',
+        duplicates: 'exact',
         sort: 'amount_desc',
       }),
       {
@@ -214,6 +215,7 @@ describe('transaction query validation', () => {
         categoryId: 3,
         search: '超級市場',
         tag: '旅程',
+        duplicates: 'exact',
         sort: 'amount_desc',
       },
     )
@@ -228,6 +230,7 @@ describe('transaction query validation', () => {
     { search: 'x'.repeat(81) },
     { tag: 'trip,' },
     { tag: '#trip' },
+    { month: '2026-07', duplicates: 'fuzzy' },
     { month: '2026-07', sort: 'amount; DROP TABLE transactions' },
   ].entries()) {
     it(`rejects invalid query ${index}`, () => {

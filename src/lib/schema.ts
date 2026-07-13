@@ -125,6 +125,7 @@ export const transactionQuerySchema = z
     categoryId: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).max(80).optional(),
     tag: z.string().refine(isTransactionTagName, '標籤格式不正確').optional(),
+    duplicates: z.literal('exact').optional(),
     sort: transactionSortSchema.optional(),
   })
   .strict()

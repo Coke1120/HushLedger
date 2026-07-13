@@ -73,6 +73,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
@@ -99,6 +100,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     tagFilter,
     clearingFilter,
     view === 'transactions' ? transactionSort : 'date_desc',
+    duplicatesOnly,
     registerAccountId,
   )
   const {
@@ -220,6 +222,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     if (!category) return
     setSearch('')
     setTagFilter(null)
+    setDuplicatesOnly(false)
     setFilter(category.type)
     setAccountFilterId(null)
     setRegisterAccountId(null)
@@ -234,6 +237,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(null)
     setFilter('all')
     setClearingFilter('all')
+    setDuplicatesOnly(false)
     if (data.source === 'live' && data.online) {
       setAccountFilterId(null)
       setRegisterAccountId(accountId)
@@ -308,10 +312,11 @@ function App({ initialMonth }: { initialMonth: string }) {
       categoryId: categoryFilterId,
       search: search.trim(),
       tag: tagFilter,
+      duplicates: duplicatesOnly,
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, filter, search, storeSavedTransactionViews, tagFilter, transactionSort])
+  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -330,6 +335,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(categoryId)
     setSearch(savedView.search)
     setTagFilter(savedView.tag)
+    setDuplicatesOnly(savedView.duplicates)
     setTransactionSort(savedView.sort)
     setImportMode(null)
     setRegisterAccountId(null)
@@ -342,6 +348,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(null)
     setSearch('')
     setTagFilter(null)
+    setDuplicatesOnly(false)
     setTransactionSort('date_desc')
     setImportMode(null)
     setRegisterAccountId(null)
@@ -478,6 +485,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 tagFilter={tagFilter}
                 filter={filter}
                 clearingFilter={clearingFilter}
+                duplicatesOnly={duplicatesOnly}
                 sort={transactionSort}
                 showSort={view === 'transactions'}
                 month={month}
@@ -491,6 +499,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
+                onDuplicatesOnlyChange={setDuplicatesOnly}
                 onSortChange={setTransactionSort}
                 onAccountFilterChange={setAccountFilterId}
                 onCategoryFilterChange={setCategoryFilterId}
@@ -519,6 +528,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                       || categoryFilterId !== null
                       || search.trim().length > 0
                       || tagFilter !== null
+                      || duplicatesOnly
                       || transactionSort !== 'date_desc'
                     }
                     onSave={saveTransactionView}
@@ -582,6 +592,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 transactions={transactions}
                 loading={loading}
                 tagFilter={tagFilter}
+                duplicateReview={duplicatesOnly}
                 onEdit={openTransaction}
                 onTagSelect={changeTagFilter}
               />

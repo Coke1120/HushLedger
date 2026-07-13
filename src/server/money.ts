@@ -84,6 +84,7 @@ export type TransactionQuery = {
   search?: string
   tag?: string
   status?: TransactionClearingStatus
+  duplicates?: 'exact'
   sort?: TransactionSort
 }
 
@@ -386,6 +387,22 @@ function transactionQueryWhere(query: TransactionQuery) {
       ' ' || ? || ' '
     ) > 0`)
     values.push(`#${query.tag}`)
+  }
+
+  if (query.duplicates === 'exact') {
+    filters.push(`EXISTS (
+      SELECT 1
+      FROM transactions duplicate
+      WHERE duplicate.id <> t.id
+        AND duplicate.type = t.type
+        AND duplicate.amount_minor = t.amount_minor
+        AND duplicate.currency = t.currency
+        AND duplicate.account_id = t.account_id
+        AND duplicate.category_id = t.category_id
+        AND duplicate.occurred_on = t.occurred_on
+        AND duplicate.payee = t.payee
+        AND duplicate.note = t.note
+    )`)
   }
 
   return { clause: filters.join(' AND '), values }

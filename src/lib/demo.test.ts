@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { translate, type Locale, type Translator } from '../i18n'
 import {
+  addDemo,
   deleteDemo,
   demoSummary,
   getDemoTransactions,
@@ -88,6 +89,43 @@ describe('localized demo data', () => {
         net: -38_640,
       },
     )
+  })
+
+  it('finds only field-identical demo transactions while ignoring clearing status', () => {
+    const original = getDemoTransactions('2026-07', 'all', '')[0]
+    assert(original)
+    const duplicate = addDemo({
+      id: 'b557d0d8-e484-48f5-a600-d677cc7318bf',
+      type: original.type,
+      amountMinor: original.amountMinor,
+      currency: original.currency,
+      accountId: original.accountId,
+      categoryId: original.categoryId,
+      occurredOn: original.occurredOn,
+      cleared: !original.cleared,
+      payee: original.payee,
+      note: original.note,
+    })
+
+    try {
+      const duplicates = getDemoTransactions(
+        '2026-07', 'all', '', undefined, null, null, null, 'all', 'date_desc', true,
+      )
+      assert.deepEqual(new Set(duplicates.map(({ id }) => id)), new Set([original.id, duplicate.id]))
+      assert.deepEqual(
+        summarizeDemoTransactions(
+          '2026-07', 'all', '', undefined, null, null, null, 'all', true,
+        ),
+        {
+          transactionCount: 2,
+          income: 0,
+          expense: original.amountMinor * 2,
+          net: original.amountMinor * -2,
+        },
+      )
+    } finally {
+      deleteDemo(duplicate.id)
+    }
   })
 
   it('ranks monthly expense categories by exact total and retains transaction counts', () => {

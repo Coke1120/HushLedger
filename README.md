@@ -61,10 +61,11 @@ knowledge and explains every command and dashboard click.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact cents,
   with touch-friendly operator buttons for mobile entry.
-- Stack search, income/expense, cleared/uncleared, account, and category filters
-  across the 200 most recent matching transactions in each month, with inactive
-  references still available for historical review and an explicit notice at the
-  result limit.
+- Stack search, income/expense, cleared/uncleared, account, category, and exact
+  possible-duplicate filters across the 200 most recent matching transactions in
+  each month, with inactive references still available for historical review and
+  an explicit notice at the result limit. Duplicate review is read-only and marks
+  candidates instead of deleting either entry.
 - Order a monthly review by newest or oldest date, largest or smallest amount,
   or payee name. The order is strictly validated and also applies to the complete
   CSV export; blank payees remain last.
@@ -72,8 +73,9 @@ knowledge and explains every command and dashboard click.
   transaction filters. These totals cover every match, not only the 200 rows kept
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
-  their type, clearing, account, category, search, tag, and ordering in any month.
-  Saved views contain review criteria only and do not sync to Cloudflare.
+  their type, clearing, account, category, search, tag, possible-duplicate, and
+  ordering criteria in any month. Saved views contain review criteria only and do
+  not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
@@ -103,7 +105,9 @@ knowledge and explains every command and dashboard click.
 - Before a manual create or edit, warn when the local ledger already contains an
   exact match on type, amount, currency, account, category, date, payee, and
   note. The check returns only a count, ignores clearing status, never calls AI,
-  and can be overridden because identical real purchases are valid.
+  and can be overridden because identical real purchases are valid. The same
+  predicate powers a review filter that can be stacked, saved, summarized, and
+  exported without changing either candidate.
 - Duplicate an existing transaction into a reviewable draft with a fresh UUID;
   editable details and date are copied, while recurring/import provenance is not.
 - Turn an existing manual transaction into a prefilled monthly recurring-rule
@@ -159,6 +163,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
   current transaction during editing, deliberately ignores clearing status, and
   warns rather than enforcing uniqueness. The explicit Duplicate action skips a
   redundant preflight because the user has already chosen to create another row.
+  The possible-duplicate review filter uses the same fields, shows every member
+  of an exact-match group, and never merges or deletes automatically.
 - Duplicating a transaction opens a separate create-mode draft for review. It
   copies only editable fields, never recurring provenance, audit timestamps, or
   import identity, resets the draft to uncleared, and requires active
@@ -502,8 +508,8 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
-GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 GET    /api/transactions/:id
@@ -514,7 +520,7 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
+GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)

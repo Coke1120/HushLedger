@@ -1668,6 +1668,44 @@ async function verifyWorkerApi() {
   assert.equal(ambiguousMatchPreview.payload.data.matchable, 0)
   assert.equal(ambiguousMatchPreview.payload.data.possibleDuplicates, 1)
 
+  const duplicateReview = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&search=integration%20test&duplicates=exact`,
+  )
+  assert.equal(duplicateReview.response.status, 200, JSON.stringify(duplicateReview.payload))
+  assert.deepEqual(
+    new Set(duplicateReview.payload.data.map(({ id }) => id)),
+    new Set([transactionBody.id, csvImportIds.possibleDuplicate]),
+  )
+  assert(duplicateReview.payload.data.some(({ cleared }) => cleared))
+  assert(duplicateReview.payload.data.some(({ cleared }) => !cleared))
+
+  const duplicateReviewSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&search=integration%20test&duplicates=exact`,
+  )
+  assert.equal(duplicateReviewSummary.response.status, 200)
+  assert.deepEqual(duplicateReviewSummary.payload.data, {
+    transactionCount: 2,
+    income: 0,
+    expense: transactionBody.amountMinor * 2,
+    net: transactionBody.amountMinor * -2,
+  })
+
+  const duplicateReviewExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&search=integration%20test&duplicates=exact`,
+  )
+  assert.equal(duplicateReviewExport.response.status, 200)
+  assert.equal(duplicateReviewExport.payload.trimEnd().split('\r\n').length - 1, 2)
+
+  const invalidDuplicateReview = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&duplicates=fuzzy`,
+  )
+  assert.equal(invalidDuplicateReview.response.status, 400)
+  assert.equal(invalidDuplicateReview.payload.error.code, 'INVALID_QUERY')
+
   const collisionKey = `csv:hushledger:row:${'a'.repeat(64)}`
   const collisionIds = [
     '41000000-0000-4000-8000-000000000004',
@@ -2289,6 +2327,7 @@ async function verifyWorkerApi() {
     transactionFilterQueries: 4,
     transactionFilterSummaries: 3,
     transactionDuplicateChecks: 5,
+    transactionDuplicateReviews: 4,
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,

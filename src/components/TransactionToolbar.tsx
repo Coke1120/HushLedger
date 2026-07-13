@@ -1,4 +1,4 @@
-import { Download, FileUp, Search, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, Download, FileUp, Search, Sparkles, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useI18n } from '../i18n'
 import type {
@@ -17,6 +17,7 @@ type TransactionToolbarProps = {
   tagFilter: string | null
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
+  duplicatesOnly: boolean
   sort: TransactionSort
   showSort: boolean
   month: string
@@ -30,6 +31,7 @@ type TransactionToolbarProps = {
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
+  onDuplicatesOnlyChange: (value: boolean) => void
   onSortChange: (value: TransactionSort) => void
   onAccountFilterChange: (value: number | null) => void
   onCategoryFilterChange: (value: number | null) => void
@@ -47,6 +49,7 @@ export function TransactionToolbar({
   tagFilter,
   filter,
   clearingFilter,
+  duplicatesOnly,
   sort,
   showSort,
   month,
@@ -60,6 +63,7 @@ export function TransactionToolbar({
   onTagFilterChange,
   onFilterChange,
   onClearingFilterChange,
+  onDuplicatesOnlyChange,
   onSortChange,
   onAccountFilterChange,
   onCategoryFilterChange,
@@ -84,6 +88,7 @@ export function TransactionToolbar({
   if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
   if (search.trim()) exportQuery.set('search', search.trim())
   if (tagFilter) exportQuery.set('tag', tagFilter.slice(1))
+  if (duplicatesOnly) exportQuery.set('duplicates', 'exact')
   if (showSort && sort !== 'date_desc') exportQuery.set('sort', sort)
   const exportHref = `/api/exports/transactions?${exportQuery}`
   const visibleCategories = filter === 'all'
@@ -131,6 +136,16 @@ export function TransactionToolbar({
           </button>
         ))}
       </div>
+      <button
+        className={`button button-secondary transaction-duplicate-filter${duplicatesOnly ? ' is-active' : ''}`}
+        type="button"
+        aria-pressed={duplicatesOnly}
+        onClick={() => onDuplicatesOnlyChange(!duplicatesOnly)}
+        title={t('reviewPossibleDuplicatesHelp')}
+      >
+        <AlertTriangle aria-hidden="true" />
+        {t('reviewPossibleDuplicates')}
+      </button>
       <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
         {showSort ? (
           <label className="transaction-reference-filter">

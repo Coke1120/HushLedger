@@ -60,6 +60,7 @@ export function SavedTransactionViews({
     }
     if (view.search) parts.push(t('savedViewSearch', { search: view.search }))
     if (view.tag) parts.push(view.tag)
+    if (view.duplicates) parts.push(t('savedViewPossibleDuplicates'))
     if (view.sort !== 'date_desc') parts.push(t(sortMessageKeys[view.sort]))
     return parts.join(' · ')
   }
