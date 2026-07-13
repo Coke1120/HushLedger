@@ -5,7 +5,7 @@ import {
   ShieldCheck,
   TriangleAlert,
 } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n, type MessageKey } from '../i18n'
 import {
   LEDGER_BACKUP_CONFIRMATION,
@@ -14,6 +14,19 @@ import {
   type LedgerRestorePreview,
   type LedgerTableCounts,
 } from '../lib/ledgerBackup'
+import {
+  LEDGER_BACKUP_PREPARED_STORAGE_KEY,
+  LEDGER_BACKUP_REMINDER_DAYS,
+  LEDGER_BACKUP_VERIFIED_STORAGE_KEY,
+  applyLedgerBackupStorageChange,
+  emptyLedgerBackupHealth,
+  isLedgerBackupDue,
+  mergeLedgerBackupHealth,
+  parseLedgerBackupHealth,
+  recordLedgerBackupPreparation,
+  recordLedgerBackupVerification,
+  type LedgerBackupHealth,
+} from '../lib/ledgerBackupHealth'
 import { ApiError, api } from '../lib/api'
 
 type LedgerBackupSettingsProps = {
@@ -42,6 +55,77 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
   const [busy, setBusy] = useState<BusyAction>(null)
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null)
   const [statusKey, setStatusKey] = useState<MessageKey | null>(null)
+  const [backupHealth, setBackupHealth] = useState<LedgerBackupHealth | null>(null)
+  const timestampFormatter = new Intl.DateTimeFormat(locale, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+  const backupDue = backupHealth ? isLedgerBackupDue(backupHealth) : false
+
+  useEffect(() => {
+    const loadTimeout = window.setTimeout(() => {
+      try {
+        const stored = parseLedgerBackupHealth(
+          window.localStorage.getItem(LEDGER_BACKUP_PREPARED_STORAGE_KEY),
+          window.localStorage.getItem(LEDGER_BACKUP_VERIFIED_STORAGE_KEY),
+        )
+        setBackupHealth((current) => current
+          ? mergeLedgerBackupHealth(current, stored)
+          : stored)
+      } catch {
+        setBackupHealth((current) => current ?? { ...emptyLedgerBackupHealth })
+      }
+    }, 0)
+    const syncStoredHealth = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) return
+      const key = event.key
+      if (key === null) {
+        setBackupHealth({ ...emptyLedgerBackupHealth })
+        return
+      }
+      if (
+        key === LEDGER_BACKUP_PREPARED_STORAGE_KEY
+        || key === LEDGER_BACKUP_VERIFIED_STORAGE_KEY
+      ) {
+        setBackupHealth((current) => applyLedgerBackupStorageChange(
+          current ?? emptyLedgerBackupHealth,
+          key,
+          event.newValue,
+        ))
+      }
+    }
+    window.addEventListener('storage', syncStoredHealth)
+    return () => {
+      window.clearTimeout(loadTimeout)
+      window.removeEventListener('storage', syncStoredHealth)
+    }
+  }, [])
+
+  const recordBackupActivity = (activity: 'prepared' | 'verified') => {
+    let current = backupHealth ?? { ...emptyLedgerBackupHealth }
+    try {
+      const stored = parseLedgerBackupHealth(
+        window.localStorage.getItem(LEDGER_BACKUP_PREPARED_STORAGE_KEY),
+        window.localStorage.getItem(LEDGER_BACKUP_VERIFIED_STORAGE_KEY),
+      )
+      current = mergeLedgerBackupHealth(current, stored)
+    } catch {
+      // Continue with the in-memory record when browser storage is unavailable.
+    }
+    const next = activity === 'prepared'
+      ? recordLedgerBackupPreparation(current)
+      : recordLedgerBackupVerification(current)
+    setBackupHealth(next)
+    try {
+      const storageKey = activity === 'prepared'
+        ? LEDGER_BACKUP_PREPARED_STORAGE_KEY
+        : LEDGER_BACKUP_VERIFIED_STORAGE_KEY
+      const timestamp = activity === 'prepared' ? next.lastPreparedAt : next.lastVerifiedAt
+      if (timestamp) window.localStorage.setItem(storageKey, timestamp)
+    } catch {
+      // Keep the session status useful when browser storage is unavailable.
+    }
+  }
 
   const resetRestore = () => {
     setBackup(null)
@@ -72,6 +156,8 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
       anchor.click()
       anchor.remove()
       URL.revokeObjectURL(objectUrl)
+      recordBackupActivity('prepared')
+      setStatusKey('ledgerBackupDownloadComplete')
     } catch {
       setErrorKey('ledgerBackupDownloadFailed')
     } finally {
@@ -105,11 +191,14 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
     setErrorKey(null)
     setStatusKey(null)
     try {
-      setPreview(await api<LedgerRestorePreview>('/api/backups/ledger', {
+      const nextPreview = await api<LedgerRestorePreview>('/api/backups/ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'preview', backup }),
-      }))
+      })
+      setPreview(nextPreview)
+      recordBackupActivity('verified')
+      setStatusKey('ledgerBackupVerificationComplete')
     } catch (error) {
       setErrorKey(restoreErrorKey(error))
     } finally {
@@ -167,6 +256,41 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
 
       {!available ? <p className="ledger-backup-unavailable">{t('ledgerBackupUnavailable')}</p> : null}
 
+      {backupHealth ? (
+        <div className={`ledger-backup-health${backupDue ? ' is-due' : ''}`}>
+          <div className="ledger-backup-health-heading">
+            {backupDue
+              ? <TriangleAlert aria-hidden="true" />
+              : <Download aria-hidden="true" />}
+            <h4>{t(
+              backupDue
+                ? 'ledgerBackupHealthDue'
+                : 'ledgerBackupHealthCurrent',
+              { count: LEDGER_BACKUP_REMINDER_DAYS },
+            )}</h4>
+          </div>
+          <dl className="ledger-backup-health-dates">
+            <div>
+              <dt>{t('ledgerBackupLastDownload')}</dt>
+              <dd>{backupHealth.lastPreparedAt
+                ? <time dateTime={backupHealth.lastPreparedAt}>
+                    {timestampFormatter.format(new Date(backupHealth.lastPreparedAt))}
+                  </time>
+                : t('ledgerBackupNotRecorded')}</dd>
+            </div>
+            <div>
+              <dt>{t('ledgerBackupLastVerification')}</dt>
+              <dd>{backupHealth.lastVerifiedAt
+                ? <time dateTime={backupHealth.lastVerifiedAt}>
+                    {timestampFormatter.format(new Date(backupHealth.lastVerifiedAt))}
+                  </time>
+                : t('ledgerBackupNotRecorded')}</dd>
+            </div>
+          </dl>
+          <p>{t('ledgerBackupHealthLocalOnly')}</p>
+        </div>
+      ) : null}
+
       <div className="ledger-backup-actions">
         <div className="ledger-backup-action">
           <h4>{t('downloadLedgerBackup')}</h4>
@@ -219,7 +343,7 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
           <dl className="ledger-restore-metadata">
             <div>
               <dt>{t('ledgerRestoreExportedAt')}</dt>
-              <dd>{new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(preview.exportedAt))}</dd>
+              <dd>{timestampFormatter.format(new Date(preview.exportedAt))}</dd>
             </div>
             <div>
               <dt>SHA-256</dt>

@@ -115,7 +115,9 @@ knowledge and explains every command and dashboard click.
   this browser without storing file contents, accounts, or categories.
 - Download a versioned full-ledger JSON backup from Settings. Restore first shows
   a checksum-verified replacement report, then requires an explicit destructive
-  confirmation before one transactional D1 replacement.
+  confirmation before one transactional D1 replacement. A browser-local health
+  record shows the last prepared backup download and integrity check, and warns
+  after 30 days without a download.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Before a manual create or edit, warn when the local ledger already contains an
@@ -336,6 +338,11 @@ privacy state are intentionally excluded.
 The JSON file is plaintext financial data. Store it only in encrypted storage and
 do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
 or modification; it is an integrity check, not encryption or authentication.
+
+Settings records, in this browser only, when HushLedger last prepared a backup
+download and successfully validated a backup. It warns after 30 days without
+a download. These dates are a maintenance reminder, not proof that the file was
+retained or stored safely.
 
 Restore is preview-first:
 

@@ -71,7 +71,8 @@ not operate an independent database server or a multi-user identity system.
   most 200 normalized rows.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
-  replacement.
+  replacement. Keep the latest backup-preparation and integrity-check dates in
+  this browser only, with a reminder after 30 days without a download.
 - Mask formatted amounts, category proportions, editable amount fields, pasted
   bank text, and raw mapped CSV samples with a current-tab screen privacy control
   before sharing the screen; force the mask while the app is hidden or unfocused,
@@ -285,7 +286,9 @@ SHA-256 checksum detects modification. Restore validates internal references,
 returns a no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
 all six tables. The in-app file limit is 7 MiB; larger or database-level recovery
-uses Wrangler D1 export and restore.
+uses Wrangler D1 export and restore. The browser stores only the most recent
+backup-preparation and integrity-check dates; this reminder does not prove
+that a backup file was retained off-platform.
 
 ## Reliability and privacy
 
@@ -297,6 +300,8 @@ uses Wrangler D1 export and restore.
 - `.wrangler/`, local databases, exports, and backups are ignored by Git.
 - D1 is not the only copy: maintain encrypted off-platform backups and periodic
   restore drills.
+- Warn after 30 days without preparing an in-app backup download, while keeping
+  that maintenance record browser-local and treating it only as a reminder.
 - In-app JSON backups are plaintext. Their checksum proves integrity only, not
   confidentiality or authenticity.
 - Only the non-sensitive offline/demo shell and fingerprinted static assets may be

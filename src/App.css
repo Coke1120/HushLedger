@@ -3792,6 +3792,78 @@ button.account-register-row:focus-visible {
   line-height: 1.55;
 }
 
+.ledger-backup-health {
+  padding: 14px;
+  margin-top: 18px;
+  background: var(--income-soft);
+  border: 1px solid rgb(38 126 112 / 28%);
+  border-radius: 12px;
+}
+
+.ledger-backup-health.is-due {
+  background: var(--warning-bg);
+  border-color: #ead99d;
+}
+
+.ledger-backup-health-heading {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+}
+
+.ledger-backup-health-heading > svg {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  color: var(--income);
+}
+
+.ledger-backup-health.is-due .ledger-backup-health-heading > svg {
+  color: var(--warning);
+}
+
+.ledger-backup-health-heading h4 {
+  margin: 0;
+  color: var(--brand-strong);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ledger-backup-health-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 12px 0 0;
+}
+
+.ledger-backup-health-dates > div {
+  min-width: 0;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.ledger-backup-health-dates dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ledger-backup-health-dates dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ledger-backup-health > p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .ledger-backup-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5985,6 +6057,7 @@ button.account-register-row:focus-visible {
   }
 
   .ledger-backup-actions,
+  .ledger-backup-health-dates,
   .ledger-restore-metadata {
     grid-template-columns: minmax(0, 1fr);
   }
