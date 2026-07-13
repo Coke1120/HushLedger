@@ -82,7 +82,7 @@ export function AccountRegister({
   if (loading || !register) {
     return (
       <section className="account-register" aria-busy="true">
-        <button className="button button-secondary account-register-back" type="button" onClick={onClose}>
+        <button className="button button-secondary account-register-back" type="button" onClick={onClose} disabled={saving}>
           <ArrowLeft aria-hidden="true" />
           {t('backToTransactions')}
         </button>
@@ -112,7 +112,7 @@ export function AccountRegister({
 
   return (
     <section className="account-register" aria-labelledby="account-register-title">
-      <button className="button button-secondary account-register-back" type="button" onClick={onClose}>
+      <button className="button button-secondary account-register-back" type="button" onClick={onClose} disabled={saving}>
         <ArrowLeft aria-hidden="true" />
         {t('backToTransactions')}
       </button>

@@ -221,6 +221,11 @@
   border-color: var(--focus);
 }
 
+.icon-button:disabled,
+.month-picker:has(input:disabled) {
+  opacity: 0.55;
+}
+
 .privacy-toggle.is-active {
   color: #ffffff;
   background: var(--brand);
@@ -350,6 +355,10 @@ textarea:focus-visible {
   width: 100%;
   opacity: 0;
   cursor: pointer;
+}
+
+.month-picker input:disabled {
+  cursor: default;
 }
 
 .current-month-button {

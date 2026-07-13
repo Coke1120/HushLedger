@@ -360,10 +360,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [openAccountRegister])
 
   const closeAccountRegister = useCallback(() => {
+    if (ledgerInteractionLocked) return
     setAccountFilterId(registerAccountId)
     setRegisterAccountId(null)
     setRegisterMode('review')
-  }, [registerAccountId])
+  }, [ledgerInteractionLocked, registerAccountId])
 
   const changeTagFilter = useCallback((tag: string | null) => {
     setTagFilter(tag)
@@ -568,6 +569,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             <MonthNavigator
               month={month}
               currentMonth={initialMonth}
+              disabled={ledgerInteractionLocked}
               onChange={setMonth}
               onPrevious={() => setMonth((value) => shiftMonth(value, -1))}
               onNext={() => setMonth((value) => shiftMonth(value, 1))}
@@ -753,12 +755,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             ) : null}
             {view === 'transactions' && registerAccountId !== null ? (
               <AccountRegister
+                key={`${registerAccountId}:${month}`}
                 register={data.accountRegister}
                 balance={data.accountBalances.find(({ accountId }) => accountId === registerAccountId) ?? null}
                 transactions={data.transactions}
                 transfers={data.accountTransfers}
                 loading={loading}
-                saving={data.saving}
+                saving={ledgerInteractionLocked}
                 reconcileInitially={registerMode === 'reconcile'}
                 onClose={closeAccountRegister}
                 onEditTransaction={openTransaction}
