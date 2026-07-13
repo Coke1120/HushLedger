@@ -31,7 +31,7 @@ import {
 } from './components/TransactionToolbar'
 import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
-import { shiftMonth } from './lib/date'
+import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
 import {
@@ -75,6 +75,10 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
   const [transactionDateScope, setTransactionDateScope] = useState<TransactionDateScope>('month')
+  const [customTransactionDateRange, setCustomTransactionDateRange] = useState<{
+    from: string
+    to: string
+  } | null>(null)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -93,6 +97,11 @@ function App({ initialMonth }: { initialMonth: string }) {
   const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
+  const selectedMonthDateRange = inclusiveMonthRangeDates(month)
+  const transactionDateRange = customTransactionDateRange ?? {
+    from: selectedMonthDateRange.start,
+    to: selectedMonthDateRange.end,
+  }
   const effectiveTransactionDateScope = view === 'transactions' && registerAccountId === null
     ? transactionDateScope
     : 'month'
@@ -107,6 +116,8 @@ function App({ initialMonth }: { initialMonth: string }) {
     view === 'transactions' ? transactionSort : 'date_desc',
     duplicatesOnly,
     effectiveTransactionDateScope,
+    transactionDateRange.from,
+    transactionDateRange.to,
     registerAccountId,
   )
   const {
@@ -225,6 +236,22 @@ function App({ initialMonth }: { initialMonth: string }) {
     setCategoryFilterId(null)
   }, [])
 
+  const changeTransactionDateFrom = useCallback((from: string) => {
+    const fallback = inclusiveMonthRangeDates(month)
+    setCustomTransactionDateRange((current) => {
+      const to = current?.to ?? fallback.end
+      return { from, to: from > to ? from : to }
+    })
+  }, [month])
+
+  const changeTransactionDateTo = useCallback((to: string) => {
+    const fallback = inclusiveMonthRangeDates(month)
+    setCustomTransactionDateRange((current) => {
+      const from = current?.from ?? fallback.start
+      return { from: to < from ? to : from, to }
+    })
+  }, [month])
+
   const openCategoryTransactions = useCallback((categoryId: number) => {
     const category = data.categories.find((item) => item.id === categoryId)
     if (!category) return
@@ -318,6 +345,8 @@ function App({ initialMonth }: { initialMonth: string }) {
       id: crypto.randomUUID(),
       name,
       scope: transactionDateScope,
+      dateFrom: transactionDateScope === 'range' ? transactionDateRange.from : null,
+      dateTo: transactionDateScope === 'range' ? transactionDateRange.to : null,
       type: filter,
       status: clearingFilter,
       accountId: accountFilterId,
@@ -328,7 +357,7 @@ function App({ initialMonth }: { initialMonth: string }) {
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionDateScope, transactionSort])
+  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -343,6 +372,9 @@ function App({ initialMonth }: { initialMonth: string }) {
       : null
     setFilter(savedView.type)
     setTransactionDateScope(savedView.scope)
+    if (savedView.scope === 'range' && savedView.dateFrom && savedView.dateTo) {
+      setCustomTransactionDateRange({ from: savedView.dateFrom, to: savedView.dateTo })
+    }
     setClearingFilter(savedView.status)
     setAccountFilterId(accountId)
     setCategoryFilterId(categoryId)
@@ -364,6 +396,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(null)
     setDuplicatesOnly(false)
     setTransactionSort('date_desc')
+    setCustomTransactionDateRange(null)
     setImportMode(null)
     setRegisterAccountId(null)
   }, [])
@@ -507,6 +540,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                 filter={filter}
                 clearingFilter={clearingFilter}
                 dateScope={transactionDateScope}
+                dateFrom={transactionDateRange.from}
+                dateTo={transactionDateRange.to}
                 duplicatesOnly={duplicatesOnly}
                 sort={transactionSort}
                 showSort={view === 'transactions'}
@@ -522,6 +557,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
                 onDateScopeChange={setTransactionDateScope}
+                onDateFromChange={changeTransactionDateFrom}
+                onDateToChange={changeTransactionDateTo}
                 onDuplicatesOnlyChange={setDuplicatesOnly}
                 onSortChange={setTransactionSort}
                 onAccountFilterChange={setAccountFilterId}
@@ -616,6 +653,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                 key={[
                   month,
                   transactionDateScope,
+                  transactionDateRange.from,
+                  transactionDateRange.to,
                   view,
                   filter,
                   clearingFilter,

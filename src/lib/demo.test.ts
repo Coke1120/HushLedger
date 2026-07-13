@@ -87,6 +87,19 @@ describe('localized demo data', () => {
       assert.equal(summarizeDemoTransactions(
         '2026-07', 'all', 'Cross-month needle', undefined, null, null, null, 'all', false, 'all',
       ).transactionCount, 1)
+      assert.equal(getDemoTransactions(
+        '2026-07', 'all', 'Cross-month needle', undefined, null, null, null, 'all',
+        'date_desc', false, 'range', '2026-06-30', '2026-06-30',
+      ).length, 1)
+      assert.deepEqual(summarizeDemoTransactions(
+        '2026-07', 'all', 'Cross-month needle', undefined, null, null, null, 'all', false,
+        'range', '2026-06-30', '2026-06-30',
+      ), {
+        transactionCount: 1,
+        income: 0,
+        expense: prior.amountMinor,
+        net: -prior.amountMinor,
+      })
     } finally {
       deleteDemo(prior.id)
     }

@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   currentHongKongDate,
   formatHongKongDate,
+  inclusiveMonthRangeDates,
   isValidCalendarDate,
   monthRangeDates,
   shiftMonth,
@@ -13,6 +14,17 @@ describe('Hong Kong date helpers', () => {
     assert.deepEqual(monthRangeDates('2026-07'), {
       start: '2026-07-01',
       end: '2026-08-01',
+    })
+  })
+
+  it('builds inclusive calendar-month boundaries without timezone arithmetic', () => {
+    assert.deepEqual(inclusiveMonthRangeDates('2026-07'), {
+      start: '2026-07-01',
+      end: '2026-07-31',
+    })
+    assert.deepEqual(inclusiveMonthRangeDates('2024-02'), {
+      start: '2024-02-01',
+      end: '2024-02-29',
     })
   })
 

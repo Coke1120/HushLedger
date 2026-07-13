@@ -82,6 +82,8 @@ export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRu
 export type TransactionQuery = {
   month: string
   scope: TransactionDateScope
+  dateFrom?: string
+  dateTo?: string
   type?: TransactionType
   accountId?: number
   categoryId?: number
@@ -373,6 +375,9 @@ function transactionQueryWhere(query: TransactionQuery) {
     const { start, end } = monthRangeDates(query.month)
     filters.push('t.occurred_on >= ?', 't.occurred_on < ?')
     values.push(start, end)
+  } else if (query.scope === 'range') {
+    filters.push('t.occurred_on >= ?', 't.occurred_on <= ?')
+    values.push(query.dateFrom!, query.dateTo!)
   }
 
   if (query.type) {

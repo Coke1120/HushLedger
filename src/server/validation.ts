@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { isValidCalendarDate } from '../lib/date'
-import { transactionQuerySchema } from '../lib/schema'
+import { transactionQueryFieldsSchema } from '../lib/schema'
 
-export const summaryQuerySchema = transactionQuerySchema.pick({ month: true }).strict()
+export const summaryQuerySchema = transactionQueryFieldsSchema.pick({ month: true }).strict()
 export const accountBalanceQuerySchema = summaryQuerySchema
-export const accountRegisterQuerySchema = transactionQuerySchema
+export const accountRegisterQuerySchema = transactionQueryFieldsSchema
   .pick({ month: true, accountId: true })
   .required({ accountId: true })
   .strict()

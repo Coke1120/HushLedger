@@ -1423,6 +1423,41 @@ async function verifyWorkerApi() {
     'attachment; filename="hushledger-transactions-all.csv"',
   )
   assert.equal(allHistoryExport.payload.trimEnd().split('\r\n').length - 1, 1)
+  const historicalDate = `${previousMonth}-15`
+  const customRangeSearch = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&scope=range&dateFrom=${historicalDate}&dateTo=${historicalDate}&search=historical%20trend`,
+  )
+  assert.equal(customRangeSearch.response.status, 200)
+  assert.deepEqual(
+    customRangeSearch.payload.data.map(({ id }) => id),
+    ['30000000-0000-4000-8000-000000999999'],
+  )
+  const customRangeSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&scope=range&dateFrom=${historicalDate}&dateTo=${historicalDate}&search=historical%20trend`,
+  )
+  assert.equal(customRangeSummary.response.status, 200)
+  assert.deepEqual(customRangeSummary.payload.data, allHistorySummary.payload.data)
+  const customRangeExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&scope=range&dateFrom=${historicalDate}&dateTo=${historicalDate}&search=historical%20trend`,
+  )
+  assert.equal(customRangeExport.response.status, 200)
+  assert.equal(
+    customRangeExport.response.headers.get('content-disposition'),
+    `attachment; filename="hushledger-transactions-${historicalDate}-to-${historicalDate}.csv"`,
+  )
+  assert.equal(customRangeExport.payload.trimEnd().split('\r\n').length - 1, 1)
+  for (const rejectedRangeQuery of [
+    `/api/transactions?month=${month}&scope=range&dateFrom=${historicalDate}`,
+    `/api/transactions?month=${month}&scope=range&dateFrom=${month}-01&dateTo=${historicalDate}`,
+    `/api/transactions?month=${month}&scope=month&dateFrom=${historicalDate}&dateTo=${historicalDate}`,
+  ]) {
+    const rejected = await api(baseUrl, rejectedRangeQuery)
+    assert.equal(rejected.response.status, 400)
+    assert.equal(rejected.payload.error.code, 'INVALID_QUERY')
+  }
   const rejectedDateScope = await api(
     baseUrl,
     `/api/transactions?month=${month}&scope=year`,
@@ -2558,10 +2593,10 @@ async function verifyWorkerApi() {
     transactionFilterGuards: 4,
     transactionFilterQueries: 4,
     transactionFilterSummaries: 3,
-    transactionDateScopeGuards: 1,
-    transactionDateScopeQueries: 2,
-    transactionDateScopeSummaries: 1,
-    transactionDateScopeExports: 1,
+    transactionDateScopeGuards: 4,
+    transactionDateScopeQueries: 3,
+    transactionDateScopeSummaries: 2,
+    transactionDateScopeExports: 2,
     transactionDuplicateChecks: 5,
     transactionDuplicateReviews: 4,
     transactionBulkClearingGuards: 3,

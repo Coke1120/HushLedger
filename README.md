@@ -66,9 +66,10 @@ knowledge and explains every command and dashboard click.
   to assistive technology; HushLedger does not capture global single-letter keys.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
   possible-duplicate filters across the 200 most recent matching transactions.
-  Review either the selected month or all history without changing the monthly
-  overview, balances, transfers, plans, or forecasts. Inactive references remain
-  available for historical review, and the result limit is disclosed explicitly.
+  Review the selected month, an inclusive custom date range, or all history
+  without changing the monthly overview, balances, transfers, plans, or
+  forecasts. Inactive references remain available for historical review, and
+  the result limit is disclosed explicitly.
   Duplicate review is read-only and marks candidates instead of deleting either
   entry.
 - Order a transaction review by newest or oldest date, largest or smallest
@@ -78,9 +79,11 @@ knowledge and explains every command and dashboard click.
   transaction filters. These totals cover every match, not only the 200 rows kept
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
-  their selected-month or all-history scope, type, clearing, account, category,
-  search, tag, possible-duplicate, and ordering criteria. Saved views do not keep
-  a particular month, contain review criteria only, and do not sync to Cloudflare.
+  their selected-month, fixed custom-range, or all-history scope plus type,
+  clearing, account, category, search, tag, possible-duplicate, and ordering
+  criteria. Selected-month views follow the month navigator; custom ranges keep
+  their exact dates. Views contain review criteria only and do not sync to
+  Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
@@ -164,10 +167,13 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - The default currency is HKD.
 - HK$123.45 is stored as `12345` in `amount_minor`.
 - Named transaction views live only in browser storage. They include the bounded
-  transaction date scope and ordering choice but exclude a particular selected
-  month, transactions, and amounts, are validated before reuse, and are not
-  included in CSV exports or full-ledger backups.
-- Transaction queries default to the selected month. `scope=all` widens only the
+  transaction date scope and ordering choice. A custom range stores its exact
+  inclusive endpoints, while selected-month views exclude a particular month.
+  Views never contain transactions or amounts, are validated before reuse, and
+  are not included in CSV exports or full-ledger backups.
+- Transaction queries default to the selected month. `scope=range` requires one
+  valid, ordered `dateFrom`/`dateTo` pair and includes both endpoints;
+  `scope=all` removes the date bound. Either wider scope affects only the
   ordinary transaction list, its filtered aggregate, and CSV export; monthly
   financial reports and account calculations remain anchored to `month`.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
@@ -530,8 +536,8 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
-GET    /api/transactions/summary?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
+GET    /api/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/transactions/summary?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 PATCH  /api/transactions/category  (atomic category update for 1-200 same-type, explicitly versioned rows)
@@ -544,7 +550,7 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&scope=month|all&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/exports/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)

@@ -45,6 +45,9 @@ export function SavedTransactionViews({
   const describe = (view: SavedTransactionView) => {
     const parts: string[] = []
     if (view.scope === 'all') parts.push(t('allHistory'))
+    if (view.scope === 'range' && view.dateFrom && view.dateTo) {
+      parts.push(t('savedViewDateRange', { from: view.dateFrom, to: view.dateTo }))
+    }
     if (view.type !== 'all') parts.push(t(view.type))
     if (view.status !== 'all') parts.push(t(view.status))
     if (view.accountId !== null) {

@@ -15,7 +15,7 @@ export const transactionSortSchema = z.enum([
   'payee_desc',
 ])
 export type TransactionSort = z.infer<typeof transactionSortSchema>
-export const transactionDateScopeSchema = z.enum(['month', 'all'])
+export const transactionDateScopeSchema = z.enum(['month', 'range', 'all'])
 export type TransactionDateScope = z.infer<typeof transactionDateScopeSchema>
 export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
 export type AccountType = z.infer<typeof accountTypeSchema>
@@ -150,7 +150,7 @@ export const accountTransferQuerySchema = z
   })
   .strict()
 
-export const transactionQuerySchema = z
+export const transactionQueryFieldsSchema = z
   .object({
     month: z.string().refine((value) => {
       try {
@@ -161,6 +161,8 @@ export const transactionQuerySchema = z
       }
     }, '月份格式必須為有效的 YYYY-MM'),
     scope: transactionDateScopeSchema.default('month'),
+    dateFrom: calendarDateSchema.optional(),
+    dateTo: calendarDateSchema.optional(),
     type: transactionTypeSchema.optional(),
     status: transactionClearingStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),
@@ -171,6 +173,29 @@ export const transactionQuerySchema = z
     sort: transactionSortSchema.optional(),
   })
   .strict()
+
+export const transactionQuerySchema = transactionQueryFieldsSchema
+  .superRefine((query, context) => {
+    if (query.scope === 'range') {
+      if (!query.dateFrom) {
+        context.addIssue({ code: 'custom', path: ['dateFrom'], message: '自訂日期範圍需要開始日期' })
+      }
+      if (!query.dateTo) {
+        context.addIssue({ code: 'custom', path: ['dateTo'], message: '自訂日期範圍需要結束日期' })
+      }
+      if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+        context.addIssue({ code: 'custom', path: ['dateTo'], message: '結束日期不得早於開始日期' })
+      }
+      return
+    }
+
+    if (query.dateFrom !== undefined) {
+      context.addIssue({ code: 'custom', path: ['dateFrom'], message: '此日期範圍不接受開始日期' })
+    }
+    if (query.dateTo !== undefined) {
+      context.addIssue({ code: 'custom', path: ['dateTo'], message: '此日期範圍不接受結束日期' })
+    }
+  })
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>

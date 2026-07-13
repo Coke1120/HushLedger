@@ -20,6 +20,15 @@ export function monthRangeDates(month: string) {
   }
 }
 
+export function inclusiveMonthRangeDates(month: string) {
+  const { year, monthIndex } = parseMonth(month)
+  const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0))
+  return {
+    start: `${month}-01`,
+    end: lastDay.toISOString().slice(0, 10),
+  }
+}
+
 export function shiftMonth(month: string, amount: number) {
   const { year, monthIndex } = parseMonth(month)
   const shifted = new Date(Date.UTC(year, monthIndex + amount, 1))

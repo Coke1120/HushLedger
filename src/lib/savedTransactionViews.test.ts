@@ -12,6 +12,8 @@ const validView: SavedTransactionView = {
   id: '248e3e55-d864-4a32-bf48-46bd3608060f',
   name: 'Uncleared card',
   scope: 'month',
+  dateFrom: null,
+  dateTo: null,
   type: 'expense',
   status: 'uncleared',
   accountId: 3,
@@ -28,11 +30,15 @@ describe('saved transaction views', () => {
       sort: legacySort,
       duplicates: legacyDuplicates,
       scope: legacyScope,
+      dateFrom: legacyDateFrom,
+      dateTo: legacyDateTo,
       ...legacyView
     } = validView
     assert.equal(legacySort, 'date_desc')
     assert.equal(legacyDuplicates, false)
     assert.equal(legacyScope, 'month')
+    assert.equal(legacyDateFrom, null)
+    assert.equal(legacyDateTo, null)
     const parsed = parseSavedTransactionViews(JSON.stringify([
       { ...legacyView, name: '  Uncleared card  ' },
       { ...validView, id: '86192038-dc31-4672-ab86-d750adee2095', name: 'UNCLEARED CARD' },
@@ -113,6 +119,32 @@ describe('saved transaction views', () => {
       name: 'One too many',
     }).kind, 'limit')
     assert.equal(addSavedTransactionView([validView], { ...validView, name: 'Different name' }).kind, 'invalid')
+  })
+
+  it('keeps complete static ranges and rejects ambiguous saved date state', () => {
+    const rangeView = {
+      ...validView,
+      name: 'Tax year',
+      scope: 'range',
+      dateFrom: '2025-04-01',
+      dateTo: '2026-03-31',
+    } as const
+
+    assert.deepEqual(addSavedTransactionView([], rangeView), {
+      kind: 'saved',
+      views: [rangeView],
+    })
+    assert.equal(addSavedTransactionView([], { ...rangeView, dateTo: null }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], {
+      ...rangeView,
+      dateFrom: '2026-04-01',
+      dateTo: '2026-03-31',
+    }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], {
+      ...validView,
+      dateFrom: '2026-07-01',
+      dateTo: '2026-07-31',
+    }).kind, 'invalid')
   })
 
   it('serializes only the bounded validated shape', () => {

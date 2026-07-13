@@ -5,6 +5,7 @@ import {
   transactionSortSchema,
   transactionTypeSchema,
 } from './schema'
+import { isValidCalendarDate } from './date'
 import { isTransactionTagName } from './transactionTags'
 
 export const SAVED_TRANSACTION_VIEWS_STORAGE_KEY = 'hushledger:transaction-views:v1'
@@ -14,6 +15,8 @@ const savedTransactionViewSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(40),
   scope: transactionDateScopeSchema.default('month'),
+  dateFrom: z.string().refine(isValidCalendarDate).nullable().default(null),
+  dateTo: z.string().refine(isValidCalendarDate).nullable().default(null),
   type: transactionTypeSchema.or(z.literal('all')),
   status: transactionClearingStatusSchema.or(z.literal('all')),
   accountId: z.number().int().positive().nullable(),
@@ -24,7 +27,27 @@ const savedTransactionViewSchema = z.object({
     .nullable(),
   duplicates: z.boolean().default(false),
   sort: transactionSortSchema.default('date_desc'),
-}).strict().refine((view) => (
+}).strict().superRefine((view, context) => {
+  if (view.scope === 'range') {
+    if (view.dateFrom === null) {
+      context.addIssue({ code: 'custom', path: ['dateFrom'], message: 'A range needs a start date' })
+    }
+    if (view.dateTo === null) {
+      context.addIssue({ code: 'custom', path: ['dateTo'], message: 'A range needs an end date' })
+    }
+    if (view.dateFrom !== null && view.dateTo !== null && view.dateFrom > view.dateTo) {
+      context.addIssue({ code: 'custom', path: ['dateTo'], message: 'The end date cannot precede the start date' })
+    }
+    return
+  }
+
+  if (view.dateFrom !== null) {
+    context.addIssue({ code: 'custom', path: ['dateFrom'], message: 'Only a custom range can keep a start date' })
+  }
+  if (view.dateTo !== null) {
+    context.addIssue({ code: 'custom', path: ['dateTo'], message: 'Only a custom range can keep an end date' })
+  }
+}).refine((view) => (
   view.scope !== 'month'
   || view.type !== 'all'
   || view.status !== 'all'

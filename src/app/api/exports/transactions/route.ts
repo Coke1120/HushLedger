@@ -28,7 +28,11 @@ export const GET = apiRoute(async (request) => {
     headers: {
       'Cache-Control': 'private, no-store',
       'Content-Disposition': `attachment; filename="hushledger-transactions-${
-        parsed.data.scope === 'all' ? 'all' : parsed.data.month
+        parsed.data.scope === 'all'
+          ? 'all'
+          : parsed.data.scope === 'range'
+            ? `${parsed.data.dateFrom}-to-${parsed.data.dateTo}`
+            : parsed.data.month
       }.csv"`,
       'Content-Type': 'text/csv; charset=utf-8',
       'X-Content-Type-Options': 'nosniff',

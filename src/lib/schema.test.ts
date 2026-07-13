@@ -281,6 +281,31 @@ describe('transaction query validation', () => {
     assert.equal(transactionQuerySchema.parse({ month: '2026-07' }).scope, 'month')
   })
 
+  it('accepts only complete, ordered custom date ranges', () => {
+    assert.deepEqual(transactionQuerySchema.parse({
+      month: '2026-07',
+      scope: 'range',
+      dateFrom: '2025-04-01',
+      dateTo: '2026-03-31',
+    }), {
+      month: '2026-07',
+      scope: 'range',
+      dateFrom: '2025-04-01',
+      dateTo: '2026-03-31',
+    })
+
+    for (const query of [
+      { month: '2026-07', scope: 'range', dateFrom: '2026-07-01' },
+      { month: '2026-07', scope: 'range', dateTo: '2026-07-31' },
+      { month: '2026-07', scope: 'range', dateFrom: '2026-08-01', dateTo: '2026-07-31' },
+      { month: '2026-07', scope: 'range', dateFrom: '2026-02-30', dateTo: '2026-03-01' },
+      { month: '2026-07', scope: 'month', dateFrom: '2026-07-01', dateTo: '2026-07-31' },
+      { month: '2026-07', scope: 'all', dateFrom: '2026-07-01', dateTo: '2026-07-31' },
+    ] as const) {
+      assert.equal(transactionQuerySchema.safeParse(query).success, false)
+    }
+  })
+
   for (const [index, query] of [
     { month: '2026-13' },
     { type: 'transfer' },

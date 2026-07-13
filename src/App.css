@@ -1417,6 +1417,7 @@ textarea:focus-visible {
   display: flex;
   min-width: 0;
   flex: 1 1 360px;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -1426,7 +1427,8 @@ textarea:focus-visible {
   flex: 1 1 170px;
 }
 
-.transaction-reference-filter select {
+.transaction-reference-filter select,
+.transaction-custom-range input {
   width: 100%;
   min-height: 44px;
   padding: 0 34px 0 12px;
@@ -1438,8 +1440,31 @@ textarea:focus-visible {
   font-weight: 600;
 }
 
-.transaction-reference-filter select:focus-visible {
+.transaction-reference-filter select:focus-visible,
+.transaction-custom-range input:focus-visible {
   border-color: var(--focus);
+}
+
+.transaction-custom-range {
+  display: grid;
+  min-width: 300px;
+  flex: 2 1 320px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transaction-custom-range label {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.transaction-custom-range input {
+  min-width: 0;
+  padding: 0 10px;
 }
 
 .transaction-filter-clear {
@@ -5442,8 +5467,14 @@ button.account-register-row:focus-visible {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 
-  .transaction-reference-filter:nth-child(-n + 2) {
+  .transaction-date-scope,
+  .transaction-sort-filter,
+  .transaction-custom-range {
     grid-column: 1 / -1;
+  }
+
+  .transaction-custom-range {
+    min-width: 0;
   }
 
   .transaction-row {

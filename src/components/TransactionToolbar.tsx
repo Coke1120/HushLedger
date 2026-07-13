@@ -19,6 +19,8 @@ type TransactionToolbarProps = {
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
   dateScope: TransactionDateScope
+  dateFrom: string
+  dateTo: string
   duplicatesOnly: boolean
   sort: TransactionSort
   showSort: boolean
@@ -34,6 +36,8 @@ type TransactionToolbarProps = {
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
   onDateScopeChange: (value: TransactionDateScope) => void
+  onDateFromChange: (value: string) => void
+  onDateToChange: (value: string) => void
   onDuplicatesOnlyChange: (value: boolean) => void
   onSortChange: (value: TransactionSort) => void
   onAccountFilterChange: (value: number | null) => void
@@ -53,6 +57,8 @@ export function TransactionToolbar({
   filter,
   clearingFilter,
   dateScope,
+  dateFrom,
+  dateTo,
   duplicatesOnly,
   sort,
   showSort,
@@ -68,6 +74,8 @@ export function TransactionToolbar({
   onFilterChange,
   onClearingFilterChange,
   onDateScopeChange,
+  onDateFromChange,
+  onDateToChange,
   onDuplicatesOnlyChange,
   onSortChange,
   onAccountFilterChange,
@@ -87,7 +95,11 @@ export function TransactionToolbar({
     { value: 'income', label: t('income') },
   ]
   const exportQuery = new URLSearchParams({ month })
-  if (showSort && dateScope === 'all') exportQuery.set('scope', dateScope)
+  if (showSort && dateScope !== 'month') exportQuery.set('scope', dateScope)
+  if (showSort && dateScope === 'range') {
+    exportQuery.set('dateFrom', dateFrom)
+    exportQuery.set('dateTo', dateTo)
+  }
   if (filter !== 'all') exportQuery.set('type', filter)
   if (clearingFilter !== 'all') exportQuery.set('status', clearingFilter)
   if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
@@ -162,12 +174,39 @@ export function TransactionToolbar({
               title={t('transactionDateScopeHelp')}
             >
               <option value="month">{t('selectedMonth')}</option>
+              <option value="range">{t('customRange')}</option>
               <option value="all">{t('allHistory')}</option>
             </select>
           </label>
         ) : null}
+        {showSort && dateScope === 'range' ? (
+          <div className="transaction-custom-range" role="group" aria-label={t('customRange')}>
+            <label>
+              <span>{t('dateFrom')}</span>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo}
+                onChange={(event) => {
+                  if (event.target.value) onDateFromChange(event.target.value)
+                }}
+              />
+            </label>
+            <label>
+              <span>{t('dateTo')}</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom}
+                onChange={(event) => {
+                  if (event.target.value) onDateToChange(event.target.value)
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
         {showSort ? (
-          <label className="transaction-reference-filter">
+          <label className="transaction-reference-filter transaction-sort-filter">
             <span className="sr-only">{t('sortTransactions')}</span>
             <select
               value={sort}
