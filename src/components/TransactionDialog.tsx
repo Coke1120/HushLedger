@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { useI18n } from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate, isValidCalendarDate } from '../lib/date'
+import { isTransactionSaveShortcut } from '../lib/keyboardShortcut'
 import { formatAmountInput, parseAmount } from '../lib/money'
 import { payeeOptions, rememberPayeeReferences } from '../lib/payeeMemory'
 import {
@@ -73,6 +74,7 @@ export function TransactionDialog({
   const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const draftIdRef = useRef(initialTransaction?.id ?? crypto.randomUUID())
@@ -154,6 +156,14 @@ export function TransactionDialog({
       if (event.key === 'Escape' && !busyRef.current) {
         event.preventDefault()
         onClose()
+        return
+      }
+
+      if (isTransactionSaveShortcut(event)) {
+        const saveButton = formRef.current?.querySelector<HTMLButtonElement>('.save-button')
+        if (!saveButton || saveButton.disabled) return
+        event.preventDefault()
+        formRef.current?.requestSubmit(saveButton)
         return
       }
 
@@ -341,7 +351,7 @@ export function TransactionDialog({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} noValidate aria-busy={busy}>
+        <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={busy}>
           <fieldset className="transaction-form-fields" disabled={busy}>
           {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
           {transaction && !hasActiveReferences ? (
@@ -568,13 +578,20 @@ export function TransactionDialog({
                 {t('makeRecurring')}
               </button>
             ) : null}
-            <button className="button button-primary save-button" type="submit" disabled={busy || !online}>
+            <button
+              className="button button-primary save-button"
+              type="submit"
+              disabled={busy || !online}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+              title={t('saveTransactionShortcutHelp')}
+            >
               {busy && !deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
               {checkingDuplicate
                 ? t('checkingDuplicate')
                 : saving && !deleting
                   ? t('saving')
                   : t(transaction ? 'saveChanges' : 'saveTransaction')}
+              <kbd className="save-shortcut-hint" aria-hidden="true">Ctrl/⌘ + Enter</kbd>
             </button>
           </div>
           </fieldset>

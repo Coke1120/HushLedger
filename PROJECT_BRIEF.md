@@ -83,6 +83,9 @@ not operate an independent database server or a multi-user identity system.
   uncleared; reviewed bank imports begin cleared.
 - Calculate an amount with touch-friendly arithmetic operators or a typed
   expression; parse without `eval` and round only the final result to minor units.
+- Save and close a valid transaction from any dialog field with `Ctrl+Enter` or
+  `Command+Enter`; expose the shortcut on the enabled Save control and leave
+  global single-letter keys to the browser and assistive technology.
 - Correct or delete an existing transaction; reject stale changes made from an
   out-of-date view.
 - Duplicate an existing transaction into a separate reviewable draft when a
@@ -311,8 +314,9 @@ uses Wrangler D1 export and restore.
   duplicates to unselected and never sends the source file to an AI provider.
 - Preview-first full-ledger restore with visible replacement counts, typed
   destructive confirmation, and no partial-write path.
-- Semantic HTML, visible focus, keyboard navigation, focus restore, 44 px touch
-  targets, sufficient contrast, and field-linked errors.
+- Semantic HTML, visible focus, keyboard navigation, focus restore, disclosed
+  context-local shortcuts, 44 px touch targets, sufficient contrast, and
+  field-linked errors.
 - No fake navigation, decorative charts, remote fonts, marketing hero, or
   hidden failure state.
 

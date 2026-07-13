@@ -2630,6 +2630,19 @@ button.account-register-row:focus-visible {
   min-height: 50px;
 }
 
+.save-shortcut-hint {
+  padding: 2px 5px;
+  color: inherit;
+  background: rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 38%);
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 .recurring-page {
   display: grid;
   gap: 18px;
@@ -5580,6 +5593,10 @@ button.account-register-row:focus-visible {
   .transaction-dialog-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .save-shortcut-hint {
+    display: none;
   }
 
   .transfer-clearing-grid {

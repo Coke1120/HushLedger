@@ -61,6 +61,9 @@ knowledge and explains every command and dashboard click.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact cents,
   with touch-friendly operator buttons for mobile entry.
+- Save and close the transaction dialog from any field with `Ctrl+Enter` or
+  `Command+Enter`. The existing Save button advertises the shortcut visually and
+  to assistive technology; HushLedger does not capture global single-letter keys.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
   possible-duplicate filters across the 200 most recent matching transactions.
   Review either the selected month or all history without changing the monthly
