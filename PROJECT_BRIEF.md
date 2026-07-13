@@ -35,6 +35,9 @@ not operate an independent database server or a multi-user identity system.
   calendar month; hide relative bar heights when privacy mode is enabled.
 - Review the top five expense categories by exact total and transaction count;
   select one to open the existing expense/category transaction filters.
+- Compare optional monthly expense-category plans with recorded spending and the
+  exact remaining-or-over amount; treat plans as recurring guardrails, not cash
+  allocation, rollover, or envelope balances.
 - Review active recurring entries that remain ungenerated in the selected month,
   including each rule's next date and exact occurrence count.
 - Browse the latest 200 transactions for a selected month; the UI explicitly
@@ -251,6 +254,9 @@ uses Wrangler D1 export and restore.
   focus path that reveals the masked amount.
 - History-safe account and category management with clear inactive states and
   no destructive delete affordance.
+- Optional positive monthly plans on expense categories, editable with the
+  category and visible beside current-month actual spending without suggesting
+  that funds were reserved.
 - Preview-first HushLedger and mapped-bank CSV import that defaults possible
   duplicates to unselected and never sends the source file to an AI provider.
 - Preview-first full-ledger restore with visible replacement counts, typed
@@ -264,14 +270,15 @@ uses Wrangler D1 export and restore.
 
 ### Complete core
 
-- D1 schema, seed, constraints, indexes, date-only migration, and reversible
-  transaction clearing status.
+- D1 schema, seed, constraints, indexes, date-only migration, reversible
+  transaction clearing status, and optional expense-category monthly plans.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
   account/category/type/clearing/search filters, matching filtered transaction
   CSV export,
-  ranked category-spending drilldown, deterministic preview-first HushLedger and
+  ranked category-spending drilldown, monthly plan-versus-actual review,
+  deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
 - Versioned five-table JSON backup, SHA-256 integrity checking, preview-only

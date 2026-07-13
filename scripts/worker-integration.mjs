@@ -227,7 +227,7 @@ async function verifyUpgradeMigration() {
     '--command',
     `SELECT id, occurred_on AS occurredOn, cleared FROM transactions WHERE id = '${sentinelId}';
      SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
-     SELECT name, localization_key AS localizationKey FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
+     SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
      PRAGMA foreign_key_check;`,
@@ -242,8 +242,8 @@ async function verifyUpgradeMigration() {
     { name: '日常帳戶', localizationKey: 'account.bank' },
   ])
   assert.deepEqual(statements[2].results, [
-    { name: 'Integration custom category', localizationKey: null },
-    { name: '生活', localizationKey: 'category.living' },
+    { name: 'Integration custom category', localizationKey: null, monthlyPlanMinor: null },
+    { name: '生活', localizationKey: 'category.living', monthlyPlanMinor: null },
   ])
   assert.equal(statements[3].results[0].importKeys, 0)
   assert.equal(statements[4].results[0].revision, 1)
@@ -273,7 +273,8 @@ async function seedCsvExportRows() {
      VALUES('30000000-0000-4000-8000-000000999999','expense',12345,'HKD',1,3,'${previousMonth}-15','export bulk','historical trend');
      UPDATE transactions SET note = 'Trip planning #Summer2026' WHERE id = '30000000-0000-4000-8000-000000000001';
      UPDATE transactions SET note = 'Near miss #Summer20260' WHERE id = '30000000-0000-4000-8000-000000000002';
-     UPDATE transactions SET note = 'Escaped ##Summer2026' WHERE id = '30000000-0000-4000-8000-000000000003';`,
+     UPDATE transactions SET note = 'Escaped ##Summer2026' WHERE id = '30000000-0000-4000-8000-000000000003';
+     UPDATE categories SET monthly_plan_minor = 50000 WHERE id = 3;`,
     '--yes',
   ])
 }
@@ -515,6 +516,15 @@ async function verifyWorkerApi() {
     amountMinor: 41_615,
     transactionCount: 205,
   }])
+  assert.deepEqual(categorySummary.payload.data.monthlySpendingPlans, [{
+    categoryId: 3,
+    categoryName: '餐飲',
+    categoryLocalizationKey: 'category.food',
+    categoryIcon: 'utensils',
+    categoryColor: '#C16B4B',
+    plannedMinor: 50_000,
+    spentMinor: 41_615,
+  }])
   assert.equal(categorySummary.payload.data.spendingTrend.length, 6)
   assert.deepEqual(categorySummary.payload.data.spendingTrend.slice(-2), [
     { month: previousMonth, amountMinor: 12_345, transactionCount: 1 },
@@ -727,11 +737,12 @@ async function verifyWorkerApi() {
 
   const createdCategory = await api(baseUrl, '/api/categories', {
     method: 'POST',
-    body: { name: 'Integration flexible', type: 'expense' },
+    body: { name: 'Integration flexible', type: 'expense', monthlyPlanMinor: 25_000 },
   })
   assert.equal(createdCategory.response.status, 201)
   assert.equal(createdCategory.payload.data.icon, 'circle-ellipsis')
   assert.equal(createdCategory.payload.data.localizationKey, null)
+  assert.equal(createdCategory.payload.data.monthlyPlanMinor, 25_000)
 
   const duplicateCategory = await api(baseUrl, '/api/categories', {
     method: 'POST',
@@ -746,6 +757,14 @@ async function verifyWorkerApi() {
   })
   assert.equal(sameNameDifferentType.response.status, 201)
   assert.equal(sameNameDifferentType.payload.data.type, 'income')
+  assert.equal(sameNameDifferentType.payload.data.monthlyPlanMinor, null)
+
+  const invalidIncomePlan = await api(baseUrl, '/api/categories', {
+    method: 'POST',
+    body: { name: 'Impossible income plan', type: 'income', monthlyPlanMinor: 10_000 },
+  })
+  assert.equal(invalidIncomePlan.response.status, 400)
+  assert.equal(invalidIncomePlan.payload.error.code, 'VALIDATION_ERROR')
 
   const temporarilyDisabledIncomeCategories = []
   for (const builtInCategory of categoriesResult.payload.data.filter(({ type }) => type === 'income')) {
@@ -778,17 +797,22 @@ async function verifyWorkerApi() {
     method: 'PUT',
     body: {
       name: 'Integration essentials',
+      type: 'expense',
+      monthlyPlanMinor: 30_000,
       updatedAt: createdCategory.payload.data.updatedAt,
     },
   })
   assert.equal(renamedCategory.response.status, 200)
   assert.equal(renamedCategory.payload.data.name, 'Integration essentials')
+  assert.equal(renamedCategory.payload.data.monthlyPlanMinor, 30_000)
   assert.notEqual(renamedCategory.payload.data.updatedAt, createdCategory.payload.data.updatedAt)
 
   const staleCategory = await api(baseUrl, `/api/categories/${createdCategory.payload.data.id}`, {
     method: 'PUT',
     body: {
       name: 'Stale category edit',
+      type: 'expense',
+      monthlyPlanMinor: null,
       updatedAt: createdCategory.payload.data.updatedAt,
     },
   })
@@ -1460,10 +1484,13 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 9)
+  assert.equal(backup.schemaVersion, 10)
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
+  assert(backup.data.categories.every(({ monthlyPlanMinor }) => (
+    monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor)
+  )))
   assert(backup.data.transactionImportKeys.length > 0)
 
   const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
@@ -1549,8 +1576,47 @@ async function verifyWorkerApi() {
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema9Backup = structuredClone(backup)
+  schema9Backup.schemaVersion = 9
+  schema9Backup.data.categories = schema9Backup.data.categories.map(({
+    monthlyPlanMinor,
+    ...category
+  }) => {
+    assert(monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor))
+    return category
+  })
+  schema9Backup.checksum.digest = backupChecksum(schema9Backup)
+  const schema9Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema9Backup },
+  })
+  assert.equal(schema9Preview.response.status, 200, JSON.stringify(schema9Preview.payload))
+  const schema9Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema9Backup,
+      expectedCurrentDigest: schema9Preview.payload.data.currentDigest,
+      expectedRevision: schema9Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema9Restore.response.status, 200, JSON.stringify(schema9Restore.payload))
+  const upgradedSchema9Backup = await api(baseUrl, '/api/backups/ledger')
+  assert(upgradedSchema9Backup.payload.data.categories.every(
+    ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
+  ))
+  assert(upgradedSchema9Backup.payload.data.transactions.some(({ cleared }) => cleared === false))
+
   const schema8Backup = structuredClone(backup)
   schema8Backup.schemaVersion = 8
+  schema8Backup.data.categories = schema8Backup.data.categories.map(({
+    monthlyPlanMinor,
+    ...category
+  }) => {
+    assert(monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor))
+    return category
+  })
   schema8Backup.data.transactions = schema8Backup.data.transactions.map(({ cleared, ...transaction }) => {
     assert.equal(typeof cleared, 'boolean')
     return transaction
@@ -1574,6 +1640,9 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema8Restore.response.status, 200, JSON.stringify(schema8Restore.payload))
   const upgradedSchema8Backup = await api(baseUrl, '/api/backups/ledger')
+  assert(upgradedSchema8Backup.payload.data.categories.every(
+    ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
+  ))
   assert(upgradedSchema8Backup.payload.data.transactions.every(({ cleared }) => cleared === true))
 
   return {
@@ -1598,6 +1667,7 @@ async function verifyWorkerApi() {
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
     ledgerBackupTables: 5,
+    ledgerSchema9Restores: 1,
     ledgerSchema8Restores: 1,
     ledgerRestoreStaleGuards: 1,
     ledgerRestoreTransactions: 1,
@@ -1796,8 +1866,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0009',
-      upgradeMigration: '0004-to-0009-preserved-data-names-and-clearing-status',
+      freshMigrations: '0001-0010',
+      upgradeMigration: '0004-to-0010-preserved-data-names-clearing-and-null-plans',
       ...apiEvidence,
       ...nextAiEvidence,
     }),

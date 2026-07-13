@@ -3,8 +3,9 @@ import { isValidCalendarDate } from './date'
 
 export const LEDGER_BACKUP_FORMAT = 'hushledger-ledger-backup' as const
 export const LEDGER_BACKUP_VERSION = 1 as const
-export const PREVIOUS_LEDGER_SCHEMA_VERSION = 8 as const
-export const LEDGER_SCHEMA_VERSION = 9 as const
+export const LEGACY_LEDGER_SCHEMA_VERSION = 8 as const
+export const PREVIOUS_LEDGER_SCHEMA_VERSION = 9 as const
+export const LEDGER_SCHEMA_VERSION = 10 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -45,7 +46,7 @@ export const ledgerBackupAccountSchema = z.object({
   updatedAt: timestampSchema,
 }).strict()
 
-export const ledgerBackupCategorySchema = z.object({
+const ledgerBackupCategoryFields = {
   id: safePositiveIntegerSchema,
   name: trimmedNameSchema,
   type: z.enum(['expense', 'income']),
@@ -56,7 +57,22 @@ export const ledgerBackupCategorySchema = z.object({
   localizationKey: categoryLocalizationKeySchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-}).strict()
+}
+
+const previousLedgerBackupCategorySchema = z.object(ledgerBackupCategoryFields).strict()
+
+export const ledgerBackupCategorySchema = z.object({
+  ...ledgerBackupCategoryFields,
+  monthlyPlanMinor: safePositiveIntegerSchema.nullable(),
+}).strict().superRefine((category, context) => {
+  if (category.type === 'income' && category.monthlyPlanMinor !== null) {
+    context.addIssue({
+      code: 'custom',
+      path: ['monthlyPlanMinor'],
+      message: 'Income categories cannot have monthly spending plans',
+    })
+  }
+})
 
 export const ledgerBackupRecurringRuleSchema = z.object({
   id: uuidSchema,
@@ -163,6 +179,10 @@ export const ledgerBackupDataSchema = z.object({
 }).strict()
 
 const previousLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+  categories: z.array(previousLedgerBackupCategorySchema),
+}).strict()
+
+const legacyLedgerBackupDataSchema = previousLedgerBackupDataSchema.extend({
   transactions: z.array(previousLedgerBackupTransactionSchema),
 }).strict()
 
@@ -194,6 +214,10 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
   previousLedgerBackupPayloadSchema,
+  ledgerBackupPayloadSchema.extend({
+    schemaVersion: z.literal(LEGACY_LEDGER_SCHEMA_VERSION),
+    data: legacyLedgerBackupDataSchema,
+  }).strict(),
 ])
 
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -204,6 +228,10 @@ const previousLedgerBackupSchema = ledgerBackupSchema.extend({
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
   previousLedgerBackupSchema,
+  ledgerBackupSchema.extend({
+    schemaVersion: z.literal(LEGACY_LEDGER_SCHEMA_VERSION),
+    data: legacyLedgerBackupDataSchema,
+  }).strict(),
 ])
 
 export const ledgerRestoreRequestSchema = z.discriminatedUnion('mode', [
@@ -229,6 +257,7 @@ export type LedgerBackupData = z.infer<typeof ledgerBackupDataSchema>
 export type LedgerBackupPayload = z.infer<typeof ledgerBackupPayloadSchema>
 export type LedgerBackup = z.infer<typeof ledgerBackupSchema>
 export type PreviousLedgerBackupPayload = z.infer<typeof previousLedgerBackupPayloadSchema>
+export type CompatibleLedgerBackupPayload = z.infer<typeof compatibleLedgerBackupPayloadSchema>
 export type CompatibleLedgerBackup = z.infer<typeof compatibleLedgerBackupSchema>
 export type LedgerRestoreRequest = z.infer<typeof ledgerRestoreRequestSchema>
 
@@ -279,7 +308,7 @@ export async function sha256Hex(value: string) {
 }
 
 export async function checksumLedgerBackupPayload(
-  payload: LedgerBackupPayload | PreviousLedgerBackupPayload,
+  payload: CompatibleLedgerBackupPayload,
 ) {
   return sha256Hex(canonicalJson(payload))
 }
@@ -288,10 +317,13 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
   return ledgerBackupDataSchema.parse({
     ...backup.data,
-    transactions: backup.data.transactions.map((transaction) => ({
-      ...transaction,
-      cleared: true,
+    categories: backup.data.categories.map((category) => ({
+      ...category,
+      monthlyPlanMinor: null,
     })),
+    transactions: backup.schemaVersion === LEGACY_LEDGER_SCHEMA_VERSION
+      ? backup.data.transactions.map((transaction) => ({ ...transaction, cleared: true }))
+      : backup.data.transactions,
   })
 }
 

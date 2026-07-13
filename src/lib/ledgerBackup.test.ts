@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   LEDGER_BACKUP_FORMAT,
   LEDGER_BACKUP_VERSION,
+  LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
@@ -42,6 +43,7 @@ function ledgerData(): LedgerBackupData {
         isActive: true,
         sortOrder: 10,
         localizationKey: 'category.food',
+        monthlyPlanMinor: 50_000,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -54,6 +56,7 @@ function ledgerData(): LedgerBackupData {
         isActive: true,
         sortOrder: 10,
         localizationKey: 'category.salary',
+        monthlyPlanMinor: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -150,11 +153,11 @@ describe('ledger backups', () => {
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
 
-  it('upgrades schema 8 backups by preserving legacy transactions as cleared', async () => {
+  it('upgrades schema 9 backups without inventing category plans', async () => {
     const current = ledgerData()
     const legacyData = {
       ...current,
-      transactions: current.transactions.map(({ cleared: _cleared, ...transaction }) => transaction),
+      categories: current.categories.map(({ monthlyPlanMinor: _monthlyPlanMinor, ...category }) => category),
     }
     const legacyPayload = {
       format: LEDGER_BACKUP_FORMAT,
@@ -171,7 +174,36 @@ describe('ledger backups', () => {
       },
     })
 
-    assert.equal(upgradeLedgerBackupData(backup).transactions[0]?.cleared, true)
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
+    assert.equal(upgraded.transactions[0]?.cleared, false)
+  })
+
+  it('upgrades schema 8 backups with cleared history and no invented category plans', async () => {
+    const current = ledgerData()
+    const legacyData = {
+      ...current,
+      categories: current.categories.map(({ monthlyPlanMinor: _monthlyPlanMinor, ...category }) => category),
+      transactions: current.transactions.map(({ cleared: _cleared, ...transaction }) => transaction),
+    }
+    const legacyPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: LEGACY_LEDGER_SCHEMA_VERSION,
+      data: legacyData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...legacyPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(legacyPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
+    assert.equal(upgraded.transactions[0]?.cleared, true)
   })
 
   it('rejects broken references, duplicate tombstones, and unusable reference data', () => {

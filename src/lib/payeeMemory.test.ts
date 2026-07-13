@@ -36,6 +36,7 @@ const categories: Category[] = [
     isActive: true,
     sortOrder: 10,
     localizationKey: null,
+    monthlyPlanMinor: null,
     updatedAt: '2026-07-13T00:00:00.000Z',
   },
   {
@@ -47,6 +48,7 @@ const categories: Category[] = [
     isActive: false,
     sortOrder: 10,
     localizationKey: null,
+    monthlyPlanMinor: null,
     updatedAt: '2026-07-13T00:00:00.000Z',
   },
 ]

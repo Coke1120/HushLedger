@@ -22,16 +22,16 @@ export const demoAccounts: Account[] = [
 ]
 
 export const demoCategories: Category[] = [
-  { id: 1, name: '薪金', type: 'income', icon: 'banknote', color: '#147a5a', isActive: true, sortOrder: 10, localizationKey: 'category.salary', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 2, name: '其他收入', type: 'income', icon: 'circle-dollar-sign', color: '#2f7e70', isActive: true, sortOrder: 20, localizationKey: 'category.other_income', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 3, name: '飲食', type: 'expense', icon: 'utensils', color: '#b14b46', isActive: true, sortOrder: 10, localizationKey: 'category.food', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 4, name: '交通', type: 'expense', icon: 'train', color: '#4b6f87', isActive: true, sortOrder: 20, localizationKey: 'category.transport', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 5, name: '購物', type: 'expense', icon: 'shopping-bag', color: '#8c5b72', isActive: true, sortOrder: 30, localizationKey: 'category.shopping', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 6, name: '住屋', type: 'expense', icon: 'house', color: '#8a6b42', isActive: true, sortOrder: 40, localizationKey: 'category.housing', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 7, name: '帳單', type: 'expense', icon: 'receipt-text', color: '#73658c', isActive: true, sortOrder: 50, localizationKey: 'category.bills', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 8, name: '娛樂', type: 'expense', icon: 'gamepad-2', color: '#9a6a38', isActive: true, sortOrder: 60, localizationKey: 'category.entertainment', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 9, name: '醫療', type: 'expense', icon: 'heart-pulse', color: '#9f5050', isActive: true, sortOrder: 70, localizationKey: 'category.healthcare', updatedAt: '2026-07-11T10:30:00.000Z' },
-  { id: 10, name: '其他支出', type: 'expense', icon: 'circle-ellipsis', color: '#64766f', isActive: true, sortOrder: 80, localizationKey: 'category.other_expense', updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 1, name: '薪金', type: 'income', icon: 'banknote', color: '#147a5a', isActive: true, sortOrder: 10, localizationKey: 'category.salary', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 2, name: '其他收入', type: 'income', icon: 'circle-dollar-sign', color: '#2f7e70', isActive: true, sortOrder: 20, localizationKey: 'category.other_income', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 3, name: '飲食', type: 'expense', icon: 'utensils', color: '#b14b46', isActive: true, sortOrder: 10, localizationKey: 'category.food', monthlyPlanMinor: 50_000, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 4, name: '交通', type: 'expense', icon: 'train', color: '#4b6f87', isActive: true, sortOrder: 20, localizationKey: 'category.transport', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 5, name: '購物', type: 'expense', icon: 'shopping-bag', color: '#8c5b72', isActive: true, sortOrder: 30, localizationKey: 'category.shopping', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 6, name: '住屋', type: 'expense', icon: 'house', color: '#8a6b42', isActive: true, sortOrder: 40, localizationKey: 'category.housing', monthlyPlanMinor: 1_500_000, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 7, name: '帳單', type: 'expense', icon: 'receipt-text', color: '#73658c', isActive: true, sortOrder: 50, localizationKey: 'category.bills', monthlyPlanMinor: 120_000, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 8, name: '娛樂', type: 'expense', icon: 'gamepad-2', color: '#9a6a38', isActive: true, sortOrder: 60, localizationKey: 'category.entertainment', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 9, name: '醫療', type: 'expense', icon: 'heart-pulse', color: '#9f5050', isActive: true, sortOrder: 70, localizationKey: 'category.healthcare', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
+  { id: 10, name: '其他支出', type: 'expense', icon: 'circle-ellipsis', color: '#64766f', isActive: true, sortOrder: 80, localizationKey: 'category.other_expense', monthlyPlanMinor: null, updatedAt: '2026-07-11T10:30:00.000Z' },
 ]
 
 const createdAt = '2026-07-11T10:30:00.000Z'
@@ -341,6 +341,17 @@ export function demoSummary(month: string): Summary {
     balance: income - expense,
     spendingTrend: buildMonthlySpendingTrend(month, spendingTrendRows),
     expenseByCategory,
+    monthlySpendingPlans: demoCategories
+      .filter((category) => category.isActive && category.monthlyPlanMinor !== null)
+      .map((category) => ({
+        categoryId: category.id,
+        categoryName: category.name,
+        categoryLocalizationKey: category.localizationKey,
+        categoryIcon: category.icon,
+        categoryColor: category.color,
+        plannedMinor: category.monthlyPlanMinor ?? 0,
+        spentMinor: expenseByCategory.find(({ categoryId }) => categoryId === category.id)?.amountMinor ?? 0,
+      })),
     recurringForecast: [],
   }
 }

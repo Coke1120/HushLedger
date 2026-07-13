@@ -30,6 +30,7 @@ const categories: Category[] = [
     isActive: true,
     sortOrder: 10,
     localizationKey: null,
+    monthlyPlanMinor: null,
     updatedAt,
   },
   {
@@ -41,6 +42,7 @@ const categories: Category[] = [
     isActive: true,
     sortOrder: 10,
     localizationKey: null,
+    monthlyPlanMinor: null,
     updatedAt,
   },
 ]

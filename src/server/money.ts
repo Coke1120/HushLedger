@@ -13,6 +13,7 @@ import type {
   CategoryLocalizationKey,
   ExpenseCategorySummary,
   MonthlySpendingSummary,
+  MonthlySpendingPlanSummary,
   PayeeSuggestion,
   Summary,
   Transaction,
@@ -155,6 +156,7 @@ export async function listCategories(database: D1Database): Promise<Category[]> 
       is_active AS isActive,
       sort_order AS sortOrder,
       localization_key AS localizationKey,
+      monthly_plan_minor AS monthlyPlanMinor,
       updated_at AS updatedAt
     FROM categories
     ORDER BY type DESC, is_active DESC, sort_order ASC, id ASC
@@ -434,7 +436,13 @@ export async function deleteTransaction(
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
   const trendStart = `${shiftMonth(month, -5)}-01`
-  const [row, spendingTrendResult, expenseByCategoryResult, recurringRulesResult] = await Promise.all([
+  const [
+    row,
+    spendingTrendResult,
+    expenseByCategoryResult,
+    monthlySpendingPlansResult,
+    recurringRulesResult,
+  ] = await Promise.all([
     database.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
@@ -481,6 +489,36 @@ export async function getSummary(database: D1Database, month: string): Promise<S
       .all<ExpenseCategorySummary>(),
     database.prepare(`
       SELECT
+        category.id AS categoryId,
+        category.name AS categoryName,
+        category.localization_key AS categoryLocalizationKey,
+        category.icon AS categoryIcon,
+        category.color AS categoryColor,
+        category.monthly_plan_minor AS plannedMinor,
+        COALESCE(SUM(t.amount_minor), 0) AS spentMinor
+      FROM categories category
+      LEFT JOIN transactions t
+        ON t.category_id = category.id
+        AND t.type = 'expense'
+        AND t.occurred_on >= ?
+        AND t.occurred_on < ?
+      WHERE category.type = 'expense'
+        AND category.is_active = 1
+        AND category.monthly_plan_minor IS NOT NULL
+      GROUP BY
+        category.id,
+        category.name,
+        category.localization_key,
+        category.icon,
+        category.color,
+        category.monthly_plan_minor,
+        category.sort_order
+      ORDER BY category.sort_order ASC, category.id ASC
+    `)
+      .bind(start, end)
+      .all<MonthlySpendingPlanSummary>(),
+    database.prepare(`
+      SELECT
         id,
         name,
         type,
@@ -507,6 +545,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     balance: income - expense,
     spendingTrend: buildMonthlySpendingTrend(month, spendingTrendResult.results),
     expenseByCategory: expenseByCategoryResult.results,
+    monthlySpendingPlans: monthlySpendingPlansResult.results,
     recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
   }
 }

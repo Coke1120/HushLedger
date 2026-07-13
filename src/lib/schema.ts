@@ -73,13 +73,39 @@ export const accountCreateSchema = z
 export const accountUpdateSchema = accountCreateSchema
   .extend(updatedReferenceSchema.shape)
   .strict()
+const categoryMonthlyPlanSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(Number.MAX_SAFE_INTEGER)
+  .nullable()
+  .default(null)
+const categoryFieldsSchema = z.object({
+  name: referenceNameSchema,
+  type: transactionTypeSchema,
+  monthlyPlanMinor: categoryMonthlyPlanSchema,
+})
+const validateCategoryMonthlyPlan = (
+  value: { type: TransactionType; monthlyPlanMinor: number | null },
+  context: z.RefinementCtx,
+) => {
+  if (value.type === 'income' && value.monthlyPlanMinor !== null) {
+    context.addIssue({
+      code: 'custom',
+      path: ['monthlyPlanMinor'],
+      message: '收入分類不可設定每月支出計劃',
+    })
+  }
+}
 export const categoryCreateSchema = z
-  .object({ name: referenceNameSchema, type: transactionTypeSchema })
+  .object(categoryFieldsSchema.shape)
   .strict()
+  .superRefine(validateCategoryMonthlyPlan)
 export const categoryUpdateSchema = z
-  .object({ name: referenceNameSchema })
+  .object(categoryFieldsSchema.shape)
   .extend(updatedReferenceSchema.shape)
   .strict()
+  .superRefine(validateCategoryMonthlyPlan)
 export const referenceStatusSchema = z
   .object({ isActive: z.boolean() })
   .extend(updatedReferenceSchema.shape)
@@ -215,6 +241,7 @@ export type Summary = {
   balance: number
   spendingTrend: MonthlySpendingSummary[]
   expenseByCategory: ExpenseCategorySummary[]
+  monthlySpendingPlans: MonthlySpendingPlanSummary[]
   recurringForecast: ScheduledRecurringSummary[]
 }
 
@@ -232,6 +259,16 @@ export type ExpenseCategorySummary = {
   categoryColor: string
   amountMinor: number
   transactionCount: number
+}
+
+export type MonthlySpendingPlanSummary = {
+  categoryId: number
+  categoryName: string
+  categoryLocalizationKey: CategoryLocalizationKey | null
+  categoryIcon: string
+  categoryColor: string
+  plannedMinor: number
+  spentMinor: number
 }
 
 export type ScheduledRecurringSummary = {
@@ -273,6 +310,7 @@ export type Category = {
   isActive: boolean
   sortOrder: number
   localizationKey: CategoryLocalizationKey | null
+  monthlyPlanMinor: number | null
   updatedAt: string
 }
 

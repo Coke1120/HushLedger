@@ -26,6 +26,7 @@ const categories: Category[] = [
     isActive: true,
     sortOrder: 1,
     localizationKey: 'category.food',
+    monthlyPlanMinor: null,
     updatedAt: '2026-07-11T10:30:00.000Z',
   },
 ]

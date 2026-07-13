@@ -27,6 +27,7 @@ const categories: Category[] = [
     isActive: true,
     sortOrder: 10,
     localizationKey: null,
+    monthlyPlanMinor: null,
     updatedAt,
   },
 ]

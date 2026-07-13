@@ -35,6 +35,9 @@ knowledge and explains every command and dashboard click.
   with private-screen masking and one-tap navigation to any month in the chart.
 - A ranked top-five monthly expense breakdown by category, with exact totals,
   transaction counts, and one-tap drilldown into the matching ledger records.
+- Optional monthly plans on expense categories, with planned, recorded, and
+  remaining-or-over amounts shown together. Plans are recurring comparison
+  guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
   generated, including the next date and exact occurrence count for each rule.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
@@ -117,6 +120,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   manual and recurring transactions default to uncleared; reviewed bank imports
   default to cleared. This status records bank-posting review only and is not an
   irreversible reconciliation lock.
+- Existing categories and schema-8/9 backups receive no monthly plan by default.
+  A plan can only be a positive safe-integer HKD amount on an expense category;
+  it never represents reserved or available cash.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
@@ -358,8 +364,9 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete five-table JSON ledger, upgrades a
-schema-8 backup with cleared legacy history, rejects a modified checksum and a
+The same gate exports and restores a complete five-table JSON ledger, upgrades
+schema-9 backups with no invented category plans and schema-8 backups with both
+no invented plans and cleared legacy history, rejects a modified checksum and a
 stale preview, and proves that the final re-export exactly matches the pre-restore
 data.
 
@@ -382,6 +389,7 @@ npm run types:worker
 | `0007_transaction_import_keys.sql` | Adds source-key tombstones for duplicate-safe CSV and reviewed AI imports; keys deliberately survive transaction deletion. |
 | `0008_ledger_revision.sql` | Adds a monotonic ledger revision maintained by table triggers so restore previews cannot overwrite newer writes. |
 | `0009_transaction_clearing_status.sql` | Adds cleared/uncleared bank-posting status, preserving existing history as cleared. |
+| `0010_category_monthly_plans.sql` | Adds optional positive monthly spending plans to expense categories without implying reserved cash or rollover. |
 
 Apply migrations locally:
 

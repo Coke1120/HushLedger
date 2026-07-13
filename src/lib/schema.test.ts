@@ -27,8 +27,26 @@ describe('reference data validation', () => {
       type: 'bank',
     })
     assert.equal(accountUpdateSchema.safeParse({ name: 'Cash', type: 'cash', updatedAt }).success, true)
-    assert.equal(categoryCreateSchema.safeParse({ name: 'Education', type: 'expense' }).success, true)
-    assert.equal(categoryUpdateSchema.safeParse({ name: 'Books', updatedAt }).success, true)
+    assert.deepEqual(categoryCreateSchema.parse({
+      name: 'Education',
+      type: 'expense',
+      monthlyPlanMinor: 25_000,
+    }), {
+      name: 'Education',
+      type: 'expense',
+      monthlyPlanMinor: 25_000,
+    })
+    assert.deepEqual(categoryCreateSchema.parse({ name: 'Gift', type: 'income' }), {
+      name: 'Gift',
+      type: 'income',
+      monthlyPlanMinor: null,
+    })
+    assert.equal(categoryUpdateSchema.safeParse({
+      name: 'Books',
+      type: 'expense',
+      monthlyPlanMinor: null,
+      updatedAt,
+    }).success, true)
     assert.equal(referenceStatusSchema.safeParse({ isActive: false, updatedAt }).success, true)
     assert.equal(referenceOrderSchema.safeParse({
       items: [{ id: 2, updatedAt }, { id: 1, updatedAt }],
@@ -41,7 +59,33 @@ describe('reference data validation', () => {
     assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan' }).success, false)
     assert.equal(categoryCreateSchema.safeParse({ name: 'Food', type: 'transfer' }).success, false)
     assert.equal(
-      categoryUpdateSchema.safeParse({ name: 'Food', type: 'expense', updatedAt }).success,
+      categoryCreateSchema.safeParse({
+        name: 'Salary',
+        type: 'income',
+        monthlyPlanMinor: 100_000,
+      }).success,
+      false,
+    )
+    assert.equal(
+      categoryUpdateSchema.safeParse({
+        name: 'Salary',
+        type: 'income',
+        monthlyPlanMinor: 100_000,
+        updatedAt,
+      }).success,
+      false,
+    )
+    assert.equal(
+      categoryUpdateSchema.safeParse({
+        name: 'Food',
+        type: 'expense',
+        monthlyPlanMinor: Number.MAX_SAFE_INTEGER + 1,
+        updatedAt,
+      }).success,
+      false,
+    )
+    assert.equal(
+      categoryUpdateSchema.safeParse({ name: 'Food', monthlyPlanMinor: null, updatedAt }).success,
       false,
     )
     assert.equal(referenceOrderSchema.safeParse({ items: [{ id: 1, updatedAt }] }).success, false)

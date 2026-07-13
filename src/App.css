@@ -462,6 +462,11 @@ textarea:focus-visible {
   background: #eaf1f5;
 }
 
+.monthly-plans-heading-icon {
+  color: #7b5d24;
+  background: #f7edce;
+}
+
 .category-spending-heading h2,
 .category-spending-heading p,
 .category-spending-more {
@@ -678,6 +683,14 @@ textarea:focus-visible {
   display: block;
   height: 100%;
   border-radius: inherit;
+}
+
+.monthly-plan-row .category-spending-amount strong.expense {
+  color: var(--expense);
+}
+
+.monthly-plan-row .category-spending-track > span.is-over {
+  background: var(--expense);
 }
 
 .category-spending-empty {
@@ -2263,12 +2276,20 @@ textarea:focus-visible {
   font-weight: 650;
 }
 
+.reference-create-form label small,
+.reference-editor label small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 450;
+  line-height: 1.45;
+}
+
 .reference-create-form input,
 .reference-create-form select,
 .reference-editor input,
 .reference-editor select {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 11px;
   color: var(--ink);
   background: var(--surface);

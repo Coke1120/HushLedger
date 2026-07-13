@@ -76,6 +76,18 @@ describe('localized demo data', () => {
       { month: '2026-06', amountMinor: 0, transactionCount: 0 },
       { month: '2026-07', amountMinor: 1_717_950, transactionCount: 6 },
     ])
+    assert.deepEqual(
+      summary.monthlySpendingPlans.map(({ categoryId, plannedMinor, spentMinor }) => ({
+        categoryId,
+        plannedMinor,
+        spentMinor,
+      })),
+      [
+        { categoryId: 3, plannedMinor: 50_000, spentMinor: 45_440 },
+        { categoryId: 6, plannedMinor: 1_500_000, spentMinor: 1_550_000 },
+        { categoryId: 7, plannedMinor: 120_000, spentMinor: 118_300 },
+      ],
+    )
   })
 
   it('keeps edits and deletions local to the current demo session', () => {

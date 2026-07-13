@@ -46,6 +46,7 @@ const categorySelect = `
     is_active AS isActive,
     sort_order AS sortOrder,
     localization_key AS localizationKey,
+    monthly_plan_minor AS monthlyPlanMinor,
     updated_at AS updatedAt
   FROM categories
 `
@@ -267,7 +268,8 @@ export async function createCategoryReference(
       color,
       is_active,
       sort_order,
-      localization_key
+      localization_key,
+      monthly_plan_minor
     )
     SELECT
       ?,
@@ -276,7 +278,8 @@ export async function createCategoryReference(
       ?,
       1,
       COALESCE((SELECT MAX(sort_order) + 10 FROM categories WHERE type = ?), 10),
-      NULL
+      NULL,
+      ?
     WHERE NOT EXISTS (
       SELECT 1 FROM categories WHERE name = ? COLLATE NOCASE AND type = ?
     )
@@ -286,6 +289,7 @@ export async function createCategoryReference(
     presentation.icon,
     presentation.color,
     input.type,
+    input.monthlyPlanMinor,
     input.name,
     input.type,
   ).run()
@@ -305,9 +309,10 @@ export async function updateCategoryReference(
     UPDATE OR IGNORE categories
     SET
       name = ?,
+      monthly_plan_minor = ?,
       localization_key = CASE WHEN name = ? THEN localization_key ELSE NULL END,
       updated_at = ${nextUpdatedAt}
-    WHERE id = ? AND updated_at = ?
+    WHERE id = ? AND updated_at = ? AND type = ?
       AND NOT EXISTS (
         SELECT 1
         FROM categories AS other
@@ -315,7 +320,16 @@ export async function updateCategoryReference(
           AND other.type = categories.type
           AND other.id <> ?
       )
-  `).bind(input.name, input.name, id, input.updatedAt, input.name, id).run()
+  `).bind(
+    input.name,
+    input.monthlyPlanMinor,
+    input.name,
+    id,
+    input.updatedAt,
+    input.type,
+    input.name,
+    id,
+  ).run()
 
   if (Number(updated.meta.changes) === 0) {
     return diagnoseCategoryMutation(database, id, input.updatedAt, input.name)

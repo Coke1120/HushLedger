@@ -9,6 +9,7 @@ import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
+import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
 import { RecurringForecast } from './components/RecurringForecast'
 import { SettingsPage } from './components/SettingsPage'
@@ -244,6 +245,11 @@ function App({ initialMonth }: { initialMonth: string }) {
                   onSelectMonth={setMonth}
                 />
                 <CategorySpending
+                  summary={data.summary}
+                  loading={loading}
+                  onSelect={openCategoryTransactions}
+                />
+                <MonthlySpendingPlans
                   summary={data.summary}
                   loading={loading}
                   onSelect={openCategoryTransactions}

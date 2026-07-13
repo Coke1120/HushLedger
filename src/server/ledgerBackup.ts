@@ -17,8 +17,7 @@ import {
   type CompatibleLedgerBackup,
   type LedgerBackup,
   type LedgerBackupData,
-  type LedgerBackupPayload,
-  type PreviousLedgerBackupPayload,
+  type CompatibleLedgerBackupPayload,
   type LedgerRestoreCommitResult,
   type LedgerRestorePreview,
   type LedgerTableCounts,
@@ -88,6 +87,7 @@ const categoryQuery = `
     is_active AS isActive,
     sort_order AS sortOrder,
     localization_key AS localizationKey,
+    monthly_plan_minor AS monthlyPlanMinor,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM categories
@@ -175,7 +175,8 @@ const accountInsert = `
 
 const categoryInsert = `
   INSERT INTO categories(
-    id, name, type, icon, color, is_active, sort_order, localization_key, created_at, updated_at
+    id, name, type, icon, color, is_active, sort_order, localization_key,
+    monthly_plan_minor, created_at, updated_at
   )
   SELECT
     json_extract(value, '$.id'),
@@ -186,6 +187,7 @@ const categoryInsert = `
     json_extract(value, '$.isActive'),
     json_extract(value, '$.sortOrder'),
     json_extract(value, '$.localizationKey'),
+    json_extract(value, '$.monthlyPlanMinor'),
     json_extract(value, '$.createdAt'),
     json_extract(value, '$.updatedAt')
   FROM json_each(?)
@@ -464,7 +466,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
 
 function backupPayload(
   backup: CompatibleLedgerBackup,
-): LedgerBackupPayload | PreviousLedgerBackupPayload {
+): CompatibleLedgerBackupPayload {
   return compatibleLedgerBackupPayloadSchema.parse({
     format: backup.format,
     version: backup.version,

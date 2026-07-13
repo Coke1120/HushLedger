@@ -20,6 +20,7 @@ import {
   type MessageKey,
 } from '../i18n'
 import type { Account, AccountType, Category, TransactionType } from '../lib/schema'
+import { formatAmountInput, parseAmount } from '../lib/money'
 import {
   canMoveReference,
   orderedReferenceGroup,
@@ -50,6 +51,9 @@ type Editor =
       name: string
       originalDisplayName: string
       rawName: string
+      type: TransactionType
+      monthlyPlan: string
+      originalMonthlyPlan: string
       updatedAt: string
     }
 
@@ -59,11 +63,12 @@ export function ReferenceDataSettings({
   enabled,
   onRefresh,
 }: ReferenceDataSettingsProps) {
-  const { localizeEntityName, t } = useI18n()
+  const { formatMoney, locale, localizeEntityName, t } = useI18n()
   const [accountName, setAccountName] = useState('')
   const [accountType, setAccountType] = useState<AccountType>('bank')
   const [categoryName, setCategoryName] = useState('')
   const [categoryType, setCategoryType] = useState<TransactionType>('expense')
+  const [categoryMonthlyPlan, setCategoryMonthlyPlan] = useState('')
   const [editor, setEditor] = useState<Editor | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<LocalizedMessage | null>(null)
@@ -104,12 +109,27 @@ export function ReferenceDataSettings({
 
   async function addCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const monthlyPlanMinor = categoryType === 'expense'
+      ? parseOptionalMonthlyPlan(categoryMonthlyPlan, locale)
+      : null
+    if (monthlyPlanMinor === undefined) {
+      setFeedback(message('invalidMonthlyPlan'))
+      setFeedbackError(true)
+      return
+    }
     const saved = await mutate(
       'category-new',
-      () => actionData(createCategoryAction({ name: categoryName, type: categoryType })),
+      () => actionData(createCategoryAction({
+        name: categoryName,
+        type: categoryType,
+        monthlyPlanMinor,
+      })),
       'referenceCreated',
     )
-    if (saved) setCategoryName('')
+    if (saved) {
+      setCategoryName('')
+      setCategoryMonthlyPlan('')
+    }
   }
 
   async function moveAccount(account: Account, direction: ReferenceMoveDirection) {
@@ -139,6 +159,14 @@ export function ReferenceDataSettings({
     if (!editor) return
     const trimmed = editor.name.trim()
     const name = trimmed === editor.originalDisplayName ? editor.rawName : trimmed
+    const monthlyPlanMinor = editor.kind === 'category'
+      ? parseOptionalMonthlyPlan(editor.monthlyPlan, locale)
+      : null
+    if (monthlyPlanMinor === undefined) {
+      setFeedback(message('invalidMonthlyPlan'))
+      setFeedbackError(true)
+      return
+    }
     const saved = editor.kind === 'account'
       ? await mutate(
           `account-${editor.id}`,
@@ -151,7 +179,12 @@ export function ReferenceDataSettings({
         )
       : await mutate(
           `category-${editor.id}`,
-          () => actionData(updateCategoryAction(editor.id, { name, updatedAt: editor.updatedAt })),
+          () => actionData(updateCategoryAction(editor.id, {
+            name,
+            type: editor.type,
+            monthlyPlanMinor,
+            updatedAt: editor.updatedAt,
+          })),
           'referenceUpdated',
         )
     if (saved) setEditor(null)
@@ -173,12 +206,18 @@ export function ReferenceDataSettings({
 
   function editCategory(category: Category) {
     const displayName = localizeEntityName(category.name, category.localizationKey)
+    const monthlyPlan = category.monthlyPlanMinor === null
+      ? ''
+      : formatAmountInput(category.monthlyPlanMinor, locale)
     setEditor({
       kind: 'category',
       id: category.id,
       name: displayName,
       originalDisplayName: displayName,
       rawName: category.name,
+      type: category.type,
+      monthlyPlan,
+      originalMonthlyPlan: monthlyPlan,
       updatedAt: category.updatedAt,
     })
   }
@@ -299,13 +338,30 @@ export function ReferenceDataSettings({
               <span>{t('categoryType')}</span>
               <select
                 value={categoryType}
-                onChange={(event) => setCategoryType(event.target.value as TransactionType)}
+                onChange={(event) => {
+                  const nextType = event.target.value as TransactionType
+                  setCategoryType(nextType)
+                  if (nextType === 'income') setCategoryMonthlyPlan('')
+                }}
                 disabled={!enabled || busy !== null}
               >
                 <option value="expense">{t('expense')}</option>
                 <option value="income">{t('income')}</option>
               </select>
             </label>
+            {categoryType === 'expense' ? (
+              <label>
+                <span>{t('monthlySpendingPlanOptional')}</span>
+                <input
+                  inputMode="decimal"
+                  value={categoryMonthlyPlan}
+                  onChange={(event) => setCategoryMonthlyPlan(event.target.value)}
+                  placeholder={t('monthlySpendingPlanPlaceholder')}
+                  disabled={!enabled || busy !== null}
+                />
+                <small>{t('monthlySpendingPlanFieldHelp')}</small>
+              </label>
+            ) : null}
             <button className="button button-secondary" type="submit" disabled={!enabled || busy !== null}>
               <Plus aria-hidden="true" />
               {busy === 'category-new' ? t('saving') : t('addCategory')}
@@ -317,7 +373,11 @@ export function ReferenceDataSettings({
               <li key={category.id}>
                 <ReferenceRow
                   name={localizeEntityName(category.name, category.localizationKey)}
-                  detail={t(category.type)}
+                  detail={category.monthlyPlanMinor === null
+                    ? `${t(category.type)} · ${t('noMonthlySpendingPlan')}`
+                    : `${t(category.type)} · ${t('monthlySpendingPlanValue', {
+                        amount: formatMoney(category.monthlyPlanMinor),
+                      })}`}
                   active={category.isActive}
                   editing={editor?.kind === 'category' && editor.id === category.id}
                   disabled={
@@ -445,7 +505,9 @@ type EditorFormProps = {
 function EditorForm({ editor, busy, onChange, onCancel, onSubmit }: EditorFormProps) {
   const { t } = useI18n()
   const unchanged = editor.name.trim() === editor.originalDisplayName
-    && (editor.kind === 'category' || editor.type === editor.originalType)
+    && (editor.kind === 'category'
+      ? editor.monthlyPlan.trim() === editor.originalMonthlyPlan
+      : editor.type === editor.originalType)
   return (
     <form className="reference-editor" onSubmit={onSubmit}>
       <label>
@@ -472,6 +534,18 @@ function EditorForm({ editor, busy, onChange, onCancel, onSubmit }: EditorFormPr
             ))}
           </select>
         </label>
+      ) : editor.type === 'expense' ? (
+        <label>
+          <span>{t('monthlySpendingPlanOptional')}</span>
+          <input
+            inputMode="decimal"
+            value={editor.monthlyPlan}
+            onChange={(event) => onChange({ ...editor, monthlyPlan: event.target.value })}
+            placeholder={t('monthlySpendingPlanPlaceholder')}
+            disabled={busy}
+          />
+          <small>{t('monthlySpendingPlanFieldHelp')}</small>
+        </label>
       ) : null}
       <div className="reference-editor-actions">
         <button className="button button-primary" type="submit" disabled={busy || unchanged}>
@@ -495,4 +569,13 @@ function accountTypeLabel(t: (key: MessageKey) => string, type: AccountType) {
   if (type === 'bank') return t('accountBank')
   if (type === 'credit_card') return t('accountCreditCard')
   return t('accountWallet')
+}
+
+function parseOptionalMonthlyPlan(value: string, locale: string) {
+  if (!value.trim()) return null
+  try {
+    return parseAmount(value, locale)
+  } catch {
+    return undefined
+  }
 }
