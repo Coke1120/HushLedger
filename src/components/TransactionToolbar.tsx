@@ -1,14 +1,16 @@
 import { Download, FileUp, Search, Sparkles, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useI18n } from '../i18n'
-import type { Account, Category, TransactionType } from '../lib/schema'
+import type { Account, Category, TransactionClearingStatus, TransactionType } from '../lib/schema'
 
 export type TransactionFilter = TransactionType | 'all'
+export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 
 type TransactionToolbarProps = {
   search: string
   tagFilter: string | null
   filter: TransactionFilter
+  clearingFilter: TransactionClearingFilter
   month: string
   accounts: Account[]
   categories: Category[]
@@ -19,6 +21,7 @@ type TransactionToolbarProps = {
   onSearchChange: (value: string) => void
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
+  onClearingFilterChange: (value: TransactionClearingFilter) => void
   onAccountFilterChange: (value: number | null) => void
   onCategoryFilterChange: (value: number | null) => void
   onClearReferenceFilters: () => void
@@ -34,6 +37,7 @@ export function TransactionToolbar({
   search,
   tagFilter,
   filter,
+  clearingFilter,
   month,
   accounts,
   categories,
@@ -44,6 +48,7 @@ export function TransactionToolbar({
   onSearchChange,
   onTagFilterChange,
   onFilterChange,
+  onClearingFilterChange,
   onAccountFilterChange,
   onCategoryFilterChange,
   onClearReferenceFilters,
@@ -62,6 +67,7 @@ export function TransactionToolbar({
   ]
   const exportQuery = new URLSearchParams({ month })
   if (filter !== 'all') exportQuery.set('type', filter)
+  if (clearingFilter !== 'all') exportQuery.set('status', clearingFilter)
   if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
   if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
   if (search.trim()) exportQuery.set('search', search.trim())
@@ -113,6 +119,17 @@ export function TransactionToolbar({
         ))}
       </div>
       <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
+        <label className="transaction-reference-filter">
+          <span className="sr-only">{t('filterByClearingStatus')}</span>
+          <select
+            value={clearingFilter}
+            onChange={(event) => onClearingFilterChange(event.target.value as TransactionClearingFilter)}
+          >
+            <option value="all">{t('allClearingStatuses')}</option>
+            <option value="uncleared">{t('uncleared')}</option>
+            <option value="cleared">{t('cleared')}</option>
+          </select>
+        </label>
         <label className="transaction-reference-filter">
           <span className="sr-only">{t('filterByAccount')}</span>
           <select

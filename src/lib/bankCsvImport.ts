@@ -220,6 +220,7 @@ export async function mapBankCsvDocument(
       accountId: account.id,
       categoryId: type === 'expense' ? expenseCategory.id : incomeCategory.id,
       occurredOn,
+      cleared: true,
       payee,
       note,
     }

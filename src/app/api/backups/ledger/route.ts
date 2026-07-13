@@ -2,6 +2,7 @@ import {
   LEDGER_BACKUP_FORMAT,
   LEDGER_BACKUP_VERSION,
   LEDGER_SCHEMA_VERSION,
+  PREVIOUS_LEDGER_SCHEMA_VERSION,
   MAX_LEDGER_BACKUP_REQUEST_BYTES,
   ledgerRestoreRequestSchema,
 } from '../../../../lib/ledgerBackup'
@@ -96,7 +97,10 @@ function backupCompatibilityError(value: unknown) {
   }
   if (
     candidate.version !== LEDGER_BACKUP_VERSION ||
-    candidate.schemaVersion !== LEDGER_SCHEMA_VERSION
+    (
+      candidate.schemaVersion !== LEDGER_SCHEMA_VERSION &&
+      candidate.schemaVersion !== PREVIOUS_LEDGER_SCHEMA_VERSION
+    )
   ) {
     return jsonError(400, 'BACKUP_VERSION_UNSUPPORTED', '這個備份版本與目前的 HushLedger 不相容')
   }

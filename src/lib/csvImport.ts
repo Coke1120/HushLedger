@@ -37,6 +37,7 @@ export const CSV_IMPORT_HEADERS = [
   'Category',
   'Payee',
   'Note',
+  'Cleared',
   'Recurring Rule',
   'Recurring Due Date',
   'Transaction ID',
@@ -84,6 +85,7 @@ export type CsvImportIssueCode =
   | 'invalid_type'
   | 'invalid_amount'
   | 'invalid_currency'
+  | 'invalid_clearing_status'
   | 'account_not_found'
   | 'account_ambiguous'
   | 'category_not_found'
@@ -190,6 +192,17 @@ export async function parseHushLedgerCsv(
       continue
     }
 
+    const clearingStatus = value('Cleared').trim().toLowerCase()
+    const cleared = clearingStatus === '' || clearingStatus === 'cleared'
+      ? true
+      : clearingStatus === 'uncleared'
+        ? false
+        : null
+    if (cleared === null) {
+      issues.push({ row: sourceRow, code: 'invalid_clearing_status', value: value('Cleared').trim() })
+      continue
+    }
+
     const accountName = value('Account').trim()
     const matchingAccounts = references.accounts.filter(
       (account) => normalizedName(account.name) === normalizedName(accountName),
@@ -242,6 +255,7 @@ export async function parseHushLedgerCsv(
       accountId: matchingAccounts[0].id,
       categoryId: matchingCategories[0].id,
       occurredOn,
+      cleared,
       payee,
       note,
     }

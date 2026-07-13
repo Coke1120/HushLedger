@@ -42,9 +42,9 @@ not operate an independent database server or a multi-user identity system.
 - Search payee, note, account, or category.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.
-- Stack income/expense, account, and category filters; retain inactive references
-  as historical filter choices and clear incompatible category filters when the
-  selected transaction type changes.
+- Stack income/expense, cleared/uncleared, account, and category filters; retain
+  inactive references as historical filter choices and clear incompatible
+  category filters when the selected transaction type changes.
 - Export all transactions matching the selected month and filters as CSV without
   the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
@@ -63,6 +63,9 @@ not operate an independent database server or a multi-user identity system.
 ### Record money
 
 - Add income or expense in a short responsive form.
+- Leave manual entries uncleared until they appear at the bank, or mark them
+  cleared during entry or review. Duplicated and recurring entries also begin
+  uncleared; reviewed bank imports begin cleared.
 - Calculate an amount with touch-friendly arithmetic operators or a typed
   expression; parse without `eval` and round only the final result to minor units.
 - Correct or delete an existing transaction; reject stale changes made from an
@@ -105,6 +108,7 @@ currency              HKD in the current release
 account_id            active compatible account
 category_id           active matching category
 occurred_on           YYYY-MM-DD calendar date
+cleared               bank-posting review state
 payee                 optional custom text
 note                  optional custom text
 recurring_rule_id     nullable provenance
@@ -116,7 +120,8 @@ updated_at            internal UTC audit timestamp
 
 HK$123.45 is stored as `12345`. Binary floating point is never authoritative.
 `occurred_on` is intentionally date-only; audit timestamps must not be presented
-as transaction time. `updated_at` is also the optimistic concurrency token for
+as transaction time. `cleared` is a reversible review marker, not an immutable
+reconciliation lock. `updated_at` is also the optimistic concurrency token for
 editing and deleting a transaction. Edits never replace recurring provenance.
 
 ### Accounts and categories
@@ -170,12 +175,12 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
-GET    /api/transactions?month=YYYY-MM&type=...&search=...  (latest 200)
+GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...  (latest 200)
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=...&search=...  (uncapped CSV)
+GET    /api/exports/transactions?month=YYYY-MM&type=...&status=...&search=...  (uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
@@ -201,7 +206,8 @@ Database and stack errors are never returned to the client.
 
 The transaction export is the one successful non-JSON response: an attachment
 with UTF-8 BOM, exact signed decimal amounts, CRLF records, formula-safe user
-text, and a stable transaction UUID. Import parses that contract in the browser,
+text, a stable transaction UUID, and clearing status. Import parses that contract
+in the browser,
 resolves account/category names without guessing, previews exact matches and
 conflicts against D1, and writes selected rows in a transactional batch. Import
 keys intentionally survive transaction deletion to prevent an accidental
@@ -258,11 +264,13 @@ uses Wrangler D1 export and restore.
 
 ### Complete core
 
-- D1 schema, seed, constraints, indexes, and date-only migration.
+- D1 schema, seed, constraints, indexes, date-only migration, and reversible
+  transaction clearing status.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
-  account/category/type/search filters, matching filtered transaction CSV export,
+  account/category/type/clearing/search filters, matching filtered transaction
+  CSV export,
   ranked category-spending drilldown, deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
@@ -303,8 +311,8 @@ database IDs. See
 
 - Clean checkout supports `npm ci` and local D1 migrations.
 - Local Next.js development and the OpenNext workerd preview read and write D1.
-- A transaction can be created, edited, and deleted; each change appears in its
-  list and monthly summary, and stale mutations are rejected.
+- A transaction can be created, edited, cleared/uncleared, and deleted; each
+  change appears in its list and monthly summary, and stale mutations are rejected.
 - Daily, weekly, and monthly rules can be created, edited, paused, resumed, run,
   and deleted without duplicate occurrences or history loss.
 - Date-only behavior is visible across UI, API, tests, and migrations.

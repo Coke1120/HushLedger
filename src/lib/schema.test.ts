@@ -62,6 +62,7 @@ const valid = {
   accountId: 1,
   categoryId: 2,
   occurredOn: '2026-07-11',
+  cleared: false,
   payee: '百佳超級市場',
   note: '',
 }
@@ -69,6 +70,9 @@ const valid = {
 describe('transaction validation', () => {
   it('accepts a complete HKD transaction', () => {
     assert.equal(transactionInputSchema.safeParse(valid).success, true)
+    const { cleared, ...withoutClearingStatus } = valid
+    assert.equal(cleared, false)
+    assert.equal(transactionInputSchema.parse(withoutClearingStatus).cleared, false)
   })
 
   for (const [label, patch] of [
@@ -107,11 +111,12 @@ describe('transaction validation', () => {
 })
 
 describe('transaction query validation', () => {
-  it('accepts month, type, account, category, search, and an exact note tag', () => {
+  it('accepts month, type, clearing status, account, category, search, and an exact note tag', () => {
     assert.deepEqual(
       transactionQuerySchema.parse({
         month: '2026-07',
         type: 'expense',
+        status: 'uncleared',
         accountId: '2',
         categoryId: '3',
         search: '超級市場',
@@ -120,6 +125,7 @@ describe('transaction query validation', () => {
       {
         month: '2026-07',
         type: 'expense',
+        status: 'uncleared',
         accountId: 2,
         categoryId: 3,
         search: '超級市場',
@@ -131,6 +137,7 @@ describe('transaction query validation', () => {
   for (const [index, query] of [
     { month: '2026-13' },
     { type: 'transfer' },
+    { month: '2026-07', status: 'pending' },
     { accountId: '0' },
     { categoryId: '1.5' },
     { search: 'x'.repeat(81) },

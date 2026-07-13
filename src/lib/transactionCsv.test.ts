@@ -8,6 +8,7 @@ const transaction: CsvTransaction = {
   amountMinor: 12_345,
   currency: 'HKD',
   occurredOn: '2026-07-13',
+  cleared: false,
   accountName: '銀行戶口',
   categoryName: '飲食',
   payee: 'Coffee, "Central"',
@@ -24,6 +25,7 @@ describe('transaction CSV export', () => {
     ])
 
     assert(csv.startsWith('\uFEFFDate,Type,Amount,Currency'))
+    assert.match(csv, /,Uncleared,/)
     assert.match(csv, /2026-07-13,expense,-123\.45,HKD/)
     assert.match(csv, /2026-07-13,income,0\.05,HKD/)
     assert.match(csv, /"Coffee, ""Central"""/)

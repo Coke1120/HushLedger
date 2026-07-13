@@ -33,9 +33,10 @@ const importClassificationSql = `
     account_id,
     category_id,
     occurred_on,
+    cleared,
     payee,
     note
-  ) AS (VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))
+  ) AS (VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))
   SELECT
     EXISTS(
       SELECT 1 FROM transaction_import_keys tik
@@ -54,6 +55,7 @@ const importClassificationSql = `
         AND t.account_id = candidate.account_id
         AND t.category_id = candidate.category_id
         AND t.occurred_on = candidate.occurred_on
+        AND t.cleared = candidate.cleared
         AND t.payee = candidate.payee
         AND t.note = candidate.note
     ) AS idMatches,
@@ -147,6 +149,7 @@ export async function commitTransactionImport(
       account_id,
       category_id,
       occurred_on,
+      cleared,
       payee,
       note
     )
@@ -170,6 +173,7 @@ export async function commitTransactionImport(
       ?,
       ?,
       ?,
+      ?,
       ?
   `)
   const insertImportKey = database.prepare(`
@@ -188,6 +192,7 @@ export async function commitTransactionImport(
       row.accountId,
       row.categoryId,
       row.occurredOn,
+      row.cleared ? 1 : 0,
       row.payee,
       row.note,
     ),
@@ -223,6 +228,7 @@ function bindRow(statement: D1PreparedStatement, row: TransactionImportRow) {
     row.accountId,
     row.categoryId,
     row.occurredOn,
+    row.cleared ? 1 : 0,
     row.payee,
     row.note,
   )

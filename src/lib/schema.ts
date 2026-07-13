@@ -4,6 +4,8 @@ import { isTransactionTagName } from './transactionTags'
 
 export const transactionTypeSchema = z.enum(['expense', 'income'])
 export type TransactionType = z.infer<typeof transactionTypeSchema>
+export const transactionClearingStatusSchema = z.enum(['cleared', 'uncleared'])
+export type TransactionClearingStatus = z.infer<typeof transactionClearingStatusSchema>
 export const accountTypeSchema = z.enum(['cash', 'bank', 'credit_card', 'wallet'])
 export type AccountType = z.infer<typeof accountTypeSchema>
 export const recurrenceFrequencySchema = z.enum(['daily', 'weekly', 'monthly'])
@@ -26,11 +28,11 @@ const transactionFieldsSchema = z.object({
 })
 
 export const transactionInputSchema = transactionFieldsSchema
-  .extend({ id: transactionIdSchema })
+  .extend({ id: transactionIdSchema, cleared: z.boolean().default(false) })
   .strict()
 
 export const transactionUpdateSchema = transactionFieldsSchema
-  .extend({ updatedAt: z.string().datetime({ offset: true }) })
+  .extend({ cleared: z.boolean(), updatedAt: z.string().datetime({ offset: true }) })
   .strict()
 
 export const transactionDeleteSchema = z
@@ -48,6 +50,7 @@ export const transactionQuerySchema = z
       }
     }, '月份格式必須為有效的 YYYY-MM'),
     type: transactionTypeSchema.optional(),
+    status: transactionClearingStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).max(80).optional(),

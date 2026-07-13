@@ -7,6 +7,7 @@ export type CsvTransaction = Pick<
   | 'accountName'
   | 'amountMinor'
   | 'categoryName'
+  | 'cleared'
   | 'currency'
   | 'note'
   | 'occurredOn'
@@ -26,6 +27,7 @@ const headers = [
   'Category',
   'Payee',
   'Note',
+  'Cleared',
   'Recurring Rule',
   'Recurring Due Date',
   'Transaction ID',
@@ -41,6 +43,7 @@ export function transactionsToCsv(transactions: readonly CsvTransaction[]) {
     csvText(transaction.categoryName),
     csvText(transaction.payee),
     csvText(transaction.note),
+    transaction.cleared ? 'Cleared' : 'Uncleared',
     csvText(transaction.recurringRuleName ?? ''),
     transaction.recurrenceDueOn ?? '',
     transaction.id,

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { createServer as createHttpServer, request as httpRequest } from 'node:http'
 import { createServer as createNetServer } from 'node:net'
@@ -27,6 +28,23 @@ function shiftCalendarMonth(month, amount) {
   const [year, monthNumber] = month.split('-').map(Number)
   const shifted = new Date(Date.UTC(year, monthNumber - 1 + amount, 1))
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+function backupChecksum({ format, version, exportedAt, schemaVersion, data }) {
+  return createHash('sha256')
+    .update(canonicalJson({ format, version, exportedAt, schemaVersion, data }))
+    .digest('hex')
 }
 
 async function availablePort() {
@@ -207,7 +225,7 @@ async function verifyUpgradeMigration() {
     '--persist-to',
     upgradeState,
     '--command',
-    `SELECT id, occurred_on AS occurredOn FROM transactions WHERE id = '${sentinelId}';
+    `SELECT id, occurred_on AS occurredOn, cleared FROM transactions WHERE id = '${sentinelId}';
      SELECT name, localization_key AS localizationKey FROM accounts WHERE name IN ('日常帳戶','Integration custom account') ORDER BY name;
      SELECT name, localization_key AS localizationKey FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
@@ -218,6 +236,7 @@ async function verifyUpgradeMigration() {
   const statements = JSON.parse(verification.stdout)
   assert.equal(statements[0].results[0].id, sentinelId)
   assert.equal(statements[0].results[0].occurredOn, '2026-07-10')
+  assert.equal(statements[0].results[0].cleared, 1)
   assert.deepEqual(statements[1].results, [
     { name: 'Integration custom account', localizationKey: null },
     { name: '日常帳戶', localizationKey: 'account.bank' },
@@ -968,6 +987,7 @@ async function verifyWorkerApi() {
     ...transaction,
     id: '10000000-0000-4000-8000-000000000003',
     occurredOn: today,
+    cleared: false,
   }
   const createdTransaction = await api(baseUrl, '/api/transactions', {
     method: 'POST',
@@ -975,6 +995,11 @@ async function verifyWorkerApi() {
   })
   assert.equal(createdTransaction.response.status, 201)
   assert.equal(createdTransaction.payload.data.amountMinor, 123)
+  assert.equal(createdTransaction.payload.data.cleared, false)
+
+  const unclearedTransactions = await api(baseUrl, `/api/transactions?month=${month}&status=uncleared`)
+  assert.equal(unclearedTransactions.response.status, 200)
+  assert.deepEqual(unclearedTransactions.payload.data.map(({ id }) => id), [transactionBody.id])
 
   const csvImportIds = {
     fresh: '41000000-0000-4000-8000-000000000001',
@@ -987,6 +1012,7 @@ async function verifyWorkerApi() {
       id: csvImportIds.fresh,
       amountMinor: 777,
       payee: 'CSV import fresh',
+      cleared: true,
       sourceRow: 2,
       importKey: `csv:hushledger:id:${csvImportIds.fresh}`,
       include: true,
@@ -1231,6 +1257,7 @@ async function verifyWorkerApi() {
   assert.equal(filteredCsvExport.response.status, 200)
   assert.match(filteredCsvExport.payload, /2026-\d{2}-\d{2},expense,-4\.56,HKD/)
   assert.match(filteredCsvExport.payload, /"edited integration test"/)
+  assert.match(filteredCsvExport.payload, /,Uncleared,/)
 
   const staleTransactionDelete = await api(baseUrl, `/api/transactions/${transactionBody.id}`, {
     method: 'DELETE',
@@ -1373,6 +1400,7 @@ async function verifyWorkerApi() {
       .filter((item) => item.recurrenceDueOn === today)
       .every(
         (item) =>
+          item.cleared === false &&
           item.accountLocalizationKey === account.localizationKey &&
           item.categoryLocalizationKey === expenseCategory.localizationKey,
       ),
@@ -1432,9 +1460,10 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 8)
+  assert.equal(backup.schemaVersion, 9)
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
+  assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
   assert(backup.data.transactionImportKeys.length > 0)
 
   const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
@@ -1520,13 +1549,40 @@ async function verifyWorkerApi() {
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema8Backup = structuredClone(backup)
+  schema8Backup.schemaVersion = 8
+  schema8Backup.data.transactions = schema8Backup.data.transactions.map(({ cleared, ...transaction }) => {
+    assert.equal(typeof cleared, 'boolean')
+    return transaction
+  })
+  schema8Backup.checksum.digest = backupChecksum(schema8Backup)
+  const schema8Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema8Backup },
+  })
+  assert.equal(schema8Preview.response.status, 200, JSON.stringify(schema8Preview.payload))
+  assert.notEqual(schema8Preview.payload.data.backupDigest, schema8Preview.payload.data.currentDigest)
+  const schema8Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema8Backup,
+      expectedCurrentDigest: schema8Preview.payload.data.currentDigest,
+      expectedRevision: schema8Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema8Restore.response.status, 200, JSON.stringify(schema8Restore.payload))
+  const upgradedSchema8Backup = await api(baseUrl, '/api/backups/ledger')
+  assert(upgradedSchema8Backup.payload.data.transactions.every(({ cleared }) => cleared === true))
+
   return {
     createdRules: createdRules.length,
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
     transactionFilterGuards: 3,
-    transactionFilterQueries: 3,
+    transactionFilterQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,
     spendingTrendQueries: 1,
@@ -1542,6 +1598,7 @@ async function verifyWorkerApi() {
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
     ledgerBackupTables: 5,
+    ledgerSchema8Restores: 1,
     ledgerRestoreStaleGuards: 1,
     ledgerRestoreTransactions: 1,
   }
@@ -1617,6 +1674,7 @@ async function verifyNextAiDrafts() {
     accountId: draft.accountId,
     categoryId: draft.categoryId,
     occurredOn: draft.occurredOn,
+    cleared: true,
     payee: draft.payee,
     note: '',
   }]
@@ -1645,6 +1703,7 @@ async function verifyNextAiDrafts() {
   const importedTransaction = await api(baseUrl, `/api/transactions/${draft.id}`)
   assert.equal(importedTransaction.response.status, 200)
   assert.equal(importedTransaction.payload.data.payee, 'Integration merchant')
+  assert.equal(importedTransaction.payload.data.cleared, true)
 
   const repeatedParse = await api(baseUrl, '/api/imports/parse', {
     method: 'POST',
@@ -1737,8 +1796,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0008',
-      upgradeMigration: '0004-to-0008-preserved-data-and-custom-names',
+      freshMigrations: '0001-0009',
+      upgradeMigration: '0004-to-0009-preserved-data-names-and-clearing-status',
       ...apiEvidence,
       ...nextAiEvidence,
     }),

@@ -4,11 +4,14 @@ import {
   LEDGER_BACKUP_FORMAT,
   LEDGER_BACKUP_VERSION,
   LEDGER_SCHEMA_VERSION,
+  PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
   checksumLedgerBackupPayload,
+  compatibleLedgerBackupSchema,
   countLedgerData,
   digestLedgerData,
   ledgerBackupTransactionSchema,
+  upgradeLedgerBackupData,
   validateLedgerDataRelations,
   type LedgerBackupData,
   type LedgerBackupPayload,
@@ -88,6 +91,7 @@ function ledgerData(): LedgerBackupData {
       accountId: 1,
       categoryId: 1,
       occurredOn: '2026-07-13',
+      cleared: false,
       payee: 'Cafe',
       note: '',
       recurringRuleId: '20000000-0000-4000-8000-000000000001',
@@ -144,6 +148,30 @@ describe('ledger backups', () => {
       transactionImportKeys: 1,
     })
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
+  })
+
+  it('upgrades schema 8 backups by preserving legacy transactions as cleared', async () => {
+    const current = ledgerData()
+    const legacyData = {
+      ...current,
+      transactions: current.transactions.map(({ cleared: _cleared, ...transaction }) => transaction),
+    }
+    const legacyPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PREVIOUS_LEDGER_SCHEMA_VERSION,
+      data: legacyData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...legacyPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(legacyPayload),
+      },
+    })
+
+    assert.equal(upgradeLedgerBackupData(backup).transactions[0]?.cleared, true)
   })
 
   it('rejects broken references, duplicate tombstones, and unusable reference data', () => {

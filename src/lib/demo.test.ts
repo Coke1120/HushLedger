@@ -35,6 +35,22 @@ describe('localized demo data', () => {
     assert.equal(creditFood[0]?.categoryId, 3)
   })
 
+  it('filters cleared and uncleared demo transactions independently', () => {
+    const uncleared = getDemoTransactions(
+      '2026-07',
+      'all',
+      '',
+      undefined,
+      null,
+      null,
+      null,
+      'uncleared',
+    )
+
+    assert.equal(uncleared.length, 1)
+    assert.equal(uncleared[0]?.cleared, false)
+  })
+
   it('ranks monthly expense categories by exact total and retains transaction counts', () => {
     const summary = demoSummary('2026-07')
 
@@ -73,6 +89,7 @@ describe('localized demo data', () => {
       accountId: original.accountId,
       categoryId: original.categoryId,
       occurredOn: original.occurredOn,
+      cleared: true,
       payee: 'Edited demo merchant',
       note: 'Session only',
     })

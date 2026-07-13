@@ -65,6 +65,7 @@ export function TransactionDialog({
       ?? 0,
   )
   const [date, setDate] = useState(initialTransaction?.occurredOn ?? currentHongKongDate().date)
+  const [cleared, setCleared] = useState(initialTransaction?.cleared ?? false)
   const [payee, setPayee] = useState(initialTransaction?.payee ?? '')
   const [suggestions, setSuggestions] = useState<PayeeSuggestion[]>([])
   const [payeeMemoryApplied, setPayeeMemoryApplied] = useState(false)
@@ -246,6 +247,7 @@ export function TransactionDialog({
         ? categoryId
         : (matchingCategories[0]?.id ?? 0),
       occurredOn: date,
+      cleared,
       payee: String(data.get('payee') ?? ''),
       note: String(data.get('note') ?? ''),
     })
@@ -415,6 +417,18 @@ export function TransactionDialog({
               <input type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
             </label>
           </div>
+
+          <label className="transaction-cleared-toggle">
+            <input
+              type="checkbox"
+              checked={cleared}
+              onChange={(event) => setCleared(event.target.checked)}
+            />
+            <span>
+              <strong>{t('markTransactionCleared')}</strong>
+              <small>{t('markTransactionClearedHelp')}</small>
+            </span>
+          </label>
 
           <label>
             <span>{t('payee')}</span>

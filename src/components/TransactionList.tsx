@@ -93,8 +93,11 @@ export function TransactionList({
                     </span>
                   ) : null}
                 </strong>
-                <small>
-                  {categoryName} · {accountName}
+                <small className="transaction-meta">
+                  <span>{categoryName} · {accountName}</span>
+                  <span className={`transaction-clearing-status ${transaction.cleared ? 'is-cleared' : 'is-uncleared'}`}>
+                    {t(transaction.cleared ? 'cleared' : 'uncleared')}
+                  </span>
                 </small>
               </span>
               <time dateTime={transaction.occurredOn}>{formatDate(transaction.occurredOn)}</time>

@@ -16,7 +16,11 @@ import { SummaryCards } from './components/SummaryCards'
 import { SpendingTrend } from './components/SpendingTrend'
 import { TransactionDialog } from './components/TransactionDialog'
 import { TransactionList } from './components/TransactionList'
-import { TransactionToolbar, type TransactionFilter } from './components/TransactionToolbar'
+import {
+  TransactionToolbar,
+  type TransactionClearingFilter,
+  type TransactionFilter,
+} from './components/TransactionToolbar'
 import { useMoneyData } from './hooks/useMoneyData'
 import { useI18n } from './i18n'
 import { shiftMonth } from './lib/date'
@@ -35,6 +39,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const { localizeEntityName, t } = useI18n()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
+  const [clearingFilter, setClearingFilter] = useState<TransactionClearingFilter>('all')
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
@@ -60,6 +65,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     accountFilterId,
     categoryFilterId,
     tagFilter,
+    clearingFilter,
   )
   const {
     clearActionMessage,
@@ -265,6 +271,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 search={search}
                 tagFilter={tagFilter}
                 filter={filter}
+                clearingFilter={clearingFilter}
                 month={month}
                 accounts={data.accounts}
                 categories={data.categories}
@@ -275,6 +282,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onSearchChange={setSearch}
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
+                onClearingFilterChange={setClearingFilter}
                 onAccountFilterChange={setAccountFilterId}
                 onCategoryFilterChange={setCategoryFilterId}
                 onClearReferenceFilters={clearReferenceFilters}

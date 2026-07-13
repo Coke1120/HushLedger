@@ -649,6 +649,7 @@ function importRows(drafts: readonly EditableBankImportDraft[]): TransactionImpo
       accountId: draft.accountId,
       categoryId: draft.categoryId,
       occurredOn: draft.occurredOn,
+      cleared: true,
       payee: draft.payee,
       note: '',
     })

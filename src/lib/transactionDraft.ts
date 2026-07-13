@@ -12,6 +12,7 @@ export function duplicateTransactionDraft(
     accountId: transaction.accountId,
     categoryId: transaction.categoryId,
     occurredOn: transaction.occurredOn,
+    cleared: false,
     payee: transaction.payee,
     note: transaction.note,
   })

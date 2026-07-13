@@ -103,6 +103,7 @@ describe('generic bank CSV import', () => {
     const second = await mapBankCsvDocument(parsed.document, mapping, { accounts, categories })
 
     assert.deepEqual(first.issues, [])
+    assert(first.rows.every(({ cleared }) => cleared))
     assert.deepEqual(first.rows.map((row) => ({
       type: row.type,
       amountMinor: row.amountMinor,

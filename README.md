@@ -41,9 +41,13 @@ knowledge and explains every command and dashboard click.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact cents,
   with touch-friendly operator buttons for mobile entry.
-- Stack search, income/expense, account, and category filters across the 200 most
-  recent matching transactions in each month, with inactive references still
-  available for historical review and an explicit notice at the result limit.
+- Stack search, income/expense, cleared/uncleared, account, and category filters
+  across the 200 most recent matching transactions in each month, with inactive
+  references still available for historical review and an explicit notice at the
+  result limit.
+- Mark transactions as cleared when they appear at the bank. Manual, duplicated,
+  and recurring entries begin uncleared for review; bank imports begin cleared,
+  while HushLedger CSV and full-ledger backups preserve their recorded state.
 - Add case-sensitive, whitespace-delimited `#tags` to transaction notes. Tag
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
@@ -107,7 +111,12 @@ credit card, or a digital wallet. It is not an additional transaction type.
   duplicate transaction.
 - Duplicating a transaction opens a separate create-mode draft for review. It
   copies only editable fields, never recurring provenance, audit timestamps, or
-  import identity, and requires active account/category references.
+  import identity, resets the draft to uncleared, and requires active
+  account/category references.
+- Existing ledgers and schema-8 backups are upgraded as cleared history. New
+  manual and recurring transactions default to uncleared; reviewed bank imports
+  default to cleared. This status records bank-posting review only and is not an
+  irreversible reconciliation lock.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
@@ -349,9 +358,10 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete five-table JSON ledger, rejects a
-modified checksum and a stale preview, and proves that the final re-export exactly
-matches the pre-restore data.
+The same gate exports and restores a complete five-table JSON ledger, upgrades a
+schema-8 backup with cleared legacy history, rejects a modified checksum and a
+stale preview, and proves that the final re-export exactly matches the pre-restore
+data.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -371,6 +381,7 @@ npm run types:worker
 | `0006_reference_localization_keys.sql` | Adds stable localization keys for built-in accounts and categories while preserving custom names verbatim. |
 | `0007_transaction_import_keys.sql` | Adds source-key tombstones for duplicate-safe CSV and reviewed AI imports; keys deliberately survive transaction deletion. |
 | `0008_ledger_revision.sql` | Adds a monotonic ledger revision maintained by table triggers so restore previews cannot overwrite newer writes. |
+| `0009_transaction_clearing_status.sql` | Adds cleared/uncleared bank-posting status, preserving existing history as cleared. |
 
 Apply migrations locally:
 
@@ -402,12 +413,12 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
-GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)
@@ -436,7 +447,8 @@ disabling the last active choice or a choice used by an active recurring rule.
 Transactions are ordered from newest to oldest by transaction date. A response
 contains at most 200 transactions. When that limit is reached, the UI explicitly
 states that it is showing the 200 most recent transactions instead of describing
-the truncated result as complete.
+the truncated result as complete. The optional `status` filter is the same
+cleared/uncleared filter used by the uncapped CSV export.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income
@@ -447,8 +459,8 @@ tracking table is created.
 
 The transaction export route returns a downloadable UTF-8 CSV rather than the
 JSON success envelope. It applies the same month, type, and search filters, is
-not restricted to 200 rows, and appends `Transaction ID` for deterministic
-round trips. Import parses the file in the browser. HushLedger exports open
+not restricted to 200 rows, and appends `Transaction ID` plus `Cleared` for
+deterministic round trips. Import parses the file in the browser. HushLedger exports open
 directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,
 five numeric date formats, one signed amount or separate debit/credit columns,
 optional sign reversal, an optional source ID, and explicit account/category

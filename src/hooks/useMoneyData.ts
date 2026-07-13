@@ -15,7 +15,15 @@ import {
   getDemoTransactions,
   updateDemo,
 } from '../lib/demo'
-import type { Account, Category, Summary, Transaction, TransactionInput, TransactionType } from '../lib/schema'
+import type {
+  Account,
+  Category,
+  Summary,
+  Transaction,
+  TransactionClearingStatus,
+  TransactionInput,
+  TransactionType,
+} from '../lib/schema'
 import { actionData } from './actionResult'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
@@ -34,9 +42,10 @@ function demoSnapshot(
   accountId: number | null,
   categoryId: number | null,
   tag: string | null,
+  status: TransactionClearingStatus | 'all',
 ): Snapshot {
   return {
-    transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag),
+    transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status),
     summary: demoSummary(month),
     accounts: demoAccounts,
     categories: demoCategories,
@@ -50,10 +59,11 @@ export function useMoneyData(
   accountId: number | null,
   categoryId: number | null,
   tag: string | null,
+  status: TransactionClearingStatus | 'all',
 ) {
   const { t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
-    demoSnapshot(month, type, search, accountId, categoryId, tag)
+    demoSnapshot(month, type, search, accountId, categoryId, tag, status)
   ))
   const [source, setSource] = useState<DataSource>('loading')
   const [online, setOnline] = useState(true)
@@ -70,6 +80,7 @@ export function useMoneyData(
     if (categoryId !== null) query.set('categoryId', String(categoryId))
     if (search.trim()) query.set('search', search.trim())
     if (tag) query.set('tag', tag.slice(1))
+    if (status !== 'all') query.set('status', status)
 
     const [transactions, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${query}`),
@@ -78,7 +89,7 @@ export function useMoneyData(
       api<Category[]>('/api/categories'),
     ])
     return { transactions, summary, accounts, categories }
-  }, [accountId, categoryId, month, search, tag, type])
+  }, [accountId, categoryId, month, search, status, tag, type])
 
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
@@ -88,7 +99,7 @@ export function useMoneyData(
       if (!navigator.onLine) {
         setOnline(false)
         if (allowDemoFallback) {
-          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag, status))
           setSource('demo')
         }
         return false
@@ -104,7 +115,7 @@ export function useMoneyData(
       } catch {
         if (sequence !== requestSequence.current) return false
         if (allowDemoFallback) {
-          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag, status))
           setSource('demo')
         } else {
           setSource('error')
@@ -112,7 +123,7 @@ export function useMoneyData(
         return false
       }
     },
-    [accountId, categoryId, fetchSnapshot, month, search, tag, type],
+    [accountId, categoryId, fetchSnapshot, month, search, status, tag, type],
   )
 
   useEffect(() => {
@@ -127,7 +138,7 @@ export function useMoneyData(
     }
     const handleOffline = () => {
       setOnline(false)
-      setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag))
+      setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag, status))
       setSource('demo')
     }
     window.addEventListener('online', handleOnline)
@@ -136,7 +147,7 @@ export function useMoneyData(
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [accountId, categoryId, month, refresh, search, tag, type])
+  }, [accountId, categoryId, month, refresh, search, status, tag, type])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {
@@ -155,7 +166,7 @@ export function useMoneyData(
         if (source === 'demo') {
           if (original) updateDemo(input)
           else addDemo(input)
-          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag, status))
           setActionMessage(message(original ? 'demoTransactionChanged' : 'demoTransactionSaved'))
           return true
         }
@@ -185,7 +196,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, month, refresh, search, source, tag, type],
+    [accountId, categoryId, month, refresh, search, source, status, tag, type],
   )
 
   const removeTransaction = useCallback(
@@ -204,7 +215,7 @@ export function useMoneyData(
 
         if (source === 'demo') {
           deleteDemo(transaction.id)
-          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag))
+          setSnapshot(demoSnapshot(month, type, search, accountId, categoryId, tag, status))
           setActionMessage(message('demoTransactionChanged'))
           return true
         }
@@ -221,7 +232,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, month, refresh, search, source, tag, type],
+    [accountId, categoryId, month, refresh, search, source, status, tag, type],
   )
 
   const visibleSnapshot = useMemo(
@@ -229,10 +240,10 @@ export function useMoneyData(
       source === 'demo'
         ? {
             ...snapshot,
-            transactions: getDemoTransactions(month, type, search, t, accountId, categoryId, tag),
+            transactions: getDemoTransactions(month, type, search, t, accountId, categoryId, tag, status),
           }
         : snapshot,
-    [accountId, categoryId, month, search, snapshot, source, t, tag, type],
+    [accountId, categoryId, month, search, snapshot, source, status, t, tag, type],
   )
 
   const clearActionMessage = useCallback(() => setActionMessage(null), [])

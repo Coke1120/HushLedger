@@ -3,7 +3,8 @@ import { isValidCalendarDate } from './date'
 
 export const LEDGER_BACKUP_FORMAT = 'hushledger-ledger-backup' as const
 export const LEDGER_BACKUP_VERSION = 1 as const
-export const LEDGER_SCHEMA_VERSION = 8 as const
+export const PREVIOUS_LEDGER_SCHEMA_VERSION = 8 as const
+export const LEDGER_SCHEMA_VERSION = 9 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -83,7 +84,7 @@ export const ledgerBackupRecurringRuleSchema = z.object({
   updatedAt: timestampSchema,
 }).strict()
 
-export const ledgerBackupTransactionSchema = z.object({
+const ledgerBackupTransactionFields = {
   id: uuidSchema,
   type: z.enum(['expense', 'income']),
   amountMinor: safePositiveIntegerSchema,
@@ -99,7 +100,17 @@ export const ledgerBackupTransactionSchema = z.object({
   recurringOccurrenceKey: z.string().min(1).max(64).nullable(),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-}).strict().superRefine((row, context) => {
+}
+
+function validateRecurringTransactionFields(
+  row: {
+    recurringRuleId: string | null
+    recurringRuleName: string | null
+    recurrenceDueOn: string | null
+    recurringOccurrenceKey: string | null
+  },
+  context: z.RefinementCtx,
+) {
   const recurringFields = [
     row.recurringRuleId,
     row.recurringRuleName,
@@ -125,7 +136,17 @@ export const ledgerBackupTransactionSchema = z.object({
       message: 'Recurring occurrence key does not match its rule and due date',
     })
   }
-})
+}
+
+export const ledgerBackupTransactionSchema = z.object({
+  ...ledgerBackupTransactionFields,
+  cleared: z.boolean(),
+}).strict().superRefine(validateRecurringTransactionFields)
+
+const previousLedgerBackupTransactionSchema = z
+  .object(ledgerBackupTransactionFields)
+  .strict()
+  .superRefine(validateRecurringTransactionFields)
 
 export const ledgerBackupImportKeySchema = z.object({
   importKey: z.string().min(20).max(160),
@@ -139,6 +160,10 @@ export const ledgerBackupDataSchema = z.object({
   recurringRules: z.array(ledgerBackupRecurringRuleSchema),
   transactions: z.array(ledgerBackupTransactionSchema),
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
+}).strict()
+
+const previousLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+  transactions: z.array(previousLedgerBackupTransactionSchema),
 }).strict()
 
 export const ledgerBackupPayloadSchema = z.object({
@@ -161,14 +186,34 @@ export const ledgerBackupSchema = z.object({
   }).strict(),
 }).strict()
 
+const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
+  data: previousLedgerBackupDataSchema,
+}).strict()
+
+export const compatibleLedgerBackupPayloadSchema = z.union([
+  ledgerBackupPayloadSchema,
+  previousLedgerBackupPayloadSchema,
+])
+
+const previousLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
+  data: previousLedgerBackupDataSchema,
+}).strict()
+
+export const compatibleLedgerBackupSchema = z.union([
+  ledgerBackupSchema,
+  previousLedgerBackupSchema,
+])
+
 export const ledgerRestoreRequestSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('preview'),
-    backup: ledgerBackupSchema,
+    backup: compatibleLedgerBackupSchema,
   }).strict(),
   z.object({
     mode: z.literal('commit'),
-    backup: ledgerBackupSchema,
+    backup: compatibleLedgerBackupSchema,
     expectedCurrentDigest: z.string().regex(/^[0-9a-f]{64}$/),
     expectedRevision: safePositiveIntegerSchema,
     confirmation: z.literal(LEDGER_BACKUP_CONFIRMATION),
@@ -183,6 +228,8 @@ export type LedgerBackupImportKey = z.infer<typeof ledgerBackupImportKeySchema>
 export type LedgerBackupData = z.infer<typeof ledgerBackupDataSchema>
 export type LedgerBackupPayload = z.infer<typeof ledgerBackupPayloadSchema>
 export type LedgerBackup = z.infer<typeof ledgerBackupSchema>
+export type PreviousLedgerBackupPayload = z.infer<typeof previousLedgerBackupPayloadSchema>
+export type CompatibleLedgerBackup = z.infer<typeof compatibleLedgerBackupSchema>
 export type LedgerRestoreRequest = z.infer<typeof ledgerRestoreRequestSchema>
 
 export type LedgerTableCounts = {
@@ -231,8 +278,21 @@ export async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function checksumLedgerBackupPayload(payload: LedgerBackupPayload) {
+export async function checksumLedgerBackupPayload(
+  payload: LedgerBackupPayload | PreviousLedgerBackupPayload,
+) {
   return sha256Hex(canonicalJson(payload))
+}
+
+export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
+  if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
+  return ledgerBackupDataSchema.parse({
+    ...backup.data,
+    transactions: backup.data.transactions.map((transaction) => ({
+      ...transaction,
+      cleared: true,
+    })),
+  })
 }
 
 export async function digestLedgerData(data: LedgerBackupData) {

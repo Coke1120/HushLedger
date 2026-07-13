@@ -457,6 +457,7 @@ function issueMessageKey(code: CsvImportIssueCode): MessageKey {
     case 'invalid_type': return 'csvIssueInvalidType'
     case 'invalid_amount': return 'csvIssueInvalidAmount'
     case 'invalid_currency': return 'csvIssueInvalidCurrency'
+    case 'invalid_clearing_status': return 'csvIssueInvalidClearingStatus'
     case 'account_not_found': return 'csvIssueAccountNotFound'
     case 'account_ambiguous': return 'csvIssueAccountAmbiguous'
     case 'category_not_found': return 'csvIssueCategoryNotFound'

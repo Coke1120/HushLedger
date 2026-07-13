@@ -46,6 +46,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
     categoryIcon: 'utensils',
     categoryColor: '#C16B4B',
     occurredOn: '2026-07-13',
+    cleared: false,
     payee: '=FORMULA()',
     note: 'First line\nSecond line',
     createdAt: updatedAt,
@@ -71,6 +72,7 @@ describe('HushLedger CSV import', () => {
       accountId: 1,
       categoryId: 3,
       occurredOn: '2026-07-13',
+      cleared: false,
       payee: '=FORMULA()',
       note: 'First line\nSecond line',
       sourceRow: 2,
@@ -88,6 +90,7 @@ describe('HushLedger CSV import', () => {
 
     assert.deepEqual(first.issues, [])
     assert.equal(first.rows.length, 2)
+    assert(first.rows.every(({ cleared }) => cleared))
     assert.notEqual(first.rows[0].importKey, first.rows[1].importKey)
     assert.deepEqual(
       first.rows.map(({ importKey }) => importKey),
@@ -124,5 +127,15 @@ describe('HushLedger CSV import', () => {
       { accounts, categories },
     )
     assert.equal(malformed.issues[0].code, 'invalid_csv')
+  })
+
+  it('rejects an unknown clearing status without returning a partial preview', async () => {
+    const result = await parseHushLedgerCsv([
+      'Date,Type,Amount,Currency,Account,Category,Payee,Note,Cleared',
+      '2026-07-13,expense,-10.00,HKD,"Daily, account",Food,Cafe,,Pending',
+    ].join('\r\n'), { accounts, categories })
+
+    assert.equal(result.rows.length, 0)
+    assert.deepEqual(result.issues, [{ row: 2, code: 'invalid_clearing_status', value: 'Pending' }])
   })
 })

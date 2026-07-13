@@ -7,14 +7,18 @@ import {
   LEDGER_SCHEMA_VERSION,
   MAX_LEDGER_RESTORE_BATCH_STATEMENTS,
   checksumLedgerBackupPayload,
+  compatibleLedgerBackupPayloadSchema,
   countLedgerData,
   digestLedgerData,
   ledgerBackupDataSchema,
   ledgerBackupPayloadSchema,
+  upgradeLedgerBackupData,
   validateLedgerDataRelations,
+  type CompatibleLedgerBackup,
   type LedgerBackup,
   type LedgerBackupData,
   type LedgerBackupPayload,
+  type PreviousLedgerBackupPayload,
   type LedgerRestoreCommitResult,
   type LedgerRestorePreview,
   type LedgerTableCounts,
@@ -24,6 +28,7 @@ import {
 type RawAccount = Omit<LedgerBackupData['accounts'][number], 'isActive'> & { isActive: number }
 type RawCategory = Omit<LedgerBackupData['categories'][number], 'isActive'> & { isActive: number }
 type RawRecurringRule = Omit<LedgerBackupData['recurringRules'][number], 'isActive'> & { isActive: number }
+type RawTransaction = Omit<LedgerBackupData['transactions'][number], 'cleared'> & { cleared: number }
 type LedgerRevisionRow = { revision: number }
 
 type LedgerSnapshot = {
@@ -32,7 +37,8 @@ type LedgerSnapshot = {
 }
 
 export type VerifiedLedgerBackup = {
-  backup: LedgerBackup
+  exportedAt: string
+  checksum: string
   backupDigest: string
   backupCounts: LedgerTableCounts
   chunks: LedgerRestoreChunks
@@ -126,6 +132,7 @@ const transactionQuery = `
     account_id AS accountId,
     category_id AS categoryId,
     occurred_on AS occurredOn,
+    cleared,
     payee,
     note,
     recurring_rule_id AS recurringRuleId,
@@ -220,7 +227,7 @@ const recurringRuleInsert = `
 
 const transactionInsert = `
   INSERT INTO transactions(
-    id, type, amount_minor, currency, account_id, category_id, occurred_on, payee, note,
+    id, type, amount_minor, currency, account_id, category_id, occurred_on, cleared, payee, note,
     recurring_rule_id, recurring_rule_name, recurrence_due_on, recurring_occurrence_key,
     created_at, updated_at
   )
@@ -232,6 +239,7 @@ const transactionInsert = `
     json_extract(value, '$.accountId'),
     json_extract(value, '$.categoryId'),
     json_extract(value, '$.occurredOn'),
+    json_extract(value, '$.cleared'),
     json_extract(value, '$.payee'),
     json_extract(value, '$.note'),
     json_extract(value, '$.recurringRuleId'),
@@ -303,7 +311,9 @@ export async function exportLedgerBackup(
   }
 }
 
-export async function verifyLedgerBackup(backup: LedgerBackup): Promise<LedgerBackupVerification> {
+export async function verifyLedgerBackup(
+  backup: CompatibleLedgerBackup,
+): Promise<LedgerBackupVerification> {
   const payload = backupPayload(backup)
   const digest = await checksumLedgerBackupPayload(payload)
   if (digest !== backup.checksum.digest) {
@@ -314,10 +324,11 @@ export async function verifyLedgerBackup(backup: LedgerBackup): Promise<LedgerBa
     }
   }
 
-  const issues = validateLedgerDataRelations(backup.data)
+  const data = upgradeLedgerBackupData(backup)
+  const issues = validateLedgerDataRelations(data)
   if (issues.length > 0) return { ok: false, code: 'BACKUP_DATA_INVALID', issues }
 
-  const chunks = createRestoreChunks(backup.data)
+  const chunks = createRestoreChunks(data)
   const restoreStatements = countRestoreStatements(chunks)
   if (restoreStatements > MAX_LEDGER_RESTORE_BATCH_STATEMENTS) {
     return {
@@ -333,9 +344,10 @@ export async function verifyLedgerBackup(backup: LedgerBackup): Promise<LedgerBa
   return {
     ok: true,
     value: {
-      backup,
-      backupDigest: await digestLedgerData(backup.data),
-      backupCounts: countLedgerData(backup.data),
+      exportedAt: backup.exportedAt,
+      checksum: backup.checksum.digest,
+      backupDigest: await digestLedgerData(data),
+      backupCounts: countLedgerData(data),
       chunks,
       restoreStatements,
     },
@@ -348,8 +360,8 @@ export async function previewLedgerRestore(
 ): Promise<LedgerRestorePreview> {
   const current = await loadLedgerSnapshot(database)
   return {
-    exportedAt: verified.backup.exportedAt,
-    checksum: verified.backup.checksum.digest,
+    exportedAt: verified.exportedAt,
+    checksum: verified.checksum,
     backupDigest: verified.backupDigest,
     currentDigest: await digestLedgerData(current.data),
     currentRevision: current.revision,
@@ -440,15 +452,20 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       ...row,
       isActive: row.isActive === 1,
     })),
-    transactions: transactions.results,
+    transactions: (transactions.results as RawTransaction[]).map((row) => ({
+      ...row,
+      cleared: row.cleared === 1,
+    })),
     transactionImportKeys: importKeys.results,
   })
 
   return { data, revision: revisionRow.revision }
 }
 
-function backupPayload(backup: LedgerBackup): LedgerBackupPayload {
-  return ledgerBackupPayloadSchema.parse({
+function backupPayload(
+  backup: CompatibleLedgerBackup,
+): LedgerBackupPayload | PreviousLedgerBackupPayload {
+  return compatibleLedgerBackupPayloadSchema.parse({
     format: backup.format,
     version: backup.version,
     exportedAt: backup.exportedAt,

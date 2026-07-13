@@ -16,6 +16,7 @@ import type {
   PayeeSuggestion,
   Summary,
   Transaction,
+  TransactionClearingStatus,
   TransactionInput,
   TransactionUpdateInput,
   TransactionType,
@@ -33,6 +34,7 @@ type TransactionRow = {
   accountId: number
   categoryId: number
   occurredOn: string
+  cleared: number
   payee: string
   note: string
   accountName: string
@@ -73,6 +75,7 @@ export type TransactionQuery = {
   categoryId?: number
   search?: string
   tag?: string
+  status?: TransactionClearingStatus
 }
 
 export type CreateTransactionResult =
@@ -100,6 +103,7 @@ const transactionSelect = `
     t.account_id AS accountId,
     t.category_id AS categoryId,
     t.occurred_on AS occurredOn,
+    t.cleared,
     t.payee,
     t.note,
     a.name AS accountName,
@@ -226,6 +230,11 @@ async function selectTransactions(
     values.push(query.categoryId)
   }
 
+  if (query.status) {
+    filters.push('t.cleared = ?')
+    values.push(query.status === 'cleared' ? 1 : 0)
+  }
+
   if (query.search) {
     const search = `%${escapeLike(query.search)}%`
     filters.push(`(
@@ -254,7 +263,7 @@ async function selectTransactions(
     .bind(...values)
     .all<TransactionRow>()
 
-  return result.results
+  return result.results.map(transactionView)
 }
 
 export async function createTransaction(
@@ -280,10 +289,11 @@ export async function createTransaction(
       account_id,
       category_id,
       occurred_on,
+      cleared,
       payee,
       note
     )
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE EXISTS (
       SELECT 1
       FROM accounts
@@ -304,6 +314,7 @@ export async function createTransaction(
       input.accountId,
       input.categoryId,
       input.occurredOn,
+      input.cleared ? 1 : 0,
       input.payee,
       input.note,
       input.accountId,
@@ -353,6 +364,7 @@ export async function updateTransaction(
       account_id = ?,
       category_id = ?,
       occurred_on = ?,
+      cleared = ?,
       payee = ?,
       note = ?,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -379,6 +391,7 @@ export async function updateTransaction(
       input.accountId,
       input.categoryId,
       input.occurredOn,
+      input.cleared ? 1 : 0,
       input.payee,
       input.note,
       id,
@@ -503,10 +516,15 @@ function escapeLike(value: string) {
 }
 
 export async function getTransaction(database: D1Database, id: string) {
-  return database
+  const row = await database
     .prepare(`${transactionSelect} WHERE t.id = ? LIMIT 1`)
     .bind(id)
-    .first<TransactionRow>() as Promise<TransactionView | null>
+    .first<TransactionRow>()
+  return row ? transactionView(row) : null
+}
+
+function transactionView(row: TransactionRow): TransactionView {
+  return { ...row, cleared: row.cleared === 1 }
 }
 
 function matchesInput(transaction: TransactionView, input: TransactionInput) {
@@ -518,6 +536,7 @@ function matchesInput(transaction: TransactionView, input: TransactionInput) {
     transaction.accountId === input.accountId &&
     transaction.categoryId === input.categoryId &&
     transaction.occurredOn === input.occurredOn &&
+    transaction.cleared === input.cleared &&
     transaction.payee === input.payee &&
     transaction.note === input.note
   )

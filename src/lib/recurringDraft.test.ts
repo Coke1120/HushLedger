@@ -11,6 +11,7 @@ const transaction: Transaction = {
   accountId: 1,
   categoryId: 3,
   occurredOn: '2026-01-31',
+  cleared: true,
   payee: 'Corner Cafe',
   note: 'Lunch',
   accountName: 'Bank',

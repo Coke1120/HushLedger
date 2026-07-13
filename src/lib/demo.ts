@@ -9,6 +9,7 @@ import type {
   MonthlySpendingSummary,
   Summary,
   Transaction,
+  TransactionClearingStatus,
   TransactionInput,
   TransactionType,
 } from './schema'
@@ -44,6 +45,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 3,
     categoryId: 3,
     occurredOn: '2026-07-11',
+    cleared: false,
     payee: '百佳超級市場',
     note: '日常雜貨',
     accountName: '信用卡',
@@ -63,6 +65,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 4,
     categoryId: 4,
     occurredOn: '2026-07-10',
+    cleared: true,
     payee: '港鐵',
     note: '',
     accountName: '八達通',
@@ -82,6 +85,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 1,
     categoryId: 3,
     occurredOn: '2026-07-09',
+    cleared: true,
     payee: '午餐',
     note: '',
     accountName: '現金',
@@ -101,6 +105,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 2,
     categoryId: 7,
     occurredOn: '2026-07-08',
+    cleared: true,
     payee: '電訊月費',
     note: '',
     accountName: '銀行戶口',
@@ -120,6 +125,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 2,
     categoryId: 7,
     occurredOn: '2026-07-05',
+    cleared: true,
     payee: '水電煤',
     note: '',
     accountName: '銀行戶口',
@@ -139,6 +145,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 2,
     categoryId: 6,
     occurredOn: '2026-07-03',
+    cleared: true,
     payee: '每月租金',
     note: '',
     accountName: '銀行戶口',
@@ -158,6 +165,7 @@ export let demoTransactions: Transaction[] = [
     accountId: 2,
     categoryId: 1,
     occurredOn: '2026-07-01',
+    cleared: true,
     payee: '本月薪金',
     note: '',
     accountName: '銀行戶口',
@@ -205,6 +213,7 @@ function matchesQuery(
   accountId: number | null,
   categoryId: number | null,
   tag: string | null,
+  status: TransactionClearingStatus | 'all',
 ) {
   const { start, end } = monthRangeDates(month)
   const needle = search.trim().toLowerCase()
@@ -214,6 +223,7 @@ function matchesQuery(
     (type === 'all' || transaction.type === type) &&
     (accountId === null || transaction.accountId === accountId) &&
     (categoryId === null || transaction.categoryId === categoryId) &&
+    (status === 'all' || transaction.cleared === (status === 'cleared')) &&
     (tag === null || noteHasTransactionTag(transaction.note, tag)) &&
     (!needle || `${transaction.payee} ${transaction.note}`.toLowerCase().includes(needle))
   )
@@ -227,10 +237,11 @@ export function getDemoTransactions(
   accountId: number | null = null,
   categoryId: number | null = null,
   tag: string | null = null,
+  status: TransactionClearingStatus | 'all' = 'all',
 ) {
   return demoTransactions
     .map((transaction) => localizeDemoTransaction(transaction, t))
-    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag))
+    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag, status))
 }
 
 export function addDemo(input: TransactionInput) {
