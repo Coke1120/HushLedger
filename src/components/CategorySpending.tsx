@@ -1,6 +1,7 @@
 import { ChartNoAxesColumnIncreasing } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
+import { shiftMonth } from '../lib/date'
 import type { Summary } from '../lib/schema'
 
 type CategorySpendingProps = {
@@ -20,7 +21,7 @@ export function CategorySpending({
   onSelectCategory,
   onSelectPayee,
 }: CategorySpendingProps) {
-  const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [breakdown, setBreakdown] = useState<SpendingBreakdown>('category')
   const [expandedBreakdown, setExpandedBreakdown] = useState<string | null>(null)
   const percentFormatter = useMemo(
@@ -33,6 +34,7 @@ export function CategorySpending({
         name: localizeEntityName(category.categoryName, category.categoryLocalizationKey),
         amountMinor: category.amountMinor,
         transactionCount: category.transactionCount,
+        previousMonthAmountMinor: category.previousMonthAmountMinor,
         color: category.categoryColor,
         onSelect: () => onSelectCategory(category.categoryId),
       }))
@@ -41,6 +43,7 @@ export function CategorySpending({
         name: payee.payee,
         amountMinor: payee.amountMinor,
         transactionCount: payee.transactionCount,
+        previousMonthAmountMinor: undefined,
         color: 'var(--accent)',
         onSelect: () => onSelectPayee(payee.payee),
       }))
@@ -50,6 +53,10 @@ export function CategorySpending({
   const visibleItems = showAll ? items : items.slice(0, visibleItemLimit)
   const hiddenItemCount = Math.max(0, items.length - visibleItemLimit)
   const listId = `category-spending-${breakdown}-list`
+  const previousMonth = formatMonth(shiftMonth(summary.month, -1))
+  const categoryComparisonAvailable = summary.expenseByCategory.some(
+    ({ previousMonthAmountMinor }) => previousMonthAmountMinor !== undefined,
+  )
 
   return (
     <section
@@ -84,6 +91,12 @@ export function CategorySpending({
         </button>
       </div>
 
+      {!loading && !payeeBreakdown && categoryComparisonAvailable ? (
+        <p className="category-spending-comparison-help">
+          {t('categorySpendingComparisonHelp', { month: previousMonth })}
+        </p>
+      ) : null}
+
       {loading ? (
         <p className="category-spending-empty" role="status">{t('categorySpendingLoading')}</p>
       ) : visibleItems.length === 0 ? (
@@ -101,6 +114,40 @@ export function CategorySpending({
               const accessibleShare = privacyMode ? t('sensitiveTextHidden') : percent
               const amount = formatMoney(item.amountMinor)
               const transactions = t('transactionCount', { count: item.transactionCount })
+              const previousAmount = item.previousMonthAmountMinor
+              let rawComparison: string | null = null
+              if (previousAmount !== undefined) {
+                const delta = previousAmount === null ? null : item.amountMinor - previousAmount
+                if (delta === null || !Number.isSafeInteger(delta)) {
+                  rawComparison = t('categorySpendingComparisonUnavailable')
+                } else if (previousAmount === 0) {
+                  rawComparison = t('categorySpendingNoPrevious', { month: previousMonth })
+                } else if (delta > 0) {
+                  rawComparison = t('categorySpendingMoreThanPrevious', {
+                    amount: formatMoney(delta),
+                    month: previousMonth,
+                  })
+                } else if (delta < 0) {
+                  rawComparison = t('categorySpendingLessThanPrevious', {
+                    amount: formatMoney(Math.abs(delta)),
+                    month: previousMonth,
+                  })
+                } else {
+                  rawComparison = t('categorySpendingSameAsPrevious', { month: previousMonth })
+                }
+              }
+              const comparison = rawComparison && privacyMode
+                ? t('sensitiveTextHidden')
+                : rawComparison
+              const reviewLabel = t(
+                payeeBreakdown ? 'reviewPayeeSpending' : 'reviewCategorySpending',
+                {
+                  name: item.name,
+                  amount,
+                  share: accessibleShare,
+                  transactions,
+                },
+              )
 
               return (
                 <li key={item.key}>
@@ -108,15 +155,7 @@ export function CategorySpending({
                     className="category-spending-row"
                     type="button"
                     onClick={item.onSelect}
-                    aria-label={t(
-                      payeeBreakdown ? 'reviewPayeeSpending' : 'reviewCategorySpending',
-                      {
-                        name: item.name,
-                        amount,
-                        share: accessibleShare,
-                        transactions,
-                      },
-                    )}
+                    aria-label={comparison ? `${reviewLabel} ${comparison}` : reviewLabel}
                   >
                     <span className="category-spending-name">
                       <span
@@ -127,6 +166,7 @@ export function CategorySpending({
                       <span>
                         <strong>{item.name}</strong>
                         <small>{transactions}</small>
+                        {comparison ? <small>{comparison}</small> : null}
                       </span>
                     </span>
                     <span className="category-spending-amount">

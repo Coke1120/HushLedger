@@ -496,6 +496,8 @@ export type ExpenseCategorySummary = {
   categoryColor: string
   amountMinor: number
   transactionCount: number
+  /** Zero means no prior spending; null means unsafe to compare; missing means an older API. */
+  previousMonthAmountMinor?: number | null
 }
 
 export type ExpensePayeeSummary = {

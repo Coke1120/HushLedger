@@ -78,6 +78,10 @@ type SummaryRow = {
   expense: number
 }
 
+type ExpenseCategoryQueryRow = ExpenseCategorySummary & {
+  previousMonthAmountMinor: number
+}
+
 type TransactionFilterSummaryRow = Omit<TransactionFilterSummary, 'net'>
 
 export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRuleName'> & {
@@ -808,6 +812,7 @@ export async function deleteTransaction(
 
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
+  const previousStart = `${shiftMonth(month, -1)}-01`
   const trendStart = `${shiftMonth(month, -5)}-01`
   const [
     row,
@@ -847,8 +852,9 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category.localization_key AS categoryLocalizationKey,
         category.icon AS categoryIcon,
         category.color AS categoryColor,
-        TOTAL(t.amount_minor) AS amountMinor,
-        COUNT(*) AS transactionCount
+        TOTAL(CASE WHEN t.occurred_on >= ? THEN t.amount_minor ELSE 0 END) AS amountMinor,
+        SUM(CASE WHEN t.occurred_on >= ? THEN 1 ELSE 0 END) AS transactionCount,
+        TOTAL(CASE WHEN t.occurred_on < ? THEN t.amount_minor ELSE 0 END) AS previousMonthAmountMinor
       FROM transactions t
       INNER JOIN categories category ON category.id = t.category_id
       WHERE t.type = 'expense' AND t.occurred_on >= ? AND t.occurred_on < ?
@@ -859,10 +865,11 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category.icon,
         category.color,
         category.sort_order
+      HAVING SUM(CASE WHEN t.occurred_on >= ? THEN 1 ELSE 0 END) > 0
       ORDER BY amountMinor DESC, category.sort_order ASC, category.id ASC
     `)
-      .bind(start, end)
-      .all<ExpenseCategorySummary>(),
+      .bind(start, start, start, previousStart, end, start)
+      .all<ExpenseCategoryQueryRow>(),
     database.prepare(`
       SELECT
         MIN(trim(payee)) AS payee,
@@ -945,11 +952,39 @@ export async function getSummary(database: D1Database, month: string): Promise<S
       month,
       buildLegacySpendingTrendRows(cashFlowTrendResult.results),
     ),
-    expenseByCategory: expenseByCategoryResult.results,
+    expenseByCategory: normalizeExpenseCategoryRows(expenseByCategoryResult.results),
     expenseByPayee: mergePayeeSummaries(expenseByPayeeResult.results),
     monthlySpendingPlans: monthlySpendingPlansResult.results,
     recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
   }
+}
+
+function normalizeExpenseCategoryRows(rows: ExpenseCategoryQueryRow[]): ExpenseCategorySummary[] {
+  let transactionCount = 0n
+  for (const row of rows) {
+    if (!Number.isSafeInteger(row.categoryId) || row.categoryId <= 0) {
+      throw new Error('Category spending category ID must be a positive safe integer')
+    }
+    if (!Number.isSafeInteger(row.transactionCount) || row.transactionCount < 0) {
+      throw new Error('Category spending transaction count exceeds the safe integer range')
+    }
+    transactionCount += BigInt(row.transactionCount)
+  }
+  if (transactionCount > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error('Category spending transaction count exceeds the safe integer range')
+  }
+  exactTransactionTotals(rows.map(({ amountMinor }) => ({
+    type: 'expense' as const,
+    amountMinor,
+  })))
+
+  return rows.map((row) => ({
+    ...row,
+    previousMonthAmountMinor:
+      Number.isSafeInteger(row.previousMonthAmountMinor) && row.previousMonthAmountMinor >= 0
+        ? row.previousMonthAmountMinor
+        : null,
+  }))
 }
 
 function escapeLike(value: string) {

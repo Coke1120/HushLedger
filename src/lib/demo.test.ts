@@ -346,6 +346,53 @@ describe('localized demo data', () => {
     )
   })
 
+  it('attaches exact previous-calendar-month totals to current demo categories', () => {
+    const food = getDemoTransactions('2026-07', 'expense', '').find(({ categoryId }) => categoryId === 3)
+    const bills = getDemoTransactions('2026-07', 'expense', '').find(({ categoryId }) => categoryId === 7)
+    assert(food)
+    assert(bills)
+    const ids = [
+      '51000000-0000-4000-8000-000000000001',
+      '51000000-0000-4000-8000-000000000002',
+    ]
+
+    try {
+      addDemo({
+        id: ids[0],
+        type: 'expense',
+        amountMinor: 1_234,
+        currency: 'HKD',
+        accountId: food.accountId,
+        categoryId: food.categoryId,
+        occurredOn: '2026-06-15',
+        cleared: false,
+        payee: 'Prior food',
+        note: '',
+      })
+      addDemo({
+        id: ids[1],
+        type: 'expense',
+        amountMinor: 2_500,
+        currency: 'HKD',
+        accountId: bills.accountId,
+        categoryId: bills.categoryId,
+        occurredOn: '2026-06-20',
+        cleared: true,
+        payee: 'Prior bill',
+        note: '',
+      })
+
+      const byCategory = new Map(demoSummary('2026-07').expenseByCategory.map((category) => (
+        [category.categoryId, category.previousMonthAmountMinor]
+      )))
+      assert.equal(byCategory.get(3), 1_234)
+      assert.equal(byCategory.get(7), 2_500)
+      assert.equal(byCategory.get(6), 0)
+    } finally {
+      ids.forEach((id) => deleteDemo(id))
+    }
+  })
+
   it('groups monthly expense payees consistently and supports an exact payee drill-down', () => {
     const source = getDemoTransactions('2026-07', 'expense', '')[0]
     assert(source)

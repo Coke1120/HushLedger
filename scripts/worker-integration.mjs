@@ -897,6 +897,7 @@ async function verifyWorkerApi() {
     categoryColor: '#C16B4B',
     amountMinor: 41_615,
     transactionCount: 205,
+    previousMonthAmountMinor: 12_345,
   }])
   assert.deepEqual(categorySummary.payload.data.expenseByPayee, [{
     payee: 'export bulk',

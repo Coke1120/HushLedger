@@ -3,7 +3,7 @@ import {
   buildMonthlyCashFlowTrend,
   type MonthlyCashFlowQueryRow,
 } from './cashFlowTrend'
-import { monthRangeDates } from './date'
+import { monthRangeDates, shiftMonth } from './date'
 import { buildNetWorthTrend, netWorthTrendMonths } from './netWorthTrend'
 import { exactTransactionTotals } from './money'
 import { mergePayeeSummaries, normalizePayee } from './payeeMemory'
@@ -503,10 +503,8 @@ export function deleteDemo(id: string) {
   demoTransactions = demoTransactions.filter((transaction) => transaction.id !== id)
 }
 
-export function demoSummary(month: string, t?: Translator): Summary {
-  const rows = getDemoTransactions(month, 'all', '', t)
-  const totals = exactTransactionTotals(rows)
-  const expenseByCategory = [...rows.reduce((categories, transaction) => {
+function demoExpenseByCategory(rows: Transaction[]) {
+  return [...rows.reduce((categories, transaction) => {
     if (transaction.type !== 'expense') return categories
     const existing = categories.get(transaction.categoryId)
     if (existing) {
@@ -527,6 +525,19 @@ export function demoSummary(month: string, t?: Translator): Summary {
     return categories
   }, new Map<number, ExpenseCategorySummary>()).values()]
     .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
+}
+
+export function demoSummary(month: string, t?: Translator): Summary {
+  const rows = getDemoTransactions(month, 'all', '', t)
+  const totals = exactTransactionTotals(rows)
+  const previousByCategory = new Map(
+    demoExpenseByCategory(getDemoTransactions(shiftMonth(month, -1), 'all', '', t))
+      .map(({ categoryId, amountMinor }) => [categoryId, amountMinor]),
+  )
+  const expenseByCategory = demoExpenseByCategory(rows).map((category) => ({
+    ...category,
+    previousMonthAmountMinor: previousByCategory.get(category.categoryId) ?? 0,
+  }))
   const expenseByPayee = mergePayeeSummaries(rows
     .filter((transaction) => transaction.type === 'expense')
     .map((transaction) => ({

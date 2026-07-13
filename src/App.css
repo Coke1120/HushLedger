@@ -479,6 +479,13 @@ textarea:focus-visible {
   box-shadow: 0 1px 4px rgb(23 72 60 / 10%);
 }
 
+.category-spending-comparison-help {
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .recurring-forecast-heading-icon {
   color: var(--warning);
   background: var(--warning-bg);

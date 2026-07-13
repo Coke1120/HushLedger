@@ -55,10 +55,20 @@ const context: I18nContextValue = {
   localizeEntityName: (name) => name,
 }
 
-function renderCategorySpending(source: Summary) {
+function renderCategorySpending(source: Summary, privateMode = false) {
+  const value: I18nContextValue = {
+    ...context,
+    privacyMode: privateMode,
+    formatMoney: (minor, currency = 'HKD') => formatMoneyForDisplay(
+      minor,
+      currency,
+      'en',
+      privateMode,
+    ),
+  }
   return renderToStaticMarkup(createElement(
     I18nContext.Provider,
-    { value: context },
+    { value },
     createElement(CategorySpending, {
       summary: source,
       loading: false,
@@ -90,5 +100,48 @@ describe('complete spending breakdown review', () => {
     assert.equal(markup.match(/class="category-spending-row"/g)?.length, 5)
     assert.doesNotMatch(markup, /category-spending-actions/)
     assert.doesNotMatch(markup, /aria-expanded=/)
+  })
+
+  it('omits comparisons when an older API response has no prior-month aggregate', () => {
+    const markup = renderCategorySpending(summary)
+
+    assert.doesNotMatch(markup, /category-spending-comparison-help/)
+    assert.doesNotMatch(markup, /Recorded .* more than/)
+    assert.doesNotMatch(markup, /Recorded .* less than/)
+  })
+
+  it('describes exact recorded changes without treating higher spending as good or bad', () => {
+    const comparisonSummary: Summary = {
+      ...summary,
+      expenseByCategory: summary.expenseByCategory.map((category, index) => ({
+        ...category,
+        previousMonthAmountMinor: [5_000, 8_000, 5_000, 0, null, 2_000, 1_000][index],
+      })),
+    }
+    const markup = renderCategorySpending(comparisonSummary)
+
+    assert.match(markup, /Category differences compare recorded spending with 2026-06/)
+    assert.match(markup, /Recorded HK\$20\.00 more than 2026-06/)
+    assert.match(markup, /aria-label="Review Category 1:[^"]*Recorded HK\$20\.00 more than 2026-06"/)
+    assert.match(markup, /Recorded HK\$20\.00 less than 2026-06/)
+    assert.match(markup, /Same recorded amount as 2026-06/)
+    assert.match(markup, /No recorded spending in 2026-06/)
+    assert.match(markup, /Previous-month comparison unavailable/)
+    assert.doesNotMatch(markup, /good|bad|over budget/i)
+  })
+
+  it('masks the comparison amount and direction in privacy mode', () => {
+    const markup = renderCategorySpending({
+      ...summary,
+      expenseByCategory: summary.expenseByCategory.map((category) => ({
+        ...category,
+        previousMonthAmountMinor: category.amountMinor - 2_000,
+      })),
+    }, true)
+
+    assert.match(markup, /Sensitive text hidden/)
+    assert.match(markup, /aria-label="[^"]*Sensitive text hidden[^"]*"/)
+    assert.doesNotMatch(markup, /HK\$20\.00/)
+    assert.doesNotMatch(markup, /more than|less than|Same recorded|No recorded spending/)
   })
 })

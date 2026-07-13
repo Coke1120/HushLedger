@@ -36,8 +36,10 @@ knowledge and explains every command and dashboard click.
   with private-screen masking and one-tap navigation to any month in the chart.
 - A ranked monthly expense breakdown switchable between categories and named
   payees, with exact totals, transaction counts, and one-tap drilldown into
-  matching ledger records. Five rows stay visible by default, while an explicit
-  action reveals the complete private aggregate already returned for that month.
+  matching ledger records. Category rows compare each recorded total with the
+  same category in the previous calendar month using neutral absolute differences;
+  an in-progress selected month may be incomplete. Five rows stay visible by
+  default, while an explicit action reveals the complete private aggregate.
   Payee drilldown uses a trimmed, case-insensitive exact match rather than broad
   text search.
 - Optional monthly plans on expense categories, with planned, recorded, and
