@@ -5467,6 +5467,21 @@ button.account-register-row:focus-visible {
   white-space: nowrap;
 }
 
+.csv-import-row dd.csv-import-category {
+  overflow: visible;
+}
+
+.csv-import-category select {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 30px 7px 9px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  font: inherit;
+}
+
 .csv-import-row dd.expense {
   color: var(--expense);
 }

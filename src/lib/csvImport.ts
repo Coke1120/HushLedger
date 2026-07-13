@@ -75,6 +75,29 @@ export type CsvImportPreviewRow = TransactionImportPreviewRow
 export type CsvImportPreviewResult = TransactionImportPreviewResult
 export type CsvImportCommitResult = TransactionImportCommitResult
 
+export type CsvImportReviewState = {
+  rows: readonly CsvImportRow[]
+  preview: CsvImportPreviewResult | null
+  selected: ReadonlySet<string>
+}
+
+export function recategorizeCsvImportReview(
+  current: CsvImportReviewState,
+  importKey: string,
+  categoryId: number,
+) {
+  const target = current.rows.find((row) => row.importKey === importKey)
+  if (!target || target.categoryId === categoryId) return null
+
+  return {
+    rows: current.rows.map((row) =>
+      row.importKey === importKey ? { ...row, categoryId } : row,
+    ),
+    preview: null,
+    selected: new Set<string>(),
+  }
+}
+
 export type CsvImportIssueCode =
   | 'empty_file'
   | 'file_too_large'

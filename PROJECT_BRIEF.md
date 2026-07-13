@@ -81,8 +81,8 @@ not operate an independent database server or a multi-user identity system.
   without the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
   date/description/amount fields, target account, and fallback categories before
-  duplicate preview, explicit row selection, and a transactional commit of at
-  most 200 normalized rows.
+  correcting individual row categories, rerunning duplicate preview, explicitly
+  selecting rows, and transactionally committing at most 200 normalized rows.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
   replacement. Keep the latest backup-preparation and integrity-check dates in
@@ -400,8 +400,9 @@ reminder does not prove that a backup file was retained off-platform.
 - Optional positive monthly plans on expense categories, editable with the
   category and visible beside current-month actual spending without suggesting
   that funds were reserved.
-- Preview-first HushLedger and mapped-bank CSV import that defaults possible
-  duplicates to unselected and never sends the source file to an AI provider.
+- Preview-first HushLedger and mapped-bank CSV import that permits per-row category
+  correction only for mapped bank rows, invalidates stale selections, defaults
+  possible duplicates to unselected, and never sends the source file to an AI provider.
 - Preview-first full-ledger restore with visible replacement counts, typed
   destructive confirmation, no partial-write path, and removal of saved transaction
   views that belonged to the replaced ledger.

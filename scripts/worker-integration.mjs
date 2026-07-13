@@ -1621,6 +1621,10 @@ async function verifyWorkerApi() {
   assert(incomeCategory)
   assert(transferDestination)
   assert(unrelatedTransferAccount)
+  const csvCorrectionCategory = categoriesAfterOrder.payload.data.find(({ id, isActive, type }) => (
+    id !== expenseCategory.id && isActive && type === 'expense'
+  ))
+  assert(csvCorrectionCategory)
 
   const oversizedPayee = 'Oversized aggregate QA'
   const oversizedTransactionBodies = [
@@ -2823,6 +2827,7 @@ async function verifyWorkerApi() {
     invalidAccount: '41000000-0000-4000-8000-000000000003',
     exactMatch: '41000000-0000-4000-8000-000000000006',
     ambiguousMatch: '41000000-0000-4000-8000-000000000007',
+    categoryCorrection: '41000000-0000-4000-8000-000000000008',
   }
   const csvImportRows = [
     {
@@ -2897,6 +2902,71 @@ async function verifyWorkerApi() {
     { ready: 1, matchable: 1, possibleDuplicates: 1, skipped: 0, blocked: 2 },
   )
 
+  const bankCategoryCandidate = {
+    ...transactionBody,
+    id: csvImportIds.categoryCorrection,
+    sourceRow: 10,
+    importKey: `csv:bank:id:${'e'.repeat(64)}`,
+    include: true,
+  }
+  const bankCategoryCandidatePreview = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: [bankCategoryCandidate] },
+  })
+  assert.equal(
+    bankCategoryCandidatePreview.response.status,
+    200,
+    JSON.stringify(bankCategoryCandidatePreview.payload),
+  )
+  assert.equal(bankCategoryCandidatePreview.payload.data.rows[0].status, 'possible_duplicate')
+
+  const correctedBankCategoryRow = {
+    ...bankCategoryCandidate,
+    categoryId: csvCorrectionCategory.id,
+  }
+  const correctedBankCategoryPreview = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: [correctedBankCategoryRow] },
+  })
+  assert.equal(
+    correctedBankCategoryPreview.response.status,
+    200,
+    JSON.stringify(correctedBankCategoryPreview.payload),
+  )
+  assert.equal(correctedBankCategoryPreview.payload.data.rows[0].status, 'new')
+  assert.equal(correctedBankCategoryRow.importKey, bankCategoryCandidate.importKey)
+
+  const correctedBankCategoryCommit = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'commit', rows: [correctedBankCategoryRow] },
+  })
+  assert.equal(
+    correctedBankCategoryCommit.response.status,
+    201,
+    JSON.stringify(correctedBankCategoryCommit.payload),
+  )
+  assert.equal(correctedBankCategoryCommit.payload.data.imported, 1)
+  const importedBankCategoryTransaction = await api(
+    baseUrl,
+    `/api/transactions/${csvImportIds.categoryCorrection}`,
+  )
+  assert.equal(importedBankCategoryTransaction.response.status, 200)
+  assert.equal(importedBankCategoryTransaction.payload.data.categoryId, csvCorrectionCategory.id)
+  const deletedBankCategoryTransaction = await api(
+    baseUrl,
+    `/api/transactions/${csvImportIds.categoryCorrection}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: importedBankCategoryTransaction.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedBankCategoryTransaction.response.status, 200)
+  const bankCategoryAfterDelete = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: { mode: 'preview', rows: [correctedBankCategoryRow] },
+  })
+  assert.equal(bankCategoryAfterDelete.payload.data.rows[0].status, 'already_imported')
+
   const csvCommit = await api(baseUrl, '/api/imports/csv', {
     method: 'POST',
     body: { mode: 'commit', rows: csvImportRows },
@@ -2924,6 +2994,7 @@ async function verifyWorkerApi() {
 
   const importedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`)
   assert.equal(importedCsvTransaction.response.status, 200)
+  assert.equal(importedCsvTransaction.payload.data.categoryId, transactionBody.categoryId)
   const deletedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`, {
     method: 'DELETE',
     body: { updatedAt: importedCsvTransaction.payload.data.updatedAt },
@@ -3877,6 +3948,7 @@ async function verifyWorkerApi() {
     emergencyFundGoalAccountReleases: 1,
     emergencyFundGoalBackupRestores: 1,
     csvImportPreviewStatuses: 5,
+    csvImportCategoryCorrections: 1,
     csvImportWrites: 2,
     csvImportMatches: 1,
     csvImportAmbiguityGuards: 1,

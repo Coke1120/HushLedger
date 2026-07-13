@@ -137,8 +137,9 @@ knowledge and explains every command and dashboard click.
 - Re-import HushLedger CSV files directly, or map a bank CSV's delimiter, date,
   description, signed amount or debit/credit columns, destination account, and
   fallback categories in the browser. Bank imports can reuse the latest active
-  category for an exact payee and income/expense match. New rows are selected
-  automatically. A cleared row that uniquely matches one otherwise identical
+  category for an exact payee and income/expense match, then correct any row's
+  category before a fresh duplicate check. New rows are selected automatically.
+  A cleared row that uniquely matches one otherwise identical
   uncleared ledger entry links its source and clears that entry instead of adding
   a duplicate; ambiguous matches stay unselected. Import tombstones stop the same
   source row from returning after deletion. Repeated imports can explicitly
@@ -740,8 +741,10 @@ parses the file in the browser. HushLedger exports open
 directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,
 five numeric date formats, one signed amount or separate debit/credit columns,
 optional sign reversal, an optional source ID, explicit account/category defaults,
-and optional exact payee-category reuse. The server receives normalized rows only,
-previews duplicate/reference checks, and writes only explicitly selected rows. It
+and optional exact payee-category reuse. Each mapped row's category remains
+editable until a fresh duplicate/reference preview; changing it clears the old
+selection while preserving the bank source identity. The server receives normalized
+rows only and writes only explicitly selected rows. It
 matches only a cleared import with one unique, field-identical uncleared entry;
 the imported source key is attached to that existing transaction before it is
 cleared, while zero or multiple candidates remain possible duplicates.

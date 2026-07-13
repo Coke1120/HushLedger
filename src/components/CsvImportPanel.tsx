@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from 'react'
 import { messageForError, renderMessage, useI18n, type MessageKey } from '../i18n'
-import { api } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import {
   detectBankCsvDelimiter,
   parseBankCsvDocument,
@@ -21,6 +21,7 @@ import {
   csvImportCommitResultSchema,
   csvImportPreviewResultSchema,
   parseHushLedgerCsv,
+  recategorizeCsvImportReview,
   type CsvImportIssue,
   type CsvImportIssueCode,
   type CsvImportPreviewResult,
@@ -175,7 +176,7 @@ export function CsvImportPanel({
     setError('')
     setStatus('')
     setPreview(null)
-    setRows([])
+    setRows(parsed.issues.length > 0 ? [] : parsed.rows)
     setSelected(new Set())
     if (parsed.issues.length > 0) return
 
@@ -216,6 +217,22 @@ export function CsvImportPanel({
     })
   }
 
+  const updateBankRowCategory = (importKey: string, categoryId: number) => {
+    if (!bankDocument) return
+    const next = recategorizeCsvImportReview({ rows, preview, selected }, importKey, categoryId)
+    if (!next) return
+
+    requestSequence.current += 1
+    requestController.current?.abort()
+    requestController.current = null
+    setRows(next.rows)
+    setPreview(next.preview)
+    setSelected(next.selected)
+    setBusy(false)
+    setError('')
+    setStatus(t('csvImportCategoryChanged'))
+  }
+
   const returnToBankMapping = () => {
     requestSequence.current += 1
     requestController.current?.abort()
@@ -229,7 +246,7 @@ export function CsvImportPanel({
   }
 
   const importSelected = async () => {
-    if (!available || busy || selected.size === 0) return
+    if (!preview || !available || busy || selected.size === 0) return
     onMutationStateChange(true)
     setBusy(true)
     setError('')
@@ -265,6 +282,15 @@ export function CsvImportPanel({
       if (fileInputRef.current) fileInputRef.current.value = ''
     } catch (caught) {
       if (controller.signal.aborted || sequence !== requestSequence.current) return
+      if (
+        caught instanceof ApiError &&
+        (caught.code === 'CSV_IMPORT_BLOCKED' || caught.code === 'CSV_IMPORT_STALE')
+      ) {
+        setPreview(null)
+        setSelected(new Set())
+        setStatus(t('csvImportPreviewRequired'))
+        return
+      }
       setError(renderMessage(t, messageForError(caught, 'csvImportFailed')))
     } finally {
       onMutationStateChange(false)
@@ -325,7 +351,7 @@ export function CsvImportPanel({
           accounts={accounts}
           categories={categories}
           payeeSuggestions={payeeSuggestions}
-          busy={busy || preview !== null}
+          busy={busy || rows.length > 0}
           onDelimiterChange={changeBankDelimiter}
           onMapped={previewMappedRows}
         />
@@ -361,7 +387,7 @@ export function CsvImportPanel({
         </div>
       ) : null}
 
-      {preview ? (
+      {rows.length > 0 ? (
         <div className="csv-import-review">
           <div className="ai-draft-review-heading">
             <div>
@@ -382,32 +408,41 @@ export function CsvImportPanel({
               ) : null}
             </div>
           </div>
-          <div className="csv-import-summary" aria-label={t('csvImportReviewTitle')}>
-            <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
-            <span className="is-match">{t('csvImportSummaryMatchable', { count: preview.matchable })}</span>
-            <span className="is-possible">
-              {t('csvImportSummaryPossible', { count: preview.possibleDuplicates })}
-            </span>
-            <span>{t('csvImportSummarySkipped', { count: preview.skipped })}</span>
-            <span className="is-blocked">{t('csvImportSummaryBlocked', { count: preview.blocked })}</span>
-          </div>
+          {preview ? (
+            <div className="csv-import-summary" aria-label={t('csvImportReviewTitle')}>
+              <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
+              <span className="is-match">{t('csvImportSummaryMatchable', { count: preview.matchable })}</span>
+              <span className="is-possible">
+                {t('csvImportSummaryPossible', { count: preview.possibleDuplicates })}
+              </span>
+              <span>{t('csvImportSummarySkipped', { count: preview.skipped })}</span>
+              <span className="is-blocked">{t('csvImportSummaryBlocked', { count: preview.blocked })}</span>
+            </div>
+          ) : null}
           <div className="csv-import-list">
             {rows.map((row) => {
               const result = previewByKey.get(row.importKey)
-              if (!result) return null
-              const selectable = result.status === 'new' ||
+              const selectable = result && (
+                result.status === 'new' ||
                 result.status === 'match_ready' ||
                 result.status === 'possible_duplicate'
+              )
               const account = accounts.find((item) => item.id === row.accountId)
               const category = categories.find((item) => item.id === row.categoryId)
+              const matchingCategories = categories.filter(
+                (item) => item.isActive && item.type === row.type,
+              )
               const checked = selected.has(row.importKey)
               return (
-                <article className={`csv-import-row is-${result.status}`} key={row.importKey}>
+                <article
+                  className={`csv-import-row${result ? ` is-${result.status}` : ''}`}
+                  key={row.importKey}
+                >
                   <label className="csv-import-select">
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={!selectable || busy}
+                      disabled={!preview || !selectable || busy}
                       onChange={() => toggleRow(row.importKey)}
                       aria-label={t('csvImportSelectRow', { row: row.sourceRow })}
                     />
@@ -416,12 +451,14 @@ export function CsvImportPanel({
                       <strong>{row.payee || row.note || t(row.type)}</strong>
                     </span>
                   </label>
-                  <span className={`csv-import-status is-${result.status}`}>
-                    {result.status === 'new' ? <CheckCircle2 aria-hidden="true" /> : null}
-                    {result.status === 'match_ready' ? <Link2 aria-hidden="true" /> : null}
-                    {isBlockedStatus(result.status) ? <AlertTriangle aria-hidden="true" /> : null}
-                    {t(statusMessageKey(result.status))}
-                  </span>
+                  {result ? (
+                    <span className={`csv-import-status is-${result.status}`}>
+                      {result.status === 'new' ? <CheckCircle2 aria-hidden="true" /> : null}
+                      {result.status === 'match_ready' ? <Link2 aria-hidden="true" /> : null}
+                      {isBlockedStatus(result.status) ? <AlertTriangle aria-hidden="true" /> : null}
+                      {t(statusMessageKey(result.status))}
+                    </span>
+                  ) : null}
                   <dl>
                     <div>
                       <dt>{t('date')}</dt>
@@ -439,7 +476,27 @@ export function CsvImportPanel({
                     </div>
                     <div>
                       <dt>{t('category')}</dt>
-                      <dd>{category ? localizeEntityName(category.name, category.localizationKey) : '—'}</dd>
+                      <dd className={bankDocument ? 'csv-import-category' : undefined}>
+                        {bankDocument ? (
+                          <select
+                            value={row.categoryId}
+                            disabled={busy}
+                            onChange={(event) => updateBankRowCategory(
+                              row.importKey,
+                              Number(event.target.value),
+                            )}
+                            aria-label={t('csvImportCategoryForRow', { row: row.sourceRow })}
+                          >
+                            {matchingCategories.map((item) => (
+                              <option value={item.id} key={item.id}>
+                                {localizeEntityName(item.name, item.localizationKey)}
+                              </option>
+                            ))}
+                          </select>
+                        ) : category
+                          ? localizeEntityName(category.name, category.localizationKey)
+                          : '—'}
+                      </dd>
                     </div>
                   </dl>
                 </article>
@@ -447,16 +504,34 @@ export function CsvImportPanel({
             })}
           </div>
           <div className="csv-import-actions">
-            <span>{t('csvImportSelected', { count: selected.size })}</span>
-            <button
-              className="button button-primary"
-              type="button"
-              onClick={() => void importSelected()}
-              disabled={!available || busy || selected.size === 0}
-            >
-              {busy ? <LoaderCircle className="spin" aria-hidden="true" /> : <FileUp aria-hidden="true" />}
-              {busy ? t('csvImportImporting') : t('csvImportImportSelected')}
-            </button>
+            <span>
+              {preview
+                ? t('csvImportSelected', { count: selected.size })
+                : busy
+                  ? t('csvImportPreviewing')
+                  : t('csvImportPreviewRequired')}
+            </span>
+            {preview ? (
+              <button
+                className="button button-primary"
+                type="button"
+                onClick={() => void importSelected()}
+                disabled={!available || busy || selected.size === 0}
+              >
+                {busy ? <LoaderCircle className="spin" aria-hidden="true" /> : <FileUp aria-hidden="true" />}
+                {busy ? t('csvImportImporting') : t('csvImportImportSelected')}
+              </button>
+            ) : (
+              <button
+                className="button button-secondary"
+                type="button"
+                onClick={() => void previewMappedRows({ rows, issues: [] })}
+                disabled={!available || busy}
+              >
+                {busy ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
+                {busy ? t('csvImportPreviewing') : t('bankCsvPreviewMapped')}
+              </button>
+            )}
           </div>
         </div>
       ) : null}

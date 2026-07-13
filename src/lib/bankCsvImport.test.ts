@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import type { Account, Category, PayeeSuggestion } from './schema'
+import { recategorizeCsvImportReview } from './csvImport'
 import {
   detectBankCsvDelimiter,
   mapBankCsvDocument,
@@ -160,6 +161,52 @@ describe('generic bank CSV import', () => {
       second.rows.map((row) => row.importKey),
     )
     assert.notEqual(first.rows[0].id, second.rows[0].id)
+  })
+
+  it('recategorizes one reviewed row without changing its bank source identity', async () => {
+    const parsed = parseBankCsvDocument([
+      'Date,Description,Amount',
+      '13/07/2026,Coffee,-12.50',
+      '14/07/2026,Groceries,-20.00',
+    ].join('\n'), ',')
+    assert(parsed.document)
+    const mapped = await mapBankCsvDocument(
+      parsed.document,
+      baseMapping(),
+      { accounts, categories, currency: 'HKD' },
+    )
+    const original = mapped.rows[0]
+    const unchanged = mapped.rows[1]
+
+    const corrected = recategorizeCsvImportReview({
+      rows: mapped.rows,
+      preview: {
+        rows: mapped.rows.map((row) => ({
+          sourceRow: row.sourceRow,
+          importKey: row.importKey,
+          status: 'new' as const,
+        })),
+        ready: 2,
+        matchable: 0,
+        possibleDuplicates: 0,
+        skipped: 0,
+        blocked: 0,
+      },
+      selected: new Set(mapped.rows.map((row) => row.importKey)),
+    }, original.importKey, 12)
+
+    assert(corrected)
+    assert.equal(corrected.preview, null)
+    assert.deepEqual([...corrected.selected], [])
+    assert.equal(corrected.rows[0].categoryId, 12)
+    assert.equal(corrected.rows[0].importKey, original.importKey)
+    assert.equal(corrected.rows[0].id, original.id)
+    assert.equal(corrected.rows[0].sourceRow, original.sourceRow)
+    assert.strictEqual(corrected.rows[1], unchanged)
+    assert.equal(
+      recategorizeCsvImportReview(corrected, original.importKey, 12),
+      null,
+    )
   })
 
   it('reuses an exact payee category only when the mapping option is enabled', async () => {
