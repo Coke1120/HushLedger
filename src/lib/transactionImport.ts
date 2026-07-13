@@ -21,6 +21,7 @@ export const transactionImportRowSchema = transactionInputSchema
 
 export const transactionImportRowStatusSchema = z.enum([
   'new',
+  'match_ready',
   'possible_duplicate',
   'already_imported',
   'existing_transaction',
@@ -42,6 +43,7 @@ export const transactionImportPreviewResultSchema = z
   .object({
     rows: z.array(transactionImportPreviewRowSchema).max(MAX_TRANSACTION_IMPORT_ROWS),
     ready: z.number().int().nonnegative(),
+    matchable: z.number().int().nonnegative(),
     possibleDuplicates: z.number().int().nonnegative(),
     skipped: z.number().int().nonnegative(),
     blocked: z.number().int().nonnegative(),
@@ -51,6 +53,7 @@ export const transactionImportPreviewResultSchema = z
 export const transactionImportCommitResultSchema = transactionImportPreviewResultSchema
   .extend({
     imported: z.number().int().nonnegative(),
+    matched: z.number().int().nonnegative(),
     staleSkipped: z.number().int().nonnegative(),
   })
   .strict()

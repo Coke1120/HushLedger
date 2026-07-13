@@ -4536,6 +4536,13 @@ button.account-register-row:focus-visible {
   border-color: #c2ddd3;
 }
 
+.csv-import-summary .is-match,
+.csv-import-status.is-match_ready {
+  color: var(--income);
+  background: var(--income-soft);
+  border-color: #b7d9cd;
+}
+
 .csv-import-summary .is-possible,
 .csv-import-status.is-possible_duplicate {
   color: var(--warning);
@@ -4573,6 +4580,10 @@ button.account-register-row:focus-visible {
 
 .csv-import-row.is-possible_duplicate {
   border-color: #decf91;
+}
+
+.csv-import-row.is-match_ready {
+  border-color: #b7d9cd;
 }
 
 .csv-import-select {

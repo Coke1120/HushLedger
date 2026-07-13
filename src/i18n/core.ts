@@ -56,6 +56,7 @@ const singularMessageKeys: Partial<Record<MessageKey, MessageKey>> = {
   scheduledOccurrenceCount: 'scheduledOccurrenceCountOne',
   moreScheduledRules: 'moreScheduledRulesOne',
   reconciliationReviewHelp: 'reconciliationReviewHelpOne',
+  csvImportSummaryMatchable: 'csvImportSummaryMatchableOne',
 }
 
 export function isSupportedLocale(value: unknown): value is Locale {

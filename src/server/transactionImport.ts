@@ -12,7 +12,8 @@ type ClassificationRow = {
   importKeyExists: number
   idExists: number
   idMatches: number
-  exactMatches: number
+  exactMatchCount: number
+  unclearedExactMatchCount: number
   accountExists: number
   accountActive: number
   categoryExists: number
@@ -108,10 +109,15 @@ const importClassificationSql = `
         AND t.payee = candidate.payee
         AND t.note = candidate.note
     ) AS idMatches,
-    EXISTS(
-      SELECT 1 FROM transactions t
+    (
+      SELECT COUNT(*) FROM transactions t
       WHERE ${exactTransactionMatchPredicate}
-    ) AS exactMatches,
+    ) AS exactMatchCount,
+    (
+      SELECT COUNT(*) FROM transactions t
+      WHERE ${exactTransactionMatchPredicate}
+        AND t.cleared = 0
+    ) AS unclearedExactMatchCount,
     EXISTS(
       SELECT 1 FROM accounts account
       WHERE account.id = candidate.account_id
@@ -154,7 +160,7 @@ export async function previewTransactionImport(
     return {
       sourceRow: rows[index].sourceRow,
       importKey: rows[index].importKey,
-      status: classify(classification),
+      status: classify(classification, rows[index].cleared),
     }
   })
 
@@ -173,12 +179,12 @@ export async function commitTransactionImport(
   const eligible = rows.filter((row) => {
     if (!row.include) return false
     const status = statusByKey.get(row.importKey)
-    return status === 'new' || status === 'possible_duplicate'
+    return status === 'new' || status === 'match_ready' || status === 'possible_duplicate'
   })
   if (eligible.length === 0) {
     return {
       kind: 'committed',
-      result: { ...preview, imported: 0, staleSkipped: 0 },
+      result: { ...preview, imported: 0, matched: 0, staleSkipped: 0 },
     }
   }
 
@@ -217,38 +223,103 @@ export async function commitTransactionImport(
       ?,
       ?,
       ?
+    RETURNING id
   `)
   const insertImportKey = database.prepare(`
     INSERT INTO transaction_import_keys(import_key, transaction_id) VALUES (?, ?)
   `)
-  const statements = eligible.flatMap((row) => [
-    insertTransaction.bind(
-      row.id,
-      row.type,
-      row.accountId,
-      row.currency,
-      row.categoryId,
-      row.type,
-      row.amountMinor,
-      row.currency,
-      row.accountId,
-      row.categoryId,
-      row.occurredOn,
-      row.cleared ? 1 : 0,
-      row.payee,
-      row.note,
+  const insertMatchedImportKey = database.prepare(`
+    WITH candidate(
+      import_key,
+      id,
+      type,
+      amount_minor,
+      currency,
+      account_id,
+      category_id,
+      occurred_on,
+      cleared,
+      payee,
+      note
+    ) AS (VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)),
+    matches AS (
+      SELECT t.id, t.cleared
+      FROM transactions t, candidate
+      WHERE ${exactTransactionMatchPredicate}
     ),
-    insertImportKey.bind(row.importKey, row.id),
-  ])
-  await database.batch(statements)
-  const imported = eligible.length
+    single_match AS (
+      SELECT MIN(id) AS transaction_id
+      FROM matches
+      HAVING COUNT(*) = 1 AND MIN(cleared) = 0
+    )
+    INSERT INTO transaction_import_keys(import_key, transaction_id)
+    SELECT candidate.import_key, single_match.transaction_id
+    FROM candidate, single_match
+    WHERE candidate.cleared = 1
+    RETURNING transaction_id
+  `)
+  const clearMatchedTransaction = database.prepare(`
+    UPDATE transactions
+    SET
+      cleared = 1,
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    WHERE cleared = 0
+      AND id = (
+        SELECT transaction_id FROM transaction_import_keys WHERE import_key = ?
+      )
+  `)
+  const operations = eligible.map((row) => {
+    if (statusByKey.get(row.importKey) === 'match_ready') {
+      return {
+        kind: 'matched' as const,
+        statements: [
+          bindRow(insertMatchedImportKey, row),
+          clearMatchedTransaction.bind(row.importKey),
+        ],
+      }
+    }
+    return {
+      kind: 'imported' as const,
+      statements: [
+        insertTransaction.bind(
+          row.id,
+          row.type,
+          row.accountId,
+          row.currency,
+          row.categoryId,
+          row.type,
+          row.amountMinor,
+          row.currency,
+          row.accountId,
+          row.categoryId,
+          row.occurredOn,
+          row.cleared ? 1 : 0,
+          row.payee,
+          row.note,
+        ),
+        insertImportKey.bind(row.importKey, row.id),
+      ],
+    }
+  })
+  const results = await database.batch(operations.flatMap((operation) => operation.statements))
+  const applied = operations.map((operation, index) => ({
+    kind: operation.kind,
+    changed: results[index * 2]?.results.length === 1,
+  }))
+  const imported = applied.filter(
+    (operation) => operation.kind === 'imported' && operation.changed,
+  ).length
+  const matched = applied.filter(
+    (operation) => operation.kind === 'matched' && operation.changed,
+  ).length
 
   return {
     kind: 'committed',
     result: {
       ...preview,
       imported,
-      staleSkipped: eligible.length - imported,
+      matched,
+      staleSkipped: eligible.length - imported - matched,
     },
   }
 }
@@ -276,13 +347,16 @@ function bindRow(statement: D1PreparedStatement, row: TransactionImportRow) {
   )
 }
 
-function classify(row: ClassificationRow): TransactionImportRowStatus {
+function classify(row: ClassificationRow, candidateCleared: boolean): TransactionImportRowStatus {
   if (row.importKeyExists) return 'already_imported'
   if (row.idExists) return row.idMatches ? 'existing_transaction' : 'id_conflict'
   if (!row.accountExists || !row.accountActive) return 'account_invalid'
   if (!row.categoryExists || !row.categoryActive) return 'category_invalid'
   if (!row.categoryMatches) return 'category_mismatch'
-  if (row.exactMatches) return 'possible_duplicate'
+  if (candidateCleared && row.exactMatchCount === 1 && row.unclearedExactMatchCount === 1) {
+    return 'match_ready'
+  }
+  if (row.exactMatchCount > 0) return 'possible_duplicate'
   return 'new'
 }
 
@@ -299,6 +373,7 @@ function summarize(
   return {
     rows,
     ready: rows.filter((row) => row.status === 'new').length,
+    matchable: rows.filter((row) => row.status === 'match_ready').length,
     possibleDuplicates: rows.filter((row) => row.status === 'possible_duplicate').length,
     skipped: rows.filter(
       (row) => row.status === 'already_imported' || row.status === 'existing_transaction',

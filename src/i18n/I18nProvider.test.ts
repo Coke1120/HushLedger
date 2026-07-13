@@ -57,6 +57,10 @@ describe('message catalogs', () => {
       translate('en', 'reconciliationReviewHelp', { count: 1 }),
       '1 uncleared entry is currently shown below. Use its status button to match your statement.',
     )
+    assert.equal(
+      translate('en', 'csvImportSummaryMatchable', { count: 1 }),
+      '1 exact match',
+    )
   })
 
   it('preserves interpolation placeholders in every locale', () => {

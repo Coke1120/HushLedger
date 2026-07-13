@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileUp,
+  Link2,
   LoaderCircle,
   ShieldCheck,
   X,
@@ -157,7 +158,7 @@ export function CsvImportPanel({
     setPreview(parsedPreview.data)
     setSelected(new Set(
       parsedPreview.data.rows
-        .filter((row) => row.status === 'new')
+        .filter((row) => row.status === 'new' || row.status === 'match_ready')
         .map((row) => row.importKey),
     ))
   }
@@ -241,15 +242,12 @@ export function CsvImportPanel({
       if (sequence !== requestSequence.current) return
       const result = csvImportCommitResultSchema.safeParse(response)
       if (!result.success) throw new Error('Invalid CSV import response')
-      if (result.data.imported > 0) await onImported()
-      setStatus(
-        result.data.staleSkipped > 0
-          ? t('csvImportSuccessWithStale', {
-              count: result.data.imported,
-              stale: result.data.staleSkipped,
-            })
-          : t('csvImportSuccess', { count: result.data.imported }),
-      )
+      if (result.data.imported > 0 || result.data.matched > 0) await onImported()
+      setStatus(t('csvImportSuccess', {
+        imported: result.data.imported,
+        matched: result.data.matched,
+        stale: result.data.staleSkipped,
+      }))
       setFileName('')
       setFileText('')
       setBankDocument(null)
@@ -377,6 +375,7 @@ export function CsvImportPanel({
           </div>
           <div className="csv-import-summary" aria-label={t('csvImportReviewTitle')}>
             <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
+            <span className="is-match">{t('csvImportSummaryMatchable', { count: preview.matchable })}</span>
             <span className="is-possible">
               {t('csvImportSummaryPossible', { count: preview.possibleDuplicates })}
             </span>
@@ -387,7 +386,9 @@ export function CsvImportPanel({
             {rows.map((row) => {
               const result = previewByKey.get(row.importKey)
               if (!result) return null
-              const selectable = result.status === 'new' || result.status === 'possible_duplicate'
+              const selectable = result.status === 'new' ||
+                result.status === 'match_ready' ||
+                result.status === 'possible_duplicate'
               const account = accounts.find((item) => item.id === row.accountId)
               const category = categories.find((item) => item.id === row.categoryId)
               const checked = selected.has(row.importKey)
@@ -408,6 +409,7 @@ export function CsvImportPanel({
                   </label>
                   <span className={`csv-import-status is-${result.status}`}>
                     {result.status === 'new' ? <CheckCircle2 aria-hidden="true" /> : null}
+                    {result.status === 'match_ready' ? <Link2 aria-hidden="true" /> : null}
                     {isBlockedStatus(result.status) ? <AlertTriangle aria-hidden="true" /> : null}
                     {t(statusMessageKey(result.status))}
                   </span>
@@ -485,6 +487,7 @@ function issueMessageKey(code: CsvImportIssueCode): MessageKey {
 function statusMessageKey(status: CsvImportRowStatus): MessageKey {
   switch (status) {
     case 'new': return 'csvStatusNew'
+    case 'match_ready': return 'csvStatusMatchReady'
     case 'possible_duplicate': return 'csvStatusPossibleDuplicate'
     case 'already_imported': return 'csvStatusAlreadyImported'
     case 'existing_transaction': return 'csvStatusExistingTransaction'

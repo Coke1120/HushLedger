@@ -237,7 +237,7 @@ export function BankImportPanel({
       setPreview(parsed.data)
       setSelectedKeys(new Set(
         parsed.data.rows
-          .filter((row) => row.status === 'new')
+          .filter((row) => row.status === 'new' || row.status === 'match_ready')
           .map((row) => row.importKey),
       ))
       setStatus(t('aiPreviewReady'))
@@ -290,16 +290,11 @@ export function BankImportPanel({
       setPreview(null)
       setSelectedKeys(new Set())
       if (remaining.length === 0) setStatementText('')
-      setStatus(
-        parsed.data.staleSkipped > 0
-          ? t('aiImportSuccessWithStale', {
-              count: parsed.data.imported,
-              stale: parsed.data.staleSkipped,
-            })
-          : t(parsed.data.imported === 1 ? 'aiImportSuccessOne' : 'aiImportSuccess', {
-              count: parsed.data.imported,
-            }),
-      )
+      setStatus(t('aiImportSuccess', {
+        imported: parsed.data.imported,
+        matched: parsed.data.matched,
+        stale: parsed.data.staleSkipped,
+      }))
       await onImported()
     } catch (caught) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
@@ -449,7 +444,9 @@ export function BankImportPanel({
               const validDate = isValidCalendarDate(draft.occurredOn)
               const validAmount = draft.amountMinor !== null
               const importStatus = previewStatusByKey.get(draft.importKey)
-              const selectable = importStatus === 'new' || importStatus === 'possible_duplicate'
+              const selectable = importStatus === 'new' ||
+                importStatus === 'match_ready' ||
+                importStatus === 'possible_duplicate'
               const selected = selectedKeys.has(draft.importKey)
               return (
                 <article
@@ -574,6 +571,7 @@ export function BankImportPanel({
           {preview ? (
             <div className="csv-import-summary ai-import-summary" aria-label={t('aiPreviewSummary')}>
               <span className="is-ready">{t('csvImportSummaryReady', { count: preview.ready })}</span>
+              <span className="is-match">{t('csvImportSummaryMatchable', { count: preview.matchable })}</span>
               <span className="is-possible">{t('csvImportSummaryPossible', { count: preview.possibleDuplicates })}</span>
               <span>{t('csvImportSummarySkipped', { count: preview.skipped })}</span>
               <span className="is-blocked">{t('csvImportSummaryBlocked', { count: preview.blocked })}</span>
@@ -660,6 +658,7 @@ function importRows(drafts: readonly EditableBankImportDraft[]): TransactionImpo
 function importStatusMessageKey(status: TransactionImportRowStatus): MessageKey {
   switch (status) {
     case 'new': return 'csvStatusNew'
+    case 'match_ready': return 'csvStatusMatchReady'
     case 'possible_duplicate': return 'csvStatusPossibleDuplicate'
     case 'already_imported': return 'csvStatusAlreadyImported'
     case 'existing_transaction': return 'csvStatusExistingTransaction'

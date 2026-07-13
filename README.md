@@ -89,7 +89,9 @@ knowledge and explains every command and dashboard click.
   description, signed amount or debit/credit columns, destination account, and
   fallback categories in the browser. Bank imports can reuse the latest active
   category for an exact payee and income/expense match. New rows are selected
-  automatically, exact matches are flagged, and import tombstones stop the same
+  automatically. A cleared row that uniquely matches one otherwise identical
+  uncleared ledger entry links its source and clears that entry instead of adding
+  a duplicate; ambiguous matches stay unselected. Import tombstones stop the same
   source row from returning after deletion. Repeated imports can explicitly
   remember column, date, amount, and sign choices for the exact same headers in
   this browser without storing file contents, accounts, or categories.
@@ -212,9 +214,10 @@ credit card, or a digital wallet. It is not an additional transaction type.
   a rule never deletes historical transactions.
 - Every API input is validated with Zod and checked again against server-side
   account, category, and transaction-type rules.
-- Selected CSV rows are committed with a D1 transactional batch. Possible
-  duplicates require an explicit checkbox; invalid or archived references are
-  never silently substituted.
+- Selected CSV rows are committed with a D1 transactional batch. A unique exact
+  match links and clears the existing transaction in that same batch. Possible
+  or ambiguous duplicates require an explicit checkbox; invalid or archived
+  references are never silently substituted.
 - Full-ledger backups cover accounts, categories, recurring rules, transactions,
   account transfers, and import tombstones. A SHA-256 checksum detects modification, and a monotonic
   ledger revision rejects restore previews that became stale before commit.
@@ -583,7 +586,10 @@ directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimite
 five numeric date formats, one signed amount or separate debit/credit columns,
 optional sign reversal, an optional source ID, explicit account/category defaults,
 and optional exact payee-category reuse. The server receives normalized rows only,
-previews duplicate/reference checks, and writes only explicitly selected rows.
+previews duplicate/reference checks, and writes only explicitly selected rows. It
+matches only a cleared import with one unique, field-identical uncleared entry;
+the imported source key is attached to that existing transaction before it is
+cleared, while zero or multiple candidates remain possible duplicates.
 Users can explicitly remember up to eight exact-header CSV layouts in browser
 storage. A layout contains only column indexes, date format, amount mode, sign,
 and the payee-category reuse preference; it excludes filenames, transaction rows,
@@ -642,8 +648,9 @@ editable drafts through a user-provided OpenAI-compatible provider:
    order, then paste at most 64 KiB of text.
 3. Review every returned field. Parsing never writes a transaction or raw
    statement to D1.
-4. HushLedger checks the edited rows against the live ledger. New rows are
-   selected by default; possible duplicates require an explicit selection.
+4. HushLedger checks the edited rows against the live ledger. New rows and unique
+   exact matches to one uncleared entry are selected by default; possible or
+   ambiguous duplicates require an explicit selection.
    Select **Save selected transactions** to commit the reviewed set atomically.
 
 The provider must support Chat Completions and strict `json_schema` structured

@@ -1519,6 +1519,8 @@ async function verifyWorkerApi() {
     fresh: '41000000-0000-4000-8000-000000000001',
     possibleDuplicate: '41000000-0000-4000-8000-000000000002',
     invalidAccount: '41000000-0000-4000-8000-000000000003',
+    exactMatch: '41000000-0000-4000-8000-000000000006',
+    ambiguousMatch: '41000000-0000-4000-8000-000000000007',
   }
   const csvImportRows = [
     {
@@ -1540,8 +1542,16 @@ async function verifyWorkerApi() {
     },
     {
       ...transactionBody,
-      id: csvImportIds.possibleDuplicate,
+      id: csvImportIds.exactMatch,
+      cleared: true,
       sourceRow: 4,
+      importKey: `csv:bank:id:${'c'.repeat(64)}`,
+      include: true,
+    },
+    {
+      ...transactionBody,
+      id: csvImportIds.possibleDuplicate,
+      sourceRow: 5,
       importKey: `csv:bank:id:${'b'.repeat(64)}`,
       include: false,
     },
@@ -1549,7 +1559,7 @@ async function verifyWorkerApi() {
       ...transactionBody,
       id: csvImportIds.invalidAccount,
       accountId: 999_999,
-      sourceRow: 5,
+      sourceRow: 6,
       importKey: `csv:hushledger:id:${csvImportIds.invalidAccount}`,
       include: false,
     },
@@ -1570,17 +1580,19 @@ async function verifyWorkerApi() {
   assert.deepEqual(csvPreview.payload.data.rows.map(({ status }) => status), [
     'new',
     'id_conflict',
+    'match_ready',
     'possible_duplicate',
     'account_invalid',
   ])
   assert.deepEqual(
     {
       ready: csvPreview.payload.data.ready,
+      matchable: csvPreview.payload.data.matchable,
       possibleDuplicates: csvPreview.payload.data.possibleDuplicates,
       skipped: csvPreview.payload.data.skipped,
       blocked: csvPreview.payload.data.blocked,
     },
-    { ready: 1, possibleDuplicates: 1, skipped: 0, blocked: 2 },
+    { ready: 1, matchable: 1, possibleDuplicates: 1, skipped: 0, blocked: 2 },
   )
 
   const csvCommit = await api(baseUrl, '/api/imports/csv', {
@@ -1589,13 +1601,24 @@ async function verifyWorkerApi() {
   })
   assert.equal(csvCommit.response.status, 201, JSON.stringify(csvCommit.payload))
   assert.equal(csvCommit.payload.data.imported, 1)
+  assert.equal(csvCommit.payload.data.matched, 1)
   assert.equal(csvCommit.payload.data.staleSkipped, 0)
+
+  const matchedManualTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
+  assert.equal(matchedManualTransaction.response.status, 200)
+  assert.equal(matchedManualTransaction.payload.data.cleared, true)
+  const absentMatchedImportTransaction = await api(
+    baseUrl,
+    `/api/transactions/${csvImportIds.exactMatch}`,
+  )
+  assert.equal(absentMatchedImportTransaction.response.status, 404)
 
   const csvRepreview = await api(baseUrl, '/api/imports/csv', {
     method: 'POST',
     body: { mode: 'preview', rows: csvImportRows.map((row) => ({ ...row, include: false })) },
   })
   assert.equal(csvRepreview.payload.data.rows[0].status, 'already_imported')
+  assert.equal(csvRepreview.payload.data.rows[2].status, 'already_imported')
 
   const importedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`)
   assert.equal(importedCsvTransaction.response.status, 200)
@@ -1612,7 +1635,7 @@ async function verifyWorkerApi() {
 
   const duplicateOverrideRows = csvImportRows.map((row, index) => ({
     ...row,
-    include: index === 2,
+    include: index === 3,
   }))
   const csvDuplicateCommit = await api(baseUrl, '/api/imports/csv', {
     method: 'POST',
@@ -1626,6 +1649,25 @@ async function verifyWorkerApi() {
   )
   assert.equal(importedPossibleDuplicate.response.status, 200)
 
+  const ambiguousMatchPreview = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: {
+      mode: 'preview',
+      rows: [{
+        ...transactionBody,
+        id: csvImportIds.ambiguousMatch,
+        cleared: true,
+        sourceRow: 7,
+        importKey: `csv:bank:id:${'d'.repeat(64)}`,
+        include: false,
+      }],
+    },
+  })
+  assert.equal(ambiguousMatchPreview.response.status, 200)
+  assert.equal(ambiguousMatchPreview.payload.data.rows[0].status, 'possible_duplicate')
+  assert.equal(ambiguousMatchPreview.payload.data.matchable, 0)
+  assert.equal(ambiguousMatchPreview.payload.data.possibleDuplicates, 1)
+
   const collisionKey = `csv:hushledger:row:${'a'.repeat(64)}`
   const collisionIds = [
     '41000000-0000-4000-8000-000000000004',
@@ -1636,7 +1678,7 @@ async function verifyWorkerApi() {
     id,
     amountMinor: 1_200 + index,
     payee: `CSV atomic collision ${index + 1}`,
-    sourceRow: 6 + index,
+    sourceRow: 8 + index,
     importKey: collisionKey,
     include: true,
   }))
@@ -1670,7 +1712,7 @@ async function verifyWorkerApi() {
       ...transactionFields,
       amountMinor: 456,
       payee: 'edited integration test',
-      updatedAt: createdTransaction.payload.data.updatedAt,
+      updatedAt: matchedManualTransaction.payload.data.updatedAt,
     },
   })
   assert.equal(updatedTransaction.response.status, 200)
@@ -2259,8 +2301,10 @@ async function verifyWorkerApi() {
     referenceConflictChecks: 4,
     referenceOrderWrites: 2,
     referenceOrderGuards: 3,
-    csvImportPreviewStatuses: 4,
+    csvImportPreviewStatuses: 5,
     csvImportWrites: 2,
+    csvImportMatches: 1,
+    csvImportAmbiguityGuards: 1,
     csvImportTombstones: 1,
     csvAtomicRollbacks: 1,
     accountTransferLifecycles: 1,
