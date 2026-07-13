@@ -8,6 +8,8 @@ import {
   accountUpdateSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
+  emergencyFundGoalDeleteSchema,
+  emergencyFundGoalSaveSchema,
   referenceIdSchema,
   referenceOrderSchema,
   referenceStatusSchema,
@@ -121,6 +123,51 @@ describe('reference data validation', () => {
     }).success, false)
     assert.equal(referenceOrderSchema.safeParse({
       items: [{ id: 1, updatedAt }, { id: 2, updatedAt, sortOrder: 20 }],
+    }).success, false)
+  })
+})
+
+describe('emergency fund goal validation', () => {
+  const updatedAt = '2026-07-13T10:30:00.000Z'
+
+  it('accepts strict create, update, and delete versions', () => {
+    assert.deepEqual(emergencyFundGoalSaveSchema.parse({
+      accountId: 2,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    }), {
+      accountId: 2,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    })
+    assert.equal(emergencyFundGoalSaveSchema.safeParse({
+      accountId: 2,
+      targetMinor: 600_000,
+      expectedUpdatedAt: updatedAt,
+    }).success, true)
+    assert.deepEqual(emergencyFundGoalDeleteSchema.parse({ expectedUpdatedAt: updatedAt }), {
+      expectedUpdatedAt: updatedAt,
+    })
+  })
+
+  it('rejects unsafe targets, missing versions, and extra fields', () => {
+    assert.equal(emergencyFundGoalSaveSchema.safeParse({
+      accountId: 2,
+      targetMinor: 0,
+      expectedUpdatedAt: null,
+    }).success, false)
+    assert.equal(emergencyFundGoalSaveSchema.safeParse({
+      accountId: 2,
+      targetMinor: Number.MAX_SAFE_INTEGER + 1,
+      expectedUpdatedAt: null,
+    }).success, false)
+    assert.equal(emergencyFundGoalSaveSchema.safeParse({
+      accountId: 2,
+      targetMinor: 500_000,
+    }).success, false)
+    assert.equal(emergencyFundGoalDeleteSchema.safeParse({
+      expectedUpdatedAt: updatedAt,
+      accountId: 2,
     }).success, false)
   })
 })

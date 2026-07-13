@@ -2,8 +2,9 @@ import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-
 import { useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
-import type { Account, Category } from '../lib/schema'
+import type { Account, Category, EmergencyFundGoal } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
+import { EmergencyFundSettings } from './EmergencyFundSettings'
 import { LedgerBackupSettings } from './LedgerBackupSettings'
 import { ReferenceDataSettings } from './ReferenceDataSettings'
 import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
@@ -26,6 +27,7 @@ type SettingsPageProps = {
   onAiSettingsChange: (settings: AiProviderSettings) => void
   accounts: Account[]
   categories: Category[]
+  emergencyFundGoal: EmergencyFundGoal | null
   canManageReferences: boolean
   onReferenceRefresh: () => Promise<boolean>
   onLedgerRestored: () => Promise<boolean>
@@ -36,6 +38,7 @@ export function SettingsPage({
   onAiSettingsChange,
   accounts,
   categories,
+  emergencyFundGoal,
   canManageReferences,
   onReferenceRefresh,
   onLedgerRestored,
@@ -63,6 +66,13 @@ export function SettingsPage({
           <p>{t('settingsDescription')}</p>
         </div>
       </div>
+
+      <EmergencyFundSettings
+        goal={emergencyFundGoal}
+        accounts={accounts}
+        enabled={canManageReferences}
+        onRefresh={onReferenceRefresh}
+      />
 
       <ReferenceDataSettings
         accounts={accounts}

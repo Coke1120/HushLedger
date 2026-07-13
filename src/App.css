@@ -784,6 +784,152 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.emergency-fund-heading-icon {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.emergency-fund-empty {
+  display: grid;
+  padding: 18px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  gap: 12px;
+  justify-items: start;
+}
+
+.emergency-fund-empty strong,
+.emergency-fund-empty p {
+  display: block;
+  margin: 0;
+}
+
+.emergency-fund-empty p,
+.emergency-fund-note,
+.emergency-fund-unavailable,
+.emergency-fund-settings-unavailable {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.emergency-fund-empty p {
+  margin-top: 4px;
+}
+
+.emergency-fund-body {
+  display: grid;
+  gap: 14px;
+}
+
+.emergency-fund-account {
+  display: grid;
+  gap: 3px;
+}
+
+.emergency-fund-account span,
+.emergency-fund-values dt,
+.emergency-fund-progress-copy span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.emergency-fund-values {
+  display: grid;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.emergency-fund-values > div {
+  display: grid;
+  min-width: 0;
+  min-height: 68px;
+  padding: 11px 14px;
+  gap: 5px;
+  align-content: center;
+}
+
+.emergency-fund-values > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.emergency-fund-values dd {
+  overflow: hidden;
+  margin: 0;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emergency-fund-progress-copy {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.emergency-fund-progress-copy strong {
+  font-size: 13px;
+}
+
+.emergency-fund-progress-track {
+  height: 10px;
+  overflow: hidden;
+  margin-top: -7px;
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.emergency-fund-progress-track.is-private {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--line) 0,
+    var(--line) 7px,
+    var(--line-strong) 7px,
+    var(--line-strong) 14px
+  );
+}
+
+.emergency-fund-progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--income);
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.emergency-fund-progress-track.is-private .emergency-fund-progress-fill {
+  display: none;
+}
+
+.emergency-fund-reached {
+  margin: -6px 0 0;
+  color: var(--income);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emergency-fund-note,
+.emergency-fund-unavailable {
+  margin: 0;
+}
+
+.emergency-fund-manage {
+  width: fit-content;
+}
+
 .statement-comparison {
   display: grid;
   padding: 14px;
@@ -3301,6 +3447,64 @@ button.account-register-row:focus-visible {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.emergency-fund-settings-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.emergency-fund-form {
+  display: grid;
+  gap: 16px;
+  padding-top: 22px;
+}
+
+.emergency-fund-form fieldset {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.emergency-fund-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.emergency-fund-form label small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.emergency-fund-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.emergency-fund-settings-unavailable,
+.emergency-fund-feedback {
+  margin: 0;
+}
+
+.emergency-fund-feedback {
+  min-height: 18px;
+  color: var(--income);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emergency-fund-feedback.is-error {
+  color: var(--expense);
 }
 
 .language-fieldset {
@@ -5939,6 +6143,22 @@ button.account-register-row:focus-visible {
 
   .reference-settings-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emergency-fund-form fieldset,
+  .emergency-fund-values {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .emergency-fund-values > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .emergency-fund-form-actions .button,
+  .emergency-fund-manage,
+  .emergency-fund-empty .button {
+    width: 100%;
   }
 
   .reference-list {

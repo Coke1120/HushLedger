@@ -11,6 +11,7 @@ import { AccountRegister } from './components/AccountRegister'
 import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
+import { EmergencyFundProgress } from './components/EmergencyFundProgress'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
@@ -457,7 +458,7 @@ function App({ initialMonth }: { initialMonth: string }) {
           : t('settings')
 
   const transactions = view === 'overview' ? data.transactions.slice(0, 5) : data.transactions
-  const loading = data.source === 'loading'
+  const loading = data.source === 'loading' || data.reportMonth !== month
   const moneyView = view === 'overview' || view === 'transactions'
   const transactionCountLabel = loading
     ? t('loadingTransactionCount')
@@ -503,6 +504,18 @@ function App({ initialMonth }: { initialMonth: string }) {
                   canReconcile={data.source === 'live' && data.online}
                   onReview={openAccountTransactions}
                   onCompare={openAccountReconciliation}
+                />
+                <EmergencyFundProgress
+                  goal={data.emergencyFundGoal}
+                  balance={!loading && data.emergencyFundGoal
+                    ? data.accountBalances.find(
+                      ({ accountId }) => accountId === data.emergencyFundGoal?.accountId,
+                    ) ?? null
+                    : null}
+                  month={month}
+                  loading={loading}
+                  canManage={data.source === 'live' && data.online}
+                  onManage={() => changeView('settings')}
                 />
                 <NetWorthTrend
                   points={data.netWorthTrend}
@@ -723,6 +736,7 @@ function App({ initialMonth }: { initialMonth: string }) {
             onAiSettingsChange={setAiSettings}
             accounts={data.accounts}
             categories={data.categories}
+            emergencyFundGoal={data.emergencyFundGoal}
             canManageReferences={data.source === 'live' && data.online}
             onReferenceRefresh={() => data.refresh(false)}
             onLedgerRestored={handleLedgerRestored}

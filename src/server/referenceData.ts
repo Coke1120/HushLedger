@@ -17,7 +17,15 @@ type CategoryRow = Omit<Category, 'isActive'> & { isActive: number }
 
 export type ReferenceMutationResult<T> =
   | { kind: 'created' | 'updated'; item: T }
-  | { kind: 'not_found' | 'version_conflict' | 'name_conflict' | 'last_active' | 'active_rules' }
+  | {
+      kind:
+        | 'not_found'
+        | 'version_conflict'
+        | 'name_conflict'
+        | 'last_active'
+        | 'active_rules'
+        | 'emergency_fund_goal'
+    }
 
 export type ReferenceOrderResult<T> =
   | { kind: 'updated'; items: T[] }
@@ -224,6 +232,9 @@ export async function updateAccountReference(
         FROM accounts AS other
         WHERE other.name = ? COLLATE NOCASE AND other.id <> ?
       )
+      AND (? <> 'credit_card' OR NOT EXISTS (
+        SELECT 1 FROM emergency_fund_goals WHERE account_id = ?
+      ))
   `).bind(
     input.name,
     input.type,
@@ -234,10 +245,12 @@ export async function updateAccountReference(
     input.updatedAt,
     input.name,
     id,
+    input.type,
+    id,
   ).run()
 
   if (Number(updated.meta.changes) === 0) {
-    return diagnoseAccountMutation(database, id, input.updatedAt, input.name)
+    return diagnoseAccountMutation(database, id, input.updatedAt, input.name, input.type)
   }
 
   const item = await getAccountReference(database, id)
@@ -269,7 +282,10 @@ export async function setAccountReferenceStatus(
         FROM recurring_rules
         WHERE account_id = ? AND is_active = 1 AND deleted_at IS NULL
       ))
-  `).bind(active, id, input.updatedAt, active, active, id).run()
+      AND (? = 1 OR NOT EXISTS (
+        SELECT 1 FROM emergency_fund_goals WHERE account_id = ?
+      ))
+  `).bind(active, id, input.updatedAt, active, active, id, active, id).run()
 
   if (Number(updated.meta.changes) === 0) {
     return diagnoseAccountStatus(database, id, input.updatedAt)
@@ -431,10 +447,14 @@ async function diagnoseAccountMutation(
   id: number,
   updatedAt: string,
   name: string,
+  type: Account['type'],
 ): Promise<ReferenceMutationResult<Account>> {
   const existing = await getAccountReference(database, id)
   if (!existing) return { kind: 'not_found' }
   if (existing.updatedAt !== updatedAt) return { kind: 'version_conflict' }
+  if (type === 'credit_card' && await hasEmergencyFundGoal(database, id)) {
+    return { kind: 'emergency_fund_goal' }
+  }
   return (await accountNameIsTaken(database, name, id))
     ? { kind: 'name_conflict' }
     : { kind: 'version_conflict' }
@@ -463,6 +483,7 @@ async function diagnoseAccountStatus(
   if (!existing) return { kind: 'not_found' }
   if (existing.updatedAt !== updatedAt) return { kind: 'version_conflict' }
   if (await hasActiveRules(database, 'account_id', id)) return { kind: 'active_rules' }
+  if (await hasEmergencyFundGoal(database, id)) return { kind: 'emergency_fund_goal' }
   const active = await database.prepare('SELECT COUNT(*) AS count FROM accounts WHERE is_active = 1')
     .first<{ count: number }>()
   return (active?.count ?? 0) <= 1 ? { kind: 'last_active' } : { kind: 'version_conflict' }
@@ -493,6 +514,16 @@ async function hasActiveRules(database: D1Database, column: 'account_id' | 'cate
     WHERE ${column} = ? AND is_active = 1 AND deleted_at IS NULL
     LIMIT 1
   `).bind(id).first<{ found: number }>()
+  return row?.found === 1
+}
+
+async function hasEmergencyFundGoal(database: D1Database, accountId: number) {
+  const row = await database.prepare(`
+    SELECT 1 AS found
+    FROM emergency_fund_goals
+    WHERE account_id = ?
+    LIMIT 1
+  `).bind(accountId).first<{ found: number }>()
   return row?.found === 1
 }
 

@@ -6,6 +6,7 @@ import {
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
+  PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
@@ -136,6 +137,13 @@ function ledgerData(): LedgerBackupData {
       createdAt: timestamp,
       updatedAt: timestamp,
     }],
+    emergencyFundGoals: [{
+      id: 1,
+      accountId: 1,
+      targetMinor: 1_000_000,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
     transactionImportKeys: [{
       importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
       transactionId: '10000000-0000-4000-8000-000000000099',
@@ -144,10 +152,22 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
-function ledgerDataBeforeOpeningBalances(data: LedgerBackupData) {
+function ledgerDataBeforeEmergencyFund(data: LedgerBackupData) {
   return {
-    ...data,
-    accounts: data.accounts.map(({
+    accounts: data.accounts,
+    categories: data.categories,
+    recurringRules: data.recurringRules,
+    transactions: data.transactions,
+    accountTransfers: data.accountTransfers,
+    transactionImportKeys: data.transactionImportKeys,
+  }
+}
+
+function ledgerDataBeforeOpeningBalances(data: LedgerBackupData) {
+  const beforeEmergencyFund = ledgerDataBeforeEmergencyFund(data)
+  return {
+    ...beforeEmergencyFund,
+    accounts: beforeEmergencyFund.accounts.map(({
       openingBalanceMinor: _openingBalanceMinor,
       openingBalanceOn: _openingBalanceOn,
       ...account
@@ -203,14 +223,15 @@ describe('ledger backups', () => {
       recurringRules: 1,
       transactions: 1,
       accountTransfers: 1,
+      emergencyFundGoals: 1,
       transactionImportKeys: 1,
     })
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
 
-  it('upgrades schema 11 backups without inventing opening balances', async () => {
+  it('upgrades schema 12 backups without inventing an emergency fund goal', async () => {
     const current = ledgerData()
-    const previousData = ledgerDataBeforeOpeningBalances(current)
+    const previousData = ledgerDataBeforeEmergencyFund(current)
     const previousPayload = {
       format: LEDGER_BACKUP_FORMAT,
       version: LEDGER_BACKUP_VERSION,
@@ -227,6 +248,31 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.emergencyFundGoals, [])
+    assert.equal(upgraded.accountTransfers.length, 1)
+    assert.equal(upgraded.accounts[0]?.openingBalanceMinor, 125_000)
+  })
+
+  it('upgrades schema 11 backups without inventing opening balances or a goal', async () => {
+    const current = ledgerData()
+    const previousData = ledgerDataBeforeOpeningBalances(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.accountTransfers.length, 1)
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
     assert.equal(upgraded.accounts[0]?.openingBalanceOn, null)
@@ -253,6 +299,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.deepEqual(upgraded.accountTransfers, [])
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
@@ -282,6 +329,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, false)
     assert.deepEqual(upgraded.accountTransfers, [])
@@ -311,6 +359,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, true)
     assert.deepEqual(upgraded.accountTransfers, [])
@@ -327,7 +376,22 @@ describe('ledger backups', () => {
     assert(issues.some(({ message }) => message === 'At least one active account is required'))
     assert(issues.some(({ message }) => message === 'At least one active expense category is required'))
     assert(issues.some(({ message }) => message === 'Referenced category is missing'))
+    assert(issues.some(({ message }) => message === 'Emergency fund account must be active and cannot be a credit card'))
     assert(issues.some(({ path }) => path.endsWith('.importKey')))
+  })
+
+  it('rejects an emergency goal backed by a missing or credit-card account', () => {
+    const missing = ledgerData()
+    missing.emergencyFundGoals[0].accountId = 999
+    assert(validateLedgerDataRelations(missing).some(
+      ({ message }) => message === 'Referenced emergency fund account is missing',
+    ))
+
+    const credit = ledgerData()
+    credit.accounts[0].type = 'credit_card'
+    assert(validateLedgerDataRelations(credit).some(
+      ({ message }) => message === 'Emergency fund account must be active and cannot be a credit card',
+    ))
   })
 
   it('rejects transfer references that cannot form a valid account movement', () => {

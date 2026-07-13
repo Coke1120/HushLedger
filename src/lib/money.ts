@@ -28,6 +28,17 @@ export function formatSignedAmountInput(minor: number, locale = 'en') {
   return `${prefix}${formatAmountInput(Math.abs(minor), locale)}`
 }
 
+export function resolveAmountInputLocale<Locale extends string>(
+  value: string,
+  locale: Locale,
+  previousLocale?: Locale,
+): Locale {
+  if (!value.includes(',')) return locale
+  if (locale.toLowerCase().startsWith('fr')) return locale
+  if (previousLocale?.toLowerCase().startsWith('fr')) return previousLocale
+  return locale
+}
+
 export function parseAmount(value: string, locale = 'en'): number {
   const normalized = locale.toLowerCase().startsWith('fr')
     ? value.trim().replaceAll(',', '.')

@@ -39,6 +39,11 @@ not operate an independent database server or a multi-user identity system.
 - Compare optional monthly expense-category plans with recorded spending and the
   exact remaining-or-over amount; treat plans as recurring guardrails, not cash
   allocation, rollover, or envelope balances.
+- Review one optional emergency-fund checkpoint against the recorded month-end
+  balance of one active HKD cash, bank, or wallet account. Treat it only as a
+  user-chosen progress comparison: it does not create or reserve money, recommend
+  an amount or deadline, forecast future funds, automate transfers, or verify a
+  provider balance.
 - Review active recurring entries that remain ungenerated in the selected month
   as an expandable chronological list of every scheduled date, rule name,
   optional payee, amount, and income/expense label. Keep exact income, expense,
@@ -182,6 +187,19 @@ In product wording, a custom `payment` item means a payment-method account such
 as cash, bank, credit card, or wallet. It is not a separate transaction or
 account type in the current data model.
 
+### Emergency-fund checkpoint
+
+Migration `0013_emergency_fund_goal.sql` adds at most one checkpoint row. It
+references one active HKD cash, bank, or wallet account, stores a positive target
+in integer minor units, and uses `updated_at` for conflict-safe updates and
+deletion. The overview compares that target with the selected month's recorded
+month-end balance. A negative recorded balance contributes zero to progress, and
+progress above the target is capped at the target.
+
+The checkpoint is not a separate balance, envelope, reserve, availability claim,
+recommendation, completion date, forecast, provider verification, or transfer
+instruction. Removing it does not alter the backing account or any ledger entry.
+
 ### Account transfers
 
 ```text
@@ -223,6 +241,9 @@ its archived references while being reviewed or corrected.
 ```text
 GET    /api/health
 GET    /api/accounts
+GET    /api/emergency-fund-goal
+PUT    /api/emergency-fund-goal  (create or conflict-safe update)
+DELETE /api/emergency-fund-goal  (conflict-safe removal)
 POST   /api/accounts
 PATCH  /api/accounts
 GET    /api/accounts/:id
@@ -284,15 +305,17 @@ keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
-The ledger JSON format covers accounts, categories, recurring rules, transactions,
-account transfers, and import tombstones while excluding browser preferences and AI credentials. Its
-SHA-256 checksum detects modification. Restore validates internal references,
-returns a no-write current-versus-backup report, requires `RESTORE`, and rechecks a
+The schema-13 ledger JSON format covers seven tables: accounts, categories, the
+emergency-fund checkpoint, recurring rules, transactions, account transfers, and
+import tombstones. It excludes browser preferences and AI credentials. Its SHA-256
+checksum detects modification. Restore validates internal references, returns a
+no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-all six tables. The in-app file limit is 7 MiB; larger or database-level recovery
-uses Wrangler D1 export and restore. The browser stores only the most recent
-backup-preparation and integrity-check dates; this reminder does not prove
-that a backup file was retained off-platform.
+all seven tables. Schema-8 through schema-12 backups remain compatible and upgrade
+without inventing an emergency-fund checkpoint. The in-app file limit is 7 MiB;
+larger or database-level recovery uses Wrangler D1 export and restore. The browser
+stores only the most recent backup-preparation and integrity-check dates; this
+reminder does not prove that a backup file was retained off-platform.
 
 ## Reliability and privacy
 
@@ -321,6 +344,8 @@ that a backup file was retained off-platform.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
 - A Settings page with immediate language switching and local-only preference
   persistence.
+- An optional emergency-fund checkpoint configured in Settings and reviewed on
+  the monthly overview with explicit recorded-balance and non-reservation wording.
 - A persistent header indicator for temporary screen privacy, with no hover or
   focus path that reveals the masked amount.
 - History-safe account and category management with clear inactive states and
@@ -344,9 +369,10 @@ that a backup file was retained off-platform.
 
 - D1 schema, seed, constraints, indexes, date-only migration, reversible
   transaction clearing status, optional expense-category monthly plans, and
-  atomic account transfers with two-sided posting review.
+  atomic account transfers with two-sided posting review, plus migration 0013's
+  optional single account-backed emergency-fund checkpoint.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
-  summary, and recurring-rule APIs.
+  summary, recurring-rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   selected-month, fixed-range, or all-history account/category/payee/type/clearing/search filters,
   conflict-safe bulk clearing and same-type recategorization,
@@ -355,10 +381,12 @@ that a backup file was retained off-platform.
   aggregate and ordered CSV export,
   browser-local saved review views,
   ranked category-or-payee spending drilldown, monthly plan-versus-actual review,
+  recorded-balance emergency-fund progress,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.
-- Versioned six-table JSON backup, SHA-256 integrity checking, preview-only
+- Versioned schema-13 seven-table JSON backup with schema-8 through schema-12
+  compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only

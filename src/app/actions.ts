@@ -574,6 +574,9 @@ function referenceMutationResult<T>(result: ReferenceMutationResult<T>): ActionR
   if (result.kind === 'active_rules') {
     return actionError('REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
   }
+  if (result.kind === 'emergency_fund_goal') {
+    return actionError('REFERENCE_EMERGENCY_FUND_GOAL', '請先移動或移除使用此帳戶的緊急備用金目標')
+  }
   return actionError('INTERNAL_ERROR', '伺服器暫時無法處理請求')
 }
 

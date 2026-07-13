@@ -54,6 +54,11 @@ knowledge and explains every command and dashboard click.
   uncleared entries with direct posting-status controls, and never claims to lock
   the ledger. The same monthly account register merges ordinary transactions with
   both transfer legs and shows the exact recorded balance after every entry.
+- One optional emergency-fund checkpoint compares a user-chosen positive HKD
+  target with the recorded month-end balance of one active cash, bank, or wallet
+  account. It does not create a separate balance, reserve or move money, recommend
+  an amount or deadline, forecast future funds, or verify availability with a
+  provider.
 - A six-month recorded net-worth trend across every active and inactive account,
   including negative debts. Months with unknown pre-opening history are marked
   unavailable instead of silently omitting an account, and selecting a month
@@ -212,6 +217,11 @@ credit card, or a digital wallet. It is not an additional transaction type.
   the reconciliation workspace stores no statement value and does not claim an
   irreversible reconciliation lock. Each inline posting-status change uses the
   same concurrency-checked update as the transaction or transfer editor.
+- The ledger stores at most one emergency-fund checkpoint, backed by one active
+  HKD cash, bank, or wallet account. Progress uses that account's recorded
+  month-end balance only: negative balances contribute zero, and progress above
+  the target is capped at the target. The checkpoint is not an envelope, reserved
+  or available cash, a recommendation, a deadline, or an automated transfer.
 - Recorded net worth is the exact sum of all available signed account balances at
   each month end. Transfers therefore have zero net effect. If any account balance
   is unavailable for a month, the complete net-worth point is unavailable too.
@@ -259,8 +269,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   match links and clears the existing transaction in that same batch. Possible
   or ambiguous duplicates require an explicit checkbox; invalid or archived
   references are never silently substituted.
-- Full-ledger backups cover accounts, categories, recurring rules, transactions,
-  account transfers, and import tombstones. A SHA-256 checksum detects modification, and a monotonic
+- Full-ledger backups cover accounts, categories, the emergency-fund checkpoint,
+  recurring rules, transactions, account transfers, and import tombstones. A
+  SHA-256 checksum detects modification, and a monotonic
   ledger revision rejects restore previews that became stale before commit.
 
 ## Architecture
@@ -332,10 +343,11 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 ## Ledger backup and restore
 
 Settings can download one versioned JSON file containing every account, category,
-recurring rule (including soft-deleted rule history), transaction, account transfer, and import
-tombstone. AI provider credentials, pasted bank text, language preferences, update
-preferences, saved transaction views, remembered bank CSV layouts, and screen
-privacy state are intentionally excluded.
+optional emergency-fund checkpoint, recurring rule (including soft-deleted rule
+history), transaction, account transfer, and import tombstone. AI provider
+credentials, pasted bank text, language preferences, update preferences, saved
+transaction views, remembered bank CSV layouts, and screen privacy state are
+intentionally excluded.
 
 The JSON file is plaintext financial data. Store it only in encrypted storage and
 do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
@@ -351,15 +363,18 @@ Restore is preview-first:
 1. Choose a HushLedger JSON backup of at most 7 MiB.
 2. HushLedger validates the format and schema version, checksum, unique keys,
    account/category references, recurring provenance, and active reference minimums.
-3. Review the current-versus-backup row counts for all six tables.
+3. Review the current-versus-backup row counts for all seven tables.
 4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
 5. HushLedger rechecks the live ledger revision and replaces every table in one D1
    transaction. A stale preview or any constraint failure writes nothing.
 
-The in-app format is for practical personal-ledger portability and restores only
-the schema version supported by the running build. For a backup larger than 7 MiB,
-long-term disaster recovery, or a database-level archive, use the encrypted Wrangler
-D1 export, restore, and recovery process in
+The in-app format is for practical personal-ledger portability. The running build
+writes schema 13 and accepts schemas 8 through 13. Schema 8 through schema 12
+backups upgrade without inventing an emergency-fund checkpoint; their existing
+version-specific defaults for clearing state, monthly plans, transfers, and opening
+balances still apply. For a backup larger than 7 MiB, long-term disaster recovery,
+or a database-level archive, use the encrypted Wrangler D1 export, restore, and
+recovery process in
 [the advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery).
 
 ## Local development
@@ -486,12 +501,13 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete six-table JSON ledger, upgrades
-schema-11 backups with no invented opening balances, schema-10 backups with no invented transfers, schema-9 backups with neither
-invented transfers nor category plans, and schema-8 backups with cleared legacy
-history, rejects a modified checksum and a
-stale preview, and proves that the final re-export exactly matches the pre-restore
-data.
+The same gate exports and restores a complete seven-table schema-13 JSON ledger
+and verifies schema-8 through schema-12 compatibility. Those backups never invent
+an emergency-fund checkpoint; schema-11 and older backups also receive no invented
+opening balance, schema-10 and older backups receive no invented transfer,
+schema-9 and older backups receive no invented category plan, and schema-8 history
+upgrades as cleared. The gate rejects a modified checksum and a stale preview, and
+proves that the final re-export exactly matches the pre-restore data.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -515,6 +531,7 @@ npm run types:worker
 | `0010_category_monthly_plans.sql` | Adds optional positive monthly spending plans to expense categories without implying reserved cash or rollover. |
 | `0011_account_transfers.sql` | Adds atomic account-to-account transfers with independent source and destination posting states and backup revision triggers. |
 | `0012_account_opening_balances.sql` | Adds optional signed, dated account opening balances with database guards requiring the amount and date together. |
+| `0013_emergency_fund_goal.sql` | Adds one optional account-backed emergency-fund checkpoint and ledger-revision triggers without reserving or moving money. |
 
 Apply migrations locally:
 
@@ -537,6 +554,9 @@ GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
 GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)
 GET    /api/reports/net-worth?month=YYYY-MM  (six complete-or-unavailable month-end net-worth points)
+GET    /api/emergency-fund-goal  (the optional account-backed checkpoint, or null)
+PUT    /api/emergency-fund-goal  (create or conflict-safe update)
+DELETE /api/emergency-fund-goal  (conflict-safe removal)
 POST   /api/accounts
 PATCH  /api/accounts  (reorder one complete active/inactive group)
 GET    /api/accounts/:id

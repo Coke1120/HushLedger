@@ -64,6 +64,7 @@ type LedgerRestoreChunks = {
   recurringRules: string[]
   transactions: string[]
   accountTransfers: string[]
+  emergencyFundGoals: string[]
   transactionImportKeys: string[]
 }
 
@@ -166,6 +167,17 @@ const accountTransferQuery = `
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM account_transfers
+  ORDER BY id ASC
+`
+
+const emergencyFundGoalQuery = `
+  SELECT
+    id,
+    account_id AS accountId,
+    target_minor AS targetMinor,
+    created_at AS createdAt,
+    updated_at AS updatedAt
+  FROM emergency_fund_goals
   ORDER BY id ASC
 `
 
@@ -300,6 +312,17 @@ const accountTransferInsert = `
   FROM json_each(?)
 `
 
+const emergencyFundGoalInsert = `
+  INSERT INTO emergency_fund_goals(id, account_id, target_minor, created_at, updated_at)
+  SELECT
+    json_extract(value, '$.id'),
+    json_extract(value, '$.accountId'),
+    json_extract(value, '$.targetMinor'),
+    json_extract(value, '$.createdAt'),
+    json_extract(value, '$.updatedAt')
+  FROM json_each(?)
+`
+
 const importKeyInsert = `
   INSERT INTO transaction_import_keys(import_key, transaction_id, imported_at)
   SELECT
@@ -316,6 +339,7 @@ const countQuery = `
     (SELECT COUNT(*) FROM recurring_rules) AS recurringRules,
     (SELECT COUNT(*) FROM transactions) AS transactions,
     (SELECT COUNT(*) FROM account_transfers) AS accountTransfers,
+    (SELECT COUNT(*) FROM emergency_fund_goals) AS emergencyFundGoals,
     (SELECT COUNT(*) FROM transaction_import_keys) AS transactionImportKeys
 `
 
@@ -335,6 +359,7 @@ const countGuardQuery = `
     OR recurringRules <> ?
     OR transactions <> ?
     OR accountTransfers <> ?
+    OR emergencyFundGoals <> ?
     OR transactionImportKeys <> ?
 `
 
@@ -469,22 +494,33 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
     recurringRules: chunkRows(data.recurringRules),
     transactions: chunkRows(data.transactions),
     accountTransfers: chunkRows(data.accountTransfers),
+    emergencyFundGoals: chunkRows(data.emergencyFundGoals),
     transactionImportKeys: chunkRows(data.transactionImportKeys),
   }
 }
 
 export function countRestoreStatements(chunks: LedgerRestoreChunks) {
-  return 9 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
+  return 10 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
 }
 
 async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot> {
-  const [accounts, categories, recurringRules, transactions, accountTransfers, importKeys, revision] =
+  const [
+    accounts,
+    categories,
+    recurringRules,
+    transactions,
+    accountTransfers,
+    emergencyFundGoals,
+    importKeys,
+    revision,
+  ] =
     await database.batch([
       database.prepare(accountQuery),
       database.prepare(categoryQuery),
       database.prepare(recurringRuleQuery),
       database.prepare(transactionQuery),
       database.prepare(accountTransferQuery),
+      database.prepare(emergencyFundGoalQuery),
       database.prepare(importKeyQuery),
       database.prepare(revisionQuery),
     ])
@@ -514,6 +550,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       fromCleared: row.fromCleared === 1,
       toCleared: row.toCleared === 1,
     })),
+    emergencyFundGoals: emergencyFundGoals.results,
     transactionImportKeys: importKeys.results,
   })
 
@@ -576,11 +613,13 @@ function buildRestoreStatements(
     database.prepare('DELETE FROM transactions'),
     database.prepare('DELETE FROM account_transfers'),
     database.prepare('DELETE FROM recurring_rules'),
+    database.prepare('DELETE FROM emergency_fund_goals'),
     database.prepare('DELETE FROM categories'),
     database.prepare('DELETE FROM accounts'),
   ]
 
   appendChunkStatements(statements, database, accountInsert, chunks.accounts)
+  appendChunkStatements(statements, database, emergencyFundGoalInsert, chunks.emergencyFundGoals)
   appendChunkStatements(statements, database, categoryInsert, chunks.categories)
   appendChunkStatements(statements, database, recurringRuleInsert, chunks.recurringRules)
   appendChunkStatements(statements, database, transactionInsert, chunks.transactions)
@@ -592,6 +631,7 @@ function buildRestoreStatements(
     expectedCounts.recurringRules,
     expectedCounts.transactions,
     expectedCounts.accountTransfers,
+    expectedCounts.emergencyFundGoals,
     expectedCounts.transactionImportKeys,
   ))
   statements.push(database.prepare(countQuery))
@@ -614,6 +654,7 @@ function sameCounts(left: LedgerTableCounts, right: LedgerTableCounts) {
     left.recurringRules === right.recurringRules &&
     left.transactions === right.transactions &&
     left.accountTransfers === right.accountTransfers &&
+    left.emergencyFundGoals === right.emergencyFundGoals &&
     left.transactionImportKeys === right.transactionImportKeys
   )
 }

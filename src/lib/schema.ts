@@ -309,12 +309,26 @@ export const referenceOrderSchema = z
     }
   })
 
+const emergencyFundGoalVersionSchema = z.string().datetime({ offset: true })
+export const emergencyFundGoalSaveSchema = z
+  .object({
+    accountId: z.number().int().positive(),
+    targetMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    expectedUpdatedAt: emergencyFundGoalVersionSchema.nullable(),
+  })
+  .strict()
+export const emergencyFundGoalDeleteSchema = z
+  .object({ expectedUpdatedAt: emergencyFundGoalVersionSchema })
+  .strict()
+
 export type AccountCreateInput = z.infer<typeof accountCreateSchema>
 export type AccountUpdateInput = z.infer<typeof accountUpdateSchema>
 export type CategoryCreateInput = z.infer<typeof categoryCreateSchema>
 export type CategoryUpdateInput = z.infer<typeof categoryUpdateSchema>
 export type ReferenceStatusInput = z.infer<typeof referenceStatusSchema>
 export type ReferenceOrderInput = z.infer<typeof referenceOrderSchema>
+export type EmergencyFundGoalSaveInput = z.infer<typeof emergencyFundGoalSaveSchema>
+export type EmergencyFundGoalDeleteInput = z.infer<typeof emergencyFundGoalDeleteSchema>
 
 export const accountLocalizationKeys = [
   'account.cash',
@@ -524,6 +538,13 @@ export type AccountBalance = {
   recordedBalance: number | null
   clearedBalance: number | null
   unclearedBalance: number | null
+}
+
+export type EmergencyFundGoal = {
+  accountId: number
+  targetMinor: number
+  createdAt: string
+  updatedAt: string
 }
 
 export type AccountRegisterEntry = {

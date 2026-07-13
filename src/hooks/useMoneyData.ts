@@ -32,6 +32,7 @@ import type {
   AccountTransfer,
   AccountTransferInput,
   Category,
+  EmergencyFundGoal,
   NetWorthTrendPoint,
   Summary,
   Transaction,
@@ -47,6 +48,7 @@ import { actionData } from './actionResult'
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 
 type Snapshot = {
+  reportMonth: string
   transactions: Transaction[]
   accountTransfers: AccountTransfer[]
   accountBalances: AccountBalance[]
@@ -56,6 +58,7 @@ type Snapshot = {
   summary: Summary
   accounts: Account[]
   categories: Category[]
+  emergencyFundGoal: EmergencyFundGoal | null
 }
 
 function demoSnapshot(
@@ -74,6 +77,7 @@ function demoSnapshot(
   dateTo: string,
 ): Snapshot {
   return {
+    reportMonth: month,
     transactions: getDemoTransactions(
       month, type, search, undefined, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
       dateFrom, dateTo, payee,
@@ -100,6 +104,7 @@ function demoSnapshot(
     summary: demoSummary(month),
     accounts: demoAccounts,
     categories: demoCategories,
+    emergencyFundGoal: null,
   }
 }
 
@@ -155,7 +160,18 @@ export function useMoneyData(
     const transferQuery = new URLSearchParams({ month })
     if (effectiveAccountId !== null) transferQuery.set('accountId', String(effectiveAccountId))
 
-    const [transactions, accountTransfers, accountBalances, accountRegister, netWorthTrend, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
+    const [
+      transactions,
+      accountTransfers,
+      accountBalances,
+      accountRegister,
+      netWorthTrend,
+      transactionFilterSummary,
+      summary,
+      accounts,
+      categories,
+      emergencyFundGoal,
+    ] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
       api<AccountTransfer[]>(`/api/transfers?${transferQuery}`),
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
@@ -167,8 +183,21 @@ export function useMoneyData(
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
+      api<EmergencyFundGoal | null>('/api/emergency-fund-goal'),
     ])
-    return { transactions, accountTransfers, accountBalances, accountRegister, netWorthTrend, transactionFilterSummary, summary, accounts, categories }
+    return {
+      reportMonth: month,
+      transactions,
+      accountTransfers,
+      accountBalances,
+      accountRegister,
+      netWorthTrend,
+      transactionFilterSummary,
+      summary,
+      accounts,
+      categories,
+      emergencyFundGoal,
+    }
   }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
   const refresh = useCallback(

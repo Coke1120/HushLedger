@@ -6,6 +6,7 @@ import {
   formatSignedAmountInput,
   parseAmount,
   parseSignedAmount,
+  resolveAmountInputLocale,
 } from './money'
 
 describe('HKD money helpers', () => {
@@ -29,6 +30,13 @@ describe('HKD money helpers', () => {
 
   it('accepts a decimal comma for French input', () => {
     assert.equal(parseAmount('123,45', 'fr'), 12_345)
+  })
+
+  it('preserves only an established French decimal convention across locale changes', () => {
+    assert.equal(resolveAmountInputLocale('123,46', 'en', 'fr'), 'fr')
+    assert.equal(resolveAmountInputLocale('123,46', 'fr', 'en'), 'fr')
+    assert.equal(resolveAmountInputLocale('123,46', 'en', 'en'), 'en')
+    assert.equal(resolveAmountInputLocale('123.46', 'en', 'fr'), 'en')
   })
 
   for (const [expression, expected] of [

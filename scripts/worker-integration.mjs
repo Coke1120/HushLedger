@@ -247,7 +247,12 @@ async function verifyUpgradeMigration() {
      SELECT name, localization_key AS localizationKey, monthly_plan_minor AS monthlyPlanMinor FROM categories WHERE name IN ('生活','Integration custom category') ORDER BY name;
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
-     SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'account_transfers';
+     SELECT name FROM sqlite_master
+     WHERE type = 'table' AND name IN ('account_transfers', 'emergency_fund_goals')
+     ORDER BY name;
+     SELECT COUNT(*) AS emergencyFundRevisionTriggers
+     FROM sqlite_master
+     WHERE type = 'trigger' AND name LIKE 'ledger_revision_emergency_fund_goals_%';
      PRAGMA foreign_key_check;`,
     '--json',
   ])
@@ -265,8 +270,12 @@ async function verifyUpgradeMigration() {
   ])
   assert.equal(statements[3].results[0].importKeys, 0)
   assert.equal(statements[4].results[0].revision, 1)
-  assert.deepEqual(statements[5].results, [{ name: 'account_transfers' }])
-  assert.deepEqual(statements[6].results, [])
+  assert.deepEqual(statements[5].results, [
+    { name: 'account_transfers' },
+    { name: 'emergency_fund_goals' },
+  ])
+  assert.equal(statements[6].results[0].emergencyFundRevisionTriggers, 3)
+  assert.deepEqual(statements[7].results, [])
 }
 
 async function seedCsvExportRows() {
@@ -750,6 +759,35 @@ async function verifyWorkerApi() {
   })
   assert.equal(disabledAccount.response.status, 200)
   assert.equal(disabledAccount.payload.data.isActive, false)
+
+  const initialEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal')
+  assert.equal(initialEmergencyFundGoal.response.status, 200)
+  assert.match(initialEmergencyFundGoal.response.headers.get('cache-control') ?? '', /no-store/)
+  assert.equal(initialEmergencyFundGoal.payload.data, null)
+
+  const crossOriginEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    origin: 'https://attacker.invalid',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(crossOriginEmergencyFundGoal.response.status, 403)
+  assert.equal(crossOriginEmergencyFundGoal.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const inactiveEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(inactiveEmergencyFundGoal.response.status, 400)
+  assert.equal(inactiveEmergencyFundGoal.payload.error.code, 'EMERGENCY_FUND_ACCOUNT_INVALID')
+
   const enabledAccount = await api(baseUrl, `/api/accounts/${createdAccount.payload.data.id}`, {
     method: 'PATCH',
     body: { isActive: true, updatedAt: disabledAccount.payload.data.updatedAt },
@@ -779,6 +817,170 @@ async function verifyWorkerApi() {
     })
     assert.equal(reenabled.response.status, 200)
   }
+
+  const missingEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: { accountId: 999_999, targetMinor: 500_000, expectedUpdatedAt: null },
+  })
+  assert.equal(missingEmergencyFundGoal.response.status, 400)
+  assert.equal(missingEmergencyFundGoal.payload.error.code, 'EMERGENCY_FUND_ACCOUNT_INVALID')
+
+  const creditCardAccount = accountsResult.payload.data.find(({ type }) => type === 'credit_card')
+  assert(creditCardAccount)
+  const emergencyFundBackupAccount = accountsResult.payload.data.find(
+    ({ id, type }) => id !== createdAccount.payload.data.id && type !== 'credit_card',
+  )
+  assert(emergencyFundBackupAccount)
+  const creditEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: creditCardAccount.id,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(creditEmergencyFundGoal.response.status, 400)
+  assert.equal(creditEmergencyFundGoal.payload.error.code, 'EMERGENCY_FUND_ACCOUNT_INVALID')
+
+  const createdEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 500_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(createdEmergencyFundGoal.response.status, 201)
+  assert.equal(createdEmergencyFundGoal.payload.data.accountId, createdAccount.payload.data.id)
+  assert.equal(createdEmergencyFundGoal.payload.data.targetMinor, 500_000)
+  assert.match(createdEmergencyFundGoal.payload.data.createdAt, /Z$/)
+  assert.match(createdEmergencyFundGoal.payload.data.updatedAt, /Z$/)
+
+  const conflictingEmergencyFundCreate = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 600_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(conflictingEmergencyFundCreate.response.status, 409)
+  assert.equal(conflictingEmergencyFundCreate.payload.error.code, 'EMERGENCY_FUND_GOAL_VERSION_CONFLICT')
+
+  const updatedEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 750_000,
+      expectedUpdatedAt: createdEmergencyFundGoal.payload.data.updatedAt,
+    },
+  })
+  assert.equal(updatedEmergencyFundGoal.response.status, 200)
+  assert.equal(updatedEmergencyFundGoal.payload.data.targetMinor, 750_000)
+  assert.notEqual(
+    updatedEmergencyFundGoal.payload.data.updatedAt,
+    createdEmergencyFundGoal.payload.data.updatedAt,
+  )
+
+  const staleEmergencyFundUpdate = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: createdAccount.payload.data.id,
+      targetMinor: 800_000,
+      expectedUpdatedAt: createdEmergencyFundGoal.payload.data.updatedAt,
+    },
+  })
+  assert.equal(staleEmergencyFundUpdate.response.status, 409)
+  assert.equal(staleEmergencyFundUpdate.payload.error.code, 'EMERGENCY_FUND_GOAL_VERSION_CONFLICT')
+  const goalAfterStaleUpdate = await api(baseUrl, '/api/emergency-fund-goal')
+  assert.equal(goalAfterStaleUpdate.payload.data.targetMinor, 750_000)
+
+  const guardedGoalAccountDisable = await api(
+    baseUrl,
+    `/api/accounts/${createdAccount.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: enabledAccount.payload.data.updatedAt },
+    },
+  )
+  assert.equal(guardedGoalAccountDisable.response.status, 409)
+  assert.equal(guardedGoalAccountDisable.payload.error.code, 'REFERENCE_EMERGENCY_FUND_GOAL')
+
+  const guardedGoalAccountType = await api(
+    baseUrl,
+    `/api/accounts/${createdAccount.payload.data.id}`,
+    {
+      method: 'PUT',
+      body: {
+        name: enabledAccount.payload.data.name,
+        type: 'credit_card',
+        openingBalanceMinor: enabledAccount.payload.data.openingBalanceMinor,
+        openingBalanceOn: enabledAccount.payload.data.openingBalanceOn,
+        updatedAt: enabledAccount.payload.data.updatedAt,
+      },
+    },
+  )
+  assert.equal(guardedGoalAccountType.response.status, 409)
+  assert.equal(guardedGoalAccountType.payload.error.code, 'REFERENCE_EMERGENCY_FUND_GOAL')
+  const goalAccountAfterGuards = await api(
+    baseUrl,
+    `/api/accounts/${createdAccount.payload.data.id}`,
+  )
+  assert.equal(goalAccountAfterGuards.payload.data.isActive, true)
+  assert.equal(goalAccountAfterGuards.payload.data.type, 'wallet')
+  assert.equal(goalAccountAfterGuards.payload.data.updatedAt, enabledAccount.payload.data.updatedAt)
+
+  const staleEmergencyFundDelete = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: createdEmergencyFundGoal.payload.data.updatedAt },
+  })
+  assert.equal(staleEmergencyFundDelete.response.status, 409)
+  assert.equal(staleEmergencyFundDelete.payload.error.code, 'EMERGENCY_FUND_GOAL_VERSION_CONFLICT')
+
+  const deletedEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: updatedEmergencyFundGoal.payload.data.updatedAt },
+  })
+  assert.equal(deletedEmergencyFundGoal.response.status, 200)
+  assert.deepEqual(deletedEmergencyFundGoal.payload.data, { deleted: true })
+  const missingEmergencyFundDelete = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: updatedEmergencyFundGoal.payload.data.updatedAt },
+  })
+  assert.equal(missingEmergencyFundDelete.response.status, 404)
+  assert.equal(missingEmergencyFundDelete.payload.error.code, 'EMERGENCY_FUND_GOAL_NOT_FOUND')
+  assert.equal((await api(baseUrl, '/api/emergency-fund-goal')).payload.data, null)
+
+  const releasedGoalAccount = await api(
+    baseUrl,
+    `/api/accounts/${createdAccount.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: goalAccountAfterGuards.payload.data.updatedAt },
+    },
+  )
+  assert.equal(releasedGoalAccount.response.status, 200)
+  assert.equal(releasedGoalAccount.payload.data.isActive, false)
+  const restoredGoalAccount = await api(
+    baseUrl,
+    `/api/accounts/${createdAccount.payload.data.id}`,
+    {
+      method: 'PATCH',
+      body: { isActive: true, updatedAt: releasedGoalAccount.payload.data.updatedAt },
+    },
+  )
+  assert.equal(restoredGoalAccount.response.status, 200)
+  assert.equal(restoredGoalAccount.payload.data.isActive, true)
+
+  const emergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: emergencyFundBackupAccount.id,
+      targetMinor: 900_000,
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(emergencyFundGoal.response.status, 201)
 
   const createdCategory = await api(baseUrl, '/api/categories', {
     method: 'POST',
@@ -2526,7 +2728,7 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 12)
+  assert.equal(backup.schemaVersion, 13)
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
@@ -2544,6 +2746,17 @@ async function verifyWorkerApi() {
   assert.equal(backup.data.accountTransfers[0].id, transferBody.id)
   assert.equal(backup.data.accountTransfers[0].fromCleared, true)
   assert.equal(backup.data.accountTransfers[0].toCleared, true)
+  assert.equal(backup.data.emergencyFundGoals.length, 1)
+  assert.equal(backup.data.emergencyFundGoals[0].id, 1)
+  assert.equal(
+    backup.data.emergencyFundGoals[0].accountId,
+    emergencyFundGoal.payload.data.accountId,
+  )
+  assert.equal(backup.data.emergencyFundGoals[0].targetMinor, 900_000)
+  assert.equal(
+    backup.data.emergencyFundGoals[0].updatedAt,
+    emergencyFundGoal.payload.data.updatedAt,
+  )
   assert(backup.data.transactionImportKeys.length > 0)
 
   const crossOriginRestorePreview = await api(baseUrl, '/api/backups/ledger', {
@@ -2570,7 +2783,46 @@ async function verifyWorkerApi() {
   assert.equal(originalPreview.response.status, 200, JSON.stringify(originalPreview.payload))
   assert.equal(originalPreview.payload.data.backupCounts.transactions, backup.data.transactions.length)
   assert.equal(originalPreview.payload.data.backupCounts.accountTransfers, 1)
+  assert.equal(originalPreview.payload.data.backupCounts.emergencyFundGoals, 1)
   assert.equal(originalPreview.payload.data.currentDigest, originalPreview.payload.data.backupDigest)
+
+  const changedEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal', {
+    method: 'PUT',
+    body: {
+      accountId: emergencyFundGoal.payload.data.accountId,
+      targetMinor: 910_000,
+      expectedUpdatedAt: emergencyFundGoal.payload.data.updatedAt,
+    },
+  })
+  assert.equal(changedEmergencyFundGoal.response.status, 200)
+
+  const staleGoalRestore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup,
+      expectedCurrentDigest: originalPreview.payload.data.currentDigest,
+      expectedRevision: originalPreview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(staleGoalRestore.response.status, 409)
+  assert.equal(staleGoalRestore.payload.error.code, 'BACKUP_PREVIEW_STALE')
+  assert.equal((await api(baseUrl, '/api/emergency-fund-goal')).payload.data.targetMinor, 910_000)
+
+  const goalMutationPreview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup },
+  })
+  assert.equal(goalMutationPreview.response.status, 200)
+  assert(
+    goalMutationPreview.payload.data.currentRevision
+      > originalPreview.payload.data.currentRevision,
+  )
+  assert.notEqual(
+    goalMutationPreview.payload.data.currentDigest,
+    goalMutationPreview.payload.data.backupDigest,
+  )
 
   const restoreSentinelId = '50000000-0000-4000-8000-000000000001'
   const restoreSentinel = await api(baseUrl, '/api/transactions', {
@@ -2594,8 +2846,8 @@ async function verifyWorkerApi() {
     body: {
       mode: 'commit',
       backup,
-      expectedCurrentDigest: originalPreview.payload.data.currentDigest,
-      expectedRevision: originalPreview.payload.data.currentRevision,
+      expectedCurrentDigest: goalMutationPreview.payload.data.currentDigest,
+      expectedRevision: goalMutationPreview.payload.data.currentRevision,
       confirmation: 'RESTORE',
     },
   })
@@ -2608,7 +2860,10 @@ async function verifyWorkerApi() {
     body: { mode: 'preview', backup },
   })
   assert.equal(replacementPreview.response.status, 200)
-  assert(replacementPreview.payload.data.currentRevision > originalPreview.payload.data.currentRevision)
+  assert(
+    replacementPreview.payload.data.currentRevision
+      > goalMutationPreview.payload.data.currentRevision,
+  )
   assert.equal(
     replacementPreview.payload.data.currentCounts.transactions,
     replacementPreview.payload.data.backupCounts.transactions + 1,
@@ -2627,12 +2882,41 @@ async function verifyWorkerApi() {
   assert.equal(restored.response.status, 200, JSON.stringify(restored.payload))
   assert.deepEqual(restored.payload.data.counts, replacementPreview.payload.data.backupCounts)
   assert.equal((await api(baseUrl, `/api/transactions/${restoreSentinelId}`)).response.status, 404)
+  const restoredEmergencyFundGoal = await api(baseUrl, '/api/emergency-fund-goal')
+  const { id: restoredGoalId, ...expectedRestoredEmergencyFundGoal } = backup.data.emergencyFundGoals[0]
+  assert.equal(restoredGoalId, 1)
+  assert.deepEqual(restoredEmergencyFundGoal.payload.data, expectedRestoredEmergencyFundGoal)
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
+
+  const schema12Backup = structuredClone(backup)
+  schema12Backup.schemaVersion = 12
+  delete schema12Backup.data.emergencyFundGoals
+  schema12Backup.checksum.digest = backupChecksum(schema12Backup)
+  const schema12Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema12Backup },
+  })
+  assert.equal(schema12Preview.response.status, 200, JSON.stringify(schema12Preview.payload))
+  assert.equal(schema12Preview.payload.data.backupCounts.emergencyFundGoals, 0)
+  const schema12Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema12Backup,
+      expectedCurrentDigest: schema12Preview.payload.data.currentDigest,
+      expectedRevision: schema12Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema12Restore.response.status, 200, JSON.stringify(schema12Restore.payload))
+  const upgradedSchema12Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.deepEqual(upgradedSchema12Backup.payload.data.emergencyFundGoals, [])
 
   const schema11Backup = structuredClone(backup)
   schema11Backup.schemaVersion = 11
   schema11Backup.data.accounts = withoutAccountOpeningBalances(schema11Backup.data.accounts)
+  delete schema11Backup.data.emergencyFundGoals
   schema11Backup.checksum.digest = backupChecksum(schema11Backup)
   const schema11Preview = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -2640,6 +2924,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema11Preview.response.status, 200, JSON.stringify(schema11Preview.payload))
   assert.equal(schema11Preview.payload.data.backupCounts.accountTransfers, 1)
+  assert.equal(schema11Preview.payload.data.backupCounts.emergencyFundGoals, 0)
   const schema11Restore = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
     body: {
@@ -2653,6 +2938,7 @@ async function verifyWorkerApi() {
   assert.equal(schema11Restore.response.status, 200, JSON.stringify(schema11Restore.payload))
   const upgradedSchema11Backup = await api(baseUrl, '/api/backups/ledger')
   assert.equal(upgradedSchema11Backup.payload.data.accountTransfers.length, 1)
+  assert.deepEqual(upgradedSchema11Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema11Backup.payload.data.accounts.every(({
     openingBalanceMinor,
     openingBalanceOn,
@@ -2662,6 +2948,7 @@ async function verifyWorkerApi() {
   schema10Backup.schemaVersion = 10
   schema10Backup.data.accounts = withoutAccountOpeningBalances(schema10Backup.data.accounts)
   delete schema10Backup.data.accountTransfers
+  delete schema10Backup.data.emergencyFundGoals
   schema10Backup.checksum.digest = backupChecksum(schema10Backup)
   const schema10Preview = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -2669,6 +2956,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema10Preview.response.status, 200, JSON.stringify(schema10Preview.payload))
   assert.equal(schema10Preview.payload.data.backupCounts.accountTransfers, 0)
+  assert.equal(schema10Preview.payload.data.backupCounts.emergencyFundGoals, 0)
   const schema10Restore = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
     body: {
@@ -2682,6 +2970,7 @@ async function verifyWorkerApi() {
   assert.equal(schema10Restore.response.status, 200, JSON.stringify(schema10Restore.payload))
   const upgradedSchema10Backup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(upgradedSchema10Backup.payload.data.accountTransfers, [])
+  assert.deepEqual(upgradedSchema10Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema10Backup.payload.data.categories.some(
     ({ monthlyPlanMinor }) => monthlyPlanMinor !== null,
   ))
@@ -2690,6 +2979,7 @@ async function verifyWorkerApi() {
   schema9Backup.schemaVersion = 9
   schema9Backup.data.accounts = withoutAccountOpeningBalances(schema9Backup.data.accounts)
   delete schema9Backup.data.accountTransfers
+  delete schema9Backup.data.emergencyFundGoals
   schema9Backup.data.categories = schema9Backup.data.categories.map(({
     monthlyPlanMinor,
     ...category
@@ -2703,6 +2993,7 @@ async function verifyWorkerApi() {
     body: { mode: 'preview', backup: schema9Backup },
   })
   assert.equal(schema9Preview.response.status, 200, JSON.stringify(schema9Preview.payload))
+  assert.equal(schema9Preview.payload.data.backupCounts.emergencyFundGoals, 0)
   const schema9Restore = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
     body: {
@@ -2715,6 +3006,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema9Restore.response.status, 200, JSON.stringify(schema9Restore.payload))
   const upgradedSchema9Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.deepEqual(upgradedSchema9Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema9Backup.payload.data.categories.every(
     ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
   ))
@@ -2724,6 +3016,7 @@ async function verifyWorkerApi() {
   schema8Backup.schemaVersion = 8
   schema8Backup.data.accounts = withoutAccountOpeningBalances(schema8Backup.data.accounts)
   delete schema8Backup.data.accountTransfers
+  delete schema8Backup.data.emergencyFundGoals
   schema8Backup.data.categories = schema8Backup.data.categories.map(({
     monthlyPlanMinor,
     ...category
@@ -2741,6 +3034,7 @@ async function verifyWorkerApi() {
     body: { mode: 'preview', backup: schema8Backup },
   })
   assert.equal(schema8Preview.response.status, 200, JSON.stringify(schema8Preview.payload))
+  assert.equal(schema8Preview.payload.data.backupCounts.emergencyFundGoals, 0)
   assert.notEqual(schema8Preview.payload.data.backupDigest, schema8Preview.payload.data.currentDigest)
   const schema8Restore = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -2754,6 +3048,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema8Restore.response.status, 200, JSON.stringify(schema8Restore.payload))
   const upgradedSchema8Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.deepEqual(upgradedSchema8Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema8Backup.payload.data.categories.every(
     ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
   ))
@@ -2791,6 +3086,10 @@ async function verifyWorkerApi() {
     referenceConflictChecks: 4,
     referenceOrderWrites: 2,
     referenceOrderGuards: 3,
+    emergencyFundGoalWrites: 5,
+    emergencyFundGoalGuards: 10,
+    emergencyFundGoalAccountReleases: 1,
+    emergencyFundGoalBackupRestores: 1,
     csvImportPreviewStatuses: 5,
     csvImportWrites: 2,
     csvImportMatches: 1,
@@ -2806,12 +3105,13 @@ async function verifyWorkerApi() {
     accountRegisterGuards: 4,
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
-    ledgerBackupTables: 6,
+    ledgerBackupTables: 7,
+    ledgerSchema12Restores: 1,
     ledgerSchema11Restores: 1,
     ledgerSchema10Restores: 1,
     ledgerSchema9Restores: 1,
     ledgerSchema8Restores: 1,
-    ledgerRestoreStaleGuards: 1,
+    ledgerRestoreStaleGuards: 2,
     ledgerRestoreTransactions: 1,
   }
 }
@@ -3008,8 +3308,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0012',
-      upgradeMigration: '0004-to-0012-preserved-data-names-clearing-null-plans-transfers-and-openings',
+      freshMigrations: '0001-0013',
+      upgradeMigration: '0004-to-0013-preserved-data-names-clearing-null-plans-transfers-openings-and-emergency-goal',
       ...apiEvidence,
       ...nextAiEvidence,
     }),
