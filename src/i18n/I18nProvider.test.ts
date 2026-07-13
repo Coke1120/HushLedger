@@ -54,8 +54,17 @@ describe('message catalogs', () => {
     assert.equal(translate('fr', 'recurringRuleCount', { count: 1 }), '1 règle')
     assert.equal(translate('fr', 'recurringRuleCount', { count: 0 }), '0 règles')
     assert.equal(
-      translate('en', 'reconciliationReviewHelp', { count: 1 }),
-      '1 uncleared entry is currently shown below. Use its status button to match your statement.',
+      translate('en', 'reconciliationReviewHelp', { count: 1, visible: 1 }),
+      '1 uncleared entry is in the loaded activity. Currently visible loaded entries: 1. Every running balance still includes all activity in the month.',
+    )
+    assert.equal(
+      translate('en', 'reconciliationReviewHelpLimited', {
+        count: 1,
+        loaded: 200,
+        total: 201,
+        visible: 1,
+      }),
+      '1 uncleared entry was found in the newest 200 of 201 entries. Currently visible loaded entries: 1. Older uncleared entries may not be loaded; every running balance still uses the complete month.',
     )
     assert.equal(
       translate('en', 'csvImportSummaryMatchable', { count: 1 }),

@@ -2262,7 +2262,7 @@ textarea:focus-visible {
 }
 
 .account-reconciliation header p,
-.account-reconciliation-review {
+.account-reconciliation-review p {
   margin-top: 5px;
   color: var(--muted);
   font-size: 12px;
@@ -2314,8 +2314,40 @@ textarea:focus-visible {
 }
 
 .account-reconciliation-review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
   padding-top: 11px;
   border-top: 1px solid var(--line);
+}
+
+.account-reconciliation-filter {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 8px 10px;
+  gap: 8px;
+  align-items: center;
+  color: var(--brand-strong);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.account-reconciliation-filter:has(input:focus-visible) {
+  outline: 3px solid rgb(47 126 112 / 28%);
+  outline-offset: 2px;
+}
+
+.account-reconciliation-filter input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--brand);
 }
 
 .account-register-boundary,

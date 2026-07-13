@@ -9,8 +9,9 @@ import {
   ReceiptText,
   Scale,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
+import { visibleAccountRegisterEntries } from '../lib/accountRegister'
 import { parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
 import type {
@@ -55,8 +56,10 @@ export function AccountRegister({
 }: AccountRegisterProps) {
   const { formatDate, formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [reconciling, setReconciling] = useState(reconcileInitially)
+  const [showUnclearedOnly, setShowUnclearedOnly] = useState(reconcileInitially)
   const [statementValue, setStatementValue] = useState('')
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
+  const unclearedFilterRef = useRef<HTMLInputElement>(null)
   const transactionsById = useMemo(
     () => new Map(transactions.map((transaction) => [transaction.id, transaction])),
     [transactions],
@@ -78,6 +81,11 @@ export function AccountRegister({
       return undefined
     }
   }, [clearedBalance, locale, statementValue])
+  const toggleReconciliation = () => {
+    const next = !reconciling
+    setReconciling(next)
+    setShowUnclearedOnly(next)
+  }
 
   if (loading || !register) {
     return (
@@ -94,6 +102,13 @@ export function AccountRegister({
   }
 
   const accountName = localizeEntityName(register.accountName, register.accountLocalizationKey)
+  const reconciliationAvailable = clearedBalance !== null && clearedBalance !== undefined
+  const reconciliationOpen = reconciling && reconciliationAvailable
+  const reconciliationBalance = reconciliationOpen && balance ? balance : null
+  const filterUncleared = reconciliationOpen && showUnclearedOnly
+  const unclearedEntries = visibleAccountRegisterEntries(register.entries, true)
+  const visibleEntries = visibleAccountRegisterEntries(register.entries, filterUncleared)
+  const filteredEmpty = filterUncleared && register.entries.length > 0 && visibleEntries.length === 0
   const setEntryCleared = async (
     entryId: string,
     cleared: boolean,
@@ -103,8 +118,17 @@ export function AccountRegister({
     if (saving || updatingEntryId !== null) return
     setUpdatingEntryId(entryId)
     try {
-      if (transaction) await onSetTransactionCleared(transaction, cleared)
-      else if (transfer) await onSetTransferCleared(transfer, register.accountId, cleared)
+      const updated = transaction
+        ? await onSetTransactionCleared(transaction, cleared)
+        : transfer
+          ? await onSetTransferCleared(transfer, register.accountId, cleared)
+          : false
+      if (updated && cleared) {
+        requestAnimationFrame(() => {
+          const filter = unclearedFilterRef.current
+          if (filter?.checked) filter.focus()
+        })
+      }
     } finally {
       setUpdatingEntryId(null)
     }
@@ -126,13 +150,13 @@ export function AccountRegister({
         <button
           className="button button-secondary account-register-reconcile-toggle"
           type="button"
-          onClick={() => setReconciling((current) => !current)}
+          onClick={toggleReconciliation}
           disabled={balance?.clearedBalance === null || balance?.clearedBalance === undefined}
-          aria-expanded={reconciling}
+          aria-expanded={reconciliationOpen}
           aria-controls="account-reconciliation"
         >
           <Scale aria-hidden="true" />
-          {t(reconciling ? 'closeStatementComparison' : 'compareStatement')}
+          {t(reconciliationOpen ? 'closeStatementComparison' : 'compareStatement')}
         </button>
       </header>
 
@@ -157,7 +181,7 @@ export function AccountRegister({
         </div>
       </dl>
 
-      {reconciling && balance?.clearedBalance !== null && balance?.clearedBalance !== undefined ? (
+      {reconciliationBalance ? (
         <section className="account-reconciliation" id="account-reconciliation" aria-labelledby="account-reconciliation-title">
           <header>
             <div>
@@ -169,15 +193,15 @@ export function AccountRegister({
           <dl className="account-reconciliation-balances">
             <div>
               <dt>{t('recordedBalance')}</dt>
-              <dd>{formatMoney(balance.recordedBalance ?? 0)}</dd>
+              <dd>{formatMoney(reconciliationBalance.recordedBalance ?? 0)}</dd>
             </div>
             <div>
               <dt>{t('clearedBalance')}</dt>
-              <dd>{formatMoney(balance.clearedBalance)}</dd>
+              <dd>{formatMoney(reconciliationBalance.clearedBalance ?? 0)}</dd>
             </div>
             <div>
               <dt>{t('unclearedBalance')}</dt>
-              <dd>{formatMoney(balance.unclearedBalance ?? 0)}</dd>
+              <dd>{formatMoney(reconciliationBalance.unclearedBalance ?? 0)}</dd>
             </div>
           </dl>
           <div className="statement-comparison">
@@ -205,11 +229,32 @@ export function AccountRegister({
               )}
             </div>
           </div>
-          <p className="account-reconciliation-review">
-            {t('reconciliationReviewHelp', {
-              count: register.entries.filter(({ cleared }) => cleared === false).length,
-            })}
-          </p>
+          <div className="account-reconciliation-review">
+            <p id="account-reconciliation-review" aria-live="polite">
+              {t(
+                register.entryCount > register.entries.length
+                  ? 'reconciliationReviewHelpLimited'
+                  : 'reconciliationReviewHelp',
+                {
+                  count: unclearedEntries.length,
+                  loaded: register.entries.length,
+                  total: register.entryCount,
+                  visible: visibleEntries.length,
+                },
+              )}
+            </p>
+            <label className="account-reconciliation-filter">
+              <input
+                ref={unclearedFilterRef}
+                type="checkbox"
+                checked={filterUncleared}
+                aria-controls="account-register-results"
+                aria-describedby="account-reconciliation-review"
+                onChange={(event) => setShowUnclearedOnly(event.target.checked)}
+              />
+              <span>{t('showUnclearedRegisterEntriesOnly')}</span>
+            </label>
+          </div>
         </section>
       ) : null}
 
@@ -219,14 +264,14 @@ export function AccountRegister({
         </p>
       ) : null}
 
-      {register.entries.length === 0 ? (
-        <div className="account-register-empty">
-          <strong>{t('accountRegisterEmpty')}</strong>
-          <span>{t('accountRegisterEmptyHelp')}</span>
+      {visibleEntries.length === 0 ? (
+        <div className="account-register-empty" id="account-register-results">
+          <strong>{t(filteredEmpty ? 'noUnclearedRegisterEntries' : 'accountRegisterEmpty')}</strong>
+          <span>{t(filteredEmpty ? 'noUnclearedRegisterEntriesHelp' : 'accountRegisterEmptyHelp')}</span>
         </div>
       ) : (
-        <ul className="account-register-list" aria-label={t('accountRegisterList')}>
-          {register.entries.map((entry) => {
+        <ul className="account-register-list" id="account-register-results" aria-label={t('accountRegisterList')}>
+          {visibleEntries.map((entry) => {
             const transaction = entry.kind === 'transaction' && entry.sourceId
               ? transactionsById.get(entry.sourceId)
               : undefined

@@ -1,6 +1,15 @@
+import type { AccountRegisterEntry } from './schema'
+
 function safeInteger(value: number, message: string) {
   if (!Number.isSafeInteger(value)) throw new Error(message)
   return value
+}
+
+export function visibleAccountRegisterEntries(
+  entries: readonly AccountRegisterEntry[],
+  unclearedOnly: boolean,
+) {
+  return unclearedOnly ? entries.filter(({ cleared }) => cleared === false) : entries
 }
 
 function safeAdd(left: number, right: number) {

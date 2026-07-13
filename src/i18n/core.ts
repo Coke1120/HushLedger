@@ -56,6 +56,7 @@ const singularMessageKeys: Partial<Record<MessageKey, MessageKey>> = {
   moreMonthlyPlans: 'moreMonthlyPlansOne',
   showMoreScheduledEntries: 'showMoreScheduledEntriesOne',
   reconciliationReviewHelp: 'reconciliationReviewHelpOne',
+  reconciliationReviewHelpLimited: 'reconciliationReviewHelpLimitedOne',
   csvImportSummaryMatchable: 'csvImportSummaryMatchableOne',
 }
 
