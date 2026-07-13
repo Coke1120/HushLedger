@@ -47,6 +47,7 @@ import type {
   TransactionSort,
   TransactionType,
 } from '../lib/schema'
+import { transactionQueryFromFilters } from '../lib/transactionQuery'
 import { actionData } from './actionResult'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
@@ -64,6 +65,11 @@ type Snapshot = {
   categories: Category[]
   emergencyFundGoal: EmergencyFundGoal | null
   ledgerSettings: LedgerCurrencySettings
+}
+
+type TransactionQueryResult = {
+  transactions: Transaction[]
+  summary: TransactionFilterSummary
 }
 
 function demoSnapshot(
@@ -151,46 +157,47 @@ export function useMoneyData(
 
   const fetchSnapshot = useCallback(async (): Promise<Snapshot> => {
     const effectiveAccountId = registerAccountId ?? accountId
-    const query = new URLSearchParams({ month })
-    if (scope !== 'month') query.set('scope', scope)
-    if (scope === 'range') {
-      query.set('dateFrom', dateFrom)
-      query.set('dateTo', dateTo)
-    }
-    if (type !== 'all') query.set('type', type)
-    if (effectiveAccountId !== null) query.set('accountId', String(effectiveAccountId))
-    if (categoryId !== null) query.set('categoryId', String(categoryId))
-    if (payee !== null) query.set('payee', payee)
-    if (search.trim()) query.set('search', search.trim())
-    if (tag) query.set('tag', tag.slice(1))
-    if (status !== 'all') query.set('status', status)
-    if (duplicatesOnly) query.set('duplicates', 'exact')
-    const transactionQuery = new URLSearchParams(query)
-    if (sort !== 'date_desc') transactionQuery.set('sort', sort)
+    const transactionQuery = transactionQueryFromFilters({
+      month,
+      scope,
+      dateFrom,
+      dateTo,
+      type,
+      status,
+      accountId: effectiveAccountId,
+      categoryId,
+      payee,
+      search,
+      tag,
+      duplicatesOnly,
+      sort,
+    })
     const transferQuery = new URLSearchParams({ month })
     if (effectiveAccountId !== null) transferQuery.set('accountId', String(effectiveAccountId))
 
     const [
-      transactions,
+      transactionResult,
       accountTransfers,
       accountBalances,
       accountRegister,
       netWorthTrend,
-      transactionFilterSummary,
       summary,
       accounts,
       categories,
       emergencyFundGoal,
       ledgerSettings,
     ] = await Promise.all([
-      api<Transaction[]>(`/api/transactions?${transactionQuery}`),
+      api<TransactionQueryResult>('/api/transactions/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(transactionQuery),
+      }),
       api<AccountTransfer[]>(`/api/transfers?${transferQuery}`),
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
       registerAccountId === null
         ? Promise.resolve(null)
         : api<AccountRegister>(`/api/accounts/register?month=${encodeURIComponent(month)}&accountId=${registerAccountId}`),
       api<NetWorthTrendPoint[]>(`/api/reports/net-worth?month=${encodeURIComponent(month)}`),
-      api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
@@ -199,12 +206,12 @@ export function useMoneyData(
     ])
     return {
       reportMonth: month,
-      transactions,
+      transactions: transactionResult.transactions,
       accountTransfers,
       accountBalances,
       accountRegister,
       netWorthTrend,
-      transactionFilterSummary,
+      transactionFilterSummary: transactionResult.summary,
       summary,
       accounts,
       categories,

@@ -279,8 +279,9 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
-GET    /api/transactions?month=YYYY-MM&scope=month|all&type=...&status=...&search=...&sort=amount_desc  (ordered 200)
-GET    /api/transactions/summary?month=YYYY-MM&scope=month|all&type=...&status=...&search=...  (uncapped aggregate)
+POST   /api/transactions/query  (primary private body query; ordered 200 plus uncapped aggregate)
+GET    /api/transactions?...  (legacy URL-query compatibility; ordered 200)
+GET    /api/transactions/summary?...  (legacy URL-query compatibility; uncapped aggregate)
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact match count only)
 PATCH  /api/transactions/category  (atomic same-type category update for 1-200 versioned rows)
@@ -293,7 +294,8 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&scope=month|all&type=...&status=...&search=...&sort=amount_desc  (uncapped CSV)
+POST   /api/exports/transactions  (primary private body query; uncapped CSV)
+GET    /api/exports/transactions?...  (legacy URL-query compatibility; uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)

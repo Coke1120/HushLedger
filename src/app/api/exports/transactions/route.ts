@@ -4,16 +4,18 @@ import { getDatabase } from '../../../../server/db'
 import {
   apiNotFound,
   apiRoute,
+  guardMutationRequest,
   jsonError,
   queryObject,
+  readApiJson,
   sanitizeValidationIssues,
 } from '../../../../server/http'
 import { listTransactionsForExport } from '../../../../server/money'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = apiRoute(async (request) => {
-  const parsed = transactionQuerySchema.safeParse(queryObject(request))
+async function exportTransactions(input: unknown) {
+  const parsed = transactionQuerySchema.safeParse(input)
   if (!parsed.success) {
     return jsonError(
       400,
@@ -38,10 +40,20 @@ export const GET = apiRoute(async (request) => {
       'X-Content-Type-Options': 'nosniff',
     },
   })
+}
+
+export const GET = apiRoute(async (request) => exportTransactions(queryObject(request)))
+
+export const POST = apiRoute(async (request) => {
+  const guarded = guardMutationRequest(request)
+  if (guarded) return guarded
+
+  const body = await readApiJson(request)
+  if (!body.ok) return body.response
+  return exportTransactions(body.data)
 })
 
 export const HEAD = apiNotFound
-export const POST = apiNotFound
 export const PUT = apiNotFound
 export const PATCH = apiNotFound
 export const DELETE = apiNotFound

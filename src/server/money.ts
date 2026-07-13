@@ -25,10 +25,9 @@ import type {
   Transaction,
   TransactionCategoryBatchInput,
   TransactionClearingBatchInput,
-  TransactionClearingStatus,
-  TransactionDateScope,
   TransactionFilterSummary,
   TransactionInput,
+  TransactionQuery,
   TransactionSort,
   TransactionUpdateInput,
   TransactionType,
@@ -80,22 +79,6 @@ export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRu
   recurringRuleId: string | null
   recurringRuleName: string | null
   recurrenceDueOn: string | null
-}
-
-export type TransactionQuery = {
-  month: string
-  scope: TransactionDateScope
-  dateFrom?: string
-  dateTo?: string
-  type?: TransactionType
-  accountId?: number
-  categoryId?: number
-  payee?: string
-  search?: string
-  tag?: string
-  status?: TransactionClearingStatus
-  duplicates?: 'exact'
-  sort?: TransactionSort
 }
 
 export type CreateTransactionResult =

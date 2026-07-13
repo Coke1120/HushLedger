@@ -1,5 +1,5 @@
 import { AlertTriangle, Download, FileUp, Search, Sparkles, X } from 'lucide-react'
-import type { RefObject } from 'react'
+import { useState, type RefObject } from 'react'
 import { useI18n } from '../i18n'
 import type {
   Account,
@@ -9,9 +9,11 @@ import type {
   TransactionSort,
   TransactionType,
 } from '../lib/schema'
+import { transactionQueryFromFilters } from '../lib/transactionQuery'
 
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
+type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
 
 type TransactionToolbarProps = {
   search: string
@@ -93,27 +95,64 @@ export function TransactionToolbar({
   aiImportButtonRef,
 }: TransactionToolbarProps) {
   const { localizeEntityName, t } = useI18n()
+  const [exportState, setExportState] = useState<ExportState>('idle')
   const filters: Array<{ value: TransactionFilter; label: string }> = [
     { value: 'all', label: t('all') },
     { value: 'expense', label: t('expense') },
     { value: 'income', label: t('income') },
   ]
-  const exportQuery = new URLSearchParams({ month })
-  if (showSort && dateScope !== 'month') exportQuery.set('scope', dateScope)
-  if (showSort && dateScope === 'range') {
-    exportQuery.set('dateFrom', dateFrom)
-    exportQuery.set('dateTo', dateTo)
+  const exportQuery = transactionQueryFromFilters({
+    month,
+    scope: showSort ? dateScope : 'month',
+    dateFrom,
+    dateTo,
+    type: filter,
+    status: clearingFilter,
+    accountId: accountFilterId,
+    categoryId: categoryFilterId,
+    payee: payeeFilter,
+    search,
+    tag: tagFilter,
+    duplicatesOnly,
+    sort: showSort ? sort : 'date_desc',
+  })
+  const exporting = exportState === 'preparing'
+  const exportStatus = exportState === 'preparing'
+    ? t('exportCsvPreparing')
+    : exportState === 'ready'
+      ? t('exportCsvReady')
+      : exportState === 'error'
+        ? t('exportCsvFailed')
+        : ''
+  const exportTransactions = async () => {
+    if (!canExport || exporting) return
+    setExportState('preparing')
+    try {
+      const response = await fetch('/api/exports/transactions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(exportQuery),
+        cache: 'no-store',
+        credentials: 'same-origin',
+      })
+      const contentType = response.headers.get('content-type') ?? ''
+      if (!response.ok || !/^text\/csv(?:;|$)/i.test(contentType)) {
+        throw new Error('Transaction export failed')
+      }
+
+      const objectUrl = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = transactionExportFileName(response.headers.get('content-disposition'))
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+      setExportState('ready')
+    } catch {
+      setExportState('error')
+    }
   }
-  if (filter !== 'all') exportQuery.set('type', filter)
-  if (clearingFilter !== 'all') exportQuery.set('status', clearingFilter)
-  if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
-  if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
-  if (payeeFilter !== null) exportQuery.set('payee', payeeFilter)
-  if (search.trim()) exportQuery.set('search', search.trim())
-  if (tagFilter) exportQuery.set('tag', tagFilter.slice(1))
-  if (duplicatesOnly) exportQuery.set('duplicates', 'exact')
-  if (showSort && sort !== 'date_desc') exportQuery.set('sort', sort)
-  const exportHref = `/api/exports/transactions?${exportQuery}`
   const visibleCategories = filter === 'all'
     ? categories
     : categories.filter((category) => category.type === filter)
@@ -305,15 +344,17 @@ export function TransactionToolbar({
         ) : null}
       </div>
       {canExport ? (
-        <a
+        <button
           className="button button-secondary export-button"
-          href={exportHref}
-          download
+          type="button"
+          onClick={() => void exportTransactions()}
+          disabled={exporting}
+          aria-describedby="transaction-export-status"
           title={t('exportCsvHelp')}
         >
           <Download aria-hidden="true" />
-          {t('exportCsv')}
-        </a>
+          {exporting ? t('exportCsvPreparing') : t('exportCsv')}
+        </button>
       ) : (
         <button
           className="button button-secondary export-button"
@@ -325,6 +366,14 @@ export function TransactionToolbar({
           {t('exportCsv')}
         </button>
       )}
+      <p
+        id="transaction-export-status"
+        className={`transaction-export-status${exportState === 'error' ? ' is-error' : ''}`}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {exportStatus}
+      </p>
       <button
         id="csv-import-trigger"
         className="button button-secondary csv-import-button"
@@ -353,4 +402,8 @@ export function TransactionToolbar({
       </button>
     </div>
   )
+}
+
+function transactionExportFileName(contentDisposition: string | null) {
+  return contentDisposition?.match(/filename="([^"]+)"/)?.[1] ?? 'hushledger-transactions.csv'
 }

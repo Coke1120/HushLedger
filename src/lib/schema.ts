@@ -203,6 +203,7 @@ export const transactionQuerySchema = transactionQueryFieldsSchema
     }
   })
 
+export type TransactionQuery = z.infer<typeof transactionQuerySchema>
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 export type TransactionCategoryBatchInput = z.infer<typeof transactionCategoryBatchSchema>

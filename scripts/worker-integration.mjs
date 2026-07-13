@@ -1905,6 +1905,81 @@ async function verifyWorkerApi() {
     net: -41_615,
   })
 
+  const privateFilterBody = { month, search: 'export bulk' }
+  const privateQuery = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: privateFilterBody,
+  })
+  assert.equal(privateQuery.response.status, 200)
+  assert.equal(privateQuery.response.url, `${baseUrl}/api/transactions/query`)
+  assert.match(privateQuery.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(privateQuery.payload.data.transactions.length, 200)
+  assert.deepEqual(privateQuery.payload.data.summary, completeFilterSummary.payload.data)
+
+  const crossOriginPrivateQuery = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: privateFilterBody,
+  })
+  assert.equal(crossOriginPrivateQuery.response.status, 403)
+  assert.equal(crossOriginPrivateQuery.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const wrongMediaTypePrivateQuery = await fetch(`${baseUrl}/api/transactions/query`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', origin: baseUrl },
+    body: JSON.stringify(privateFilterBody),
+  })
+  assert.equal(wrongMediaTypePrivateQuery.status, 415)
+  assert.equal((await wrongMediaTypePrivateQuery.json()).error.code, 'UNSUPPORTED_MEDIA_TYPE')
+
+  const invalidPrivateQuery = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, privateMemo: 'must be rejected' },
+  })
+  assert.equal(invalidPrivateQuery.response.status, 400)
+  assert.equal(invalidPrivateQuery.payload.error.code, 'INVALID_QUERY')
+
+  const privateCsvExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: privateFilterBody,
+  })
+  assert.equal(privateCsvExport.response.status, 200)
+  assert.equal(privateCsvExport.response.url, `${baseUrl}/api/exports/transactions`)
+  assert.match(privateCsvExport.response.headers.get('content-type') ?? '', /^text\/csv;\s*charset=utf-8/i)
+  assert.match(privateCsvExport.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(privateCsvExport.response.headers.get('x-content-type-options'), 'nosniff')
+  assert.equal(
+    privateCsvExport.response.headers.get('content-disposition'),
+    `attachment; filename="hushledger-transactions-${month}.csv"`,
+  )
+  assert.deepEqual([...privateCsvExport.bytes.slice(0, 3)], [0xef, 0xbb, 0xbf])
+  assert(privateCsvExport.payload.startsWith('Date,Type,Amount,Currency'))
+  assert.match(privateCsvExport.payload.split('\r\n', 1)[0], /Transaction ID$/)
+  assert.equal(privateCsvExport.payload.trimEnd().split('\r\n').length - 1, 205)
+
+  const crossOriginPrivateExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: privateFilterBody,
+  })
+  assert.equal(crossOriginPrivateExport.response.status, 403)
+  assert.equal(crossOriginPrivateExport.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const wrongMediaTypePrivateExport = await fetch(`${baseUrl}/api/exports/transactions`, {
+    method: 'POST',
+    headers: { 'content-type': 'text/plain', origin: baseUrl },
+    body: JSON.stringify(privateFilterBody),
+  })
+  assert.equal(wrongMediaTypePrivateExport.status, 415)
+  assert.equal((await wrongMediaTypePrivateExport.json()).error.code, 'UNSUPPORTED_MEDIA_TYPE')
+
+  const invalidPrivateExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: { ...privateFilterBody, payee: '   ' },
+  })
+  assert.equal(invalidPrivateExport.response.status, 400)
+  assert.equal(invalidPrivateExport.payload.error.code, 'INVALID_QUERY')
+
   const duplicateSummaryMonth = await api(
     baseUrl,
     `/api/transactions/summary?month=${month}&month=${month}`,
@@ -2081,10 +2156,10 @@ async function verifyWorkerApi() {
     expense: 12_345,
     net: -12_345,
   })
-  const allHistoryExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&scope=all&search=historical%20trend`,
-  )
+  const allHistoryExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: { month, scope: 'all', search: 'historical trend' },
+  })
   assert.equal(allHistoryExport.response.status, 200)
   assert.equal(
     allHistoryExport.response.headers.get('content-disposition'),
@@ -2107,10 +2182,16 @@ async function verifyWorkerApi() {
   )
   assert.equal(customRangeSummary.response.status, 200)
   assert.deepEqual(customRangeSummary.payload.data, allHistorySummary.payload.data)
-  const customRangeExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&scope=range&dateFrom=${historicalDate}&dateTo=${historicalDate}&search=historical%20trend`,
-  )
+  const customRangeExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: {
+      month,
+      scope: 'range',
+      dateFrom: historicalDate,
+      dateTo: historicalDate,
+      search: 'historical trend',
+    },
+  })
   assert.equal(customRangeExport.response.status, 200)
   assert.equal(
     customRangeExport.response.headers.get('content-disposition'),

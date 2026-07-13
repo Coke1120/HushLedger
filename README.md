@@ -602,8 +602,9 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact&sort=amount_desc
-GET    /api/transactions/summary?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact
+POST   /api/transactions/query  (primary private query; JSON filters in the body; returns capped rows plus the uncapped summary)
+GET    /api/transactions?...  (legacy compatibility; URL query filters, latest 200 rows)
+GET    /api/transactions/summary?...  (legacy compatibility; URL query filters, uncapped aggregate)
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 PATCH  /api/transactions/category  (atomic category update for 1-200 same-type, explicitly versioned rows)
@@ -616,7 +617,8 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+POST   /api/exports/transactions  (primary private CSV export; JSON filters in the body)
+GET    /api/exports/transactions?...  (legacy compatibility; URL query filters)
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories/payees, and exact remaining recurring dates)
