@@ -45,7 +45,8 @@ knowledge and explains every command and dashboard click.
 - Optional monthly plans on expense categories, with planned, recorded, and
   remaining-or-over amounts shown together. A complete roll-up separates total
   planned spending, recorded spending in planned categories, the net plan
-  difference, and spending outside every plan. Plans are recurring comparison
+  difference, and spending outside every plan. Five rows stay visible by default,
+  while an explicit action reveals every plan. Plans are recurring comparison
   guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
   generated, expanded into an exact chronological list of every scheduled date

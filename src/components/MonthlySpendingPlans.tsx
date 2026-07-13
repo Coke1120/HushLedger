@@ -1,5 +1,5 @@
 import { Target } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import { summarizeMonthlyPlans } from '../lib/monthlyPlanRollup'
 import type { Summary } from '../lib/schema'
@@ -18,12 +18,16 @@ export function MonthlySpendingPlans({
   onSelect,
 }: MonthlySpendingPlansProps) {
   const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const percentFormatter = useMemo(
     () => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }),
     [locale],
   )
-  const visiblePlans = summary.monthlySpendingPlans.slice(0, visiblePlanLimit)
-  const remainingPlans = summary.monthlySpendingPlans.length - visiblePlans.length
+  const showAll = expandedMonth === summary.month
+  const visiblePlans = showAll
+    ? summary.monthlySpendingPlans
+    : summary.monthlySpendingPlans.slice(0, visiblePlanLimit)
+  const hiddenPlanCount = Math.max(0, summary.monthlySpendingPlans.length - visiblePlanLimit)
   const rollup = useMemo(
     () => summarizeMonthlyPlans(summary.expense, summary.monthlySpendingPlans),
     [summary.expense, summary.monthlySpendingPlans],
@@ -83,7 +87,7 @@ export function MonthlySpendingPlans({
               </div>
             </dl>
           ) : null}
-          <ol className="category-spending-list">
+          <ol className="category-spending-list" id="monthly-spending-plan-list">
             {visiblePlans.map((plan) => {
               const name = localizeEntityName(plan.categoryName, plan.categoryLocalizationKey)
               const ratio = plan.spentMinor / plan.plannedMinor
@@ -140,10 +144,20 @@ export function MonthlySpendingPlans({
               )
             })}
           </ol>
-          {remainingPlans > 0 ? (
-            <p className="category-spending-more">
-              {t('moreMonthlyPlans', { count: remainingPlans })}
-            </p>
+          {hiddenPlanCount > 0 ? (
+            <div className="category-spending-actions">
+              <button
+                className="button button-secondary"
+                type="button"
+                aria-controls="monthly-spending-plan-list"
+                aria-expanded={showAll}
+                onClick={() => setExpandedMonth(showAll ? null : summary.month)}
+              >
+                {showAll
+                  ? t('showFewerMonthlyPlans')
+                  : t('moreMonthlyPlans', { count: hiddenPlanCount })}
+              </button>
+            </div>
           ) : null}
         </>
       )}

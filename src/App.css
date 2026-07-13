@@ -1109,8 +1109,7 @@ textarea:focus-visible {
 }
 
 .category-spending-heading h2,
-.category-spending-heading p,
-.category-spending-more {
+.category-spending-heading p {
   margin: 0;
 }
 
@@ -1119,8 +1118,7 @@ textarea:focus-visible {
   letter-spacing: -0.02em;
 }
 
-.category-spending-heading p,
-.category-spending-more {
+.category-spending-heading p {
   margin-top: 4px;
   color: var(--muted);
   font-size: 13px;
@@ -1424,10 +1422,6 @@ textarea:focus-visible {
 
 .category-spending-empty strong {
   color: var(--ink);
-}
-
-.category-spending-more {
-  text-align: right;
 }
 
 .transactions-panel {
