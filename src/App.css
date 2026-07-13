@@ -783,6 +783,47 @@ textarea:focus-visible {
   justify-self: stretch;
 }
 
+.transaction-filter-summary {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.transaction-filter-summary-item {
+  display: flex;
+  min-width: 0;
+  min-height: 68px;
+  padding: 11px 14px;
+  background: var(--surface-soft);
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+
+.transaction-filter-summary-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.transaction-filter-summary-item strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .view-transactions .search-field {
   width: auto;
   min-width: 220px;
@@ -3613,6 +3654,17 @@ textarea:focus-visible {
 
   .bank-csv-map-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .transaction-filter-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .transaction-filter-summary-item {
+    min-height: 62px;
+    padding: 9px 11px;
   }
 }
 

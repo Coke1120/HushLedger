@@ -938,6 +938,25 @@ async function verifyWorkerApi() {
   assert.equal(cappedExportRows.response.status, 200)
   assert.equal(cappedExportRows.payload.data.length, 200)
 
+  const completeFilterSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&search=export%20bulk`,
+  )
+  assert.equal(completeFilterSummary.response.status, 200)
+  assert.deepEqual(completeFilterSummary.payload.data, {
+    transactionCount: 205,
+    income: 0,
+    expense: 41_615,
+    net: -41_615,
+  })
+
+  const duplicateSummaryMonth = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&month=${month}`,
+  )
+  assert.equal(duplicateSummaryMonth.response.status, 400)
+  assert.equal(duplicateSummaryMonth.payload.error.code, 'INVALID_QUERY')
+
   const stackedFilterRows = await api(
     baseUrl,
     `/api/transactions?month=${month}&type=expense&accountId=1&categoryId=3&search=export%20bulk`,
@@ -948,12 +967,31 @@ async function verifyWorkerApi() {
     accountId === 1 && categoryId === 3
   )))
 
+  const stackedFilterSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&type=expense&accountId=1&categoryId=3&search=export%20bulk`,
+  )
+  assert.equal(stackedFilterSummary.response.status, 200)
+  assert.deepEqual(stackedFilterSummary.payload.data, completeFilterSummary.payload.data)
+
   const mismatchedAccountRows = await api(
     baseUrl,
     `/api/transactions?month=${month}&accountId=2&search=export%20bulk`,
   )
   assert.equal(mismatchedAccountRows.response.status, 200)
   assert.deepEqual(mismatchedAccountRows.payload.data, [])
+
+  const emptyFilterSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&accountId=2&search=export%20bulk`,
+  )
+  assert.equal(emptyFilterSummary.response.status, 200)
+  assert.deepEqual(emptyFilterSummary.payload.data, {
+    transactionCount: 0,
+    income: 0,
+    expense: 0,
+    net: 0,
+  })
 
   const uncappedCsvExport = await api(baseUrl, `/api/exports/transactions?month=${month}&search=export%20bulk`)
   assert.equal(uncappedCsvExport.response.status, 200)
@@ -1650,8 +1688,9 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
-    transactionFilterGuards: 3,
+    transactionFilterGuards: 4,
     transactionFilterQueries: 4,
+    transactionFilterSummaries: 3,
     transactionTagQueries: 4,
     categorySummaries: 1,
     spendingTrendQueries: 1,

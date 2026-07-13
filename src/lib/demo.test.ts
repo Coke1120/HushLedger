@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { translate, type Locale, type Translator } from '../i18n'
-import { deleteDemo, demoSummary, getDemoTransactions, updateDemo } from './demo'
+import {
+  deleteDemo,
+  demoSummary,
+  getDemoTransactions,
+  summarizeDemoTransactions,
+  updateDemo,
+} from './demo'
 
 function translator(locale: Locale): Translator {
   return (key, values) => translate(locale, key, values)
@@ -49,6 +55,27 @@ describe('localized demo data', () => {
 
     assert.equal(uncleared.length, 1)
     assert.equal(uncleared[0]?.cleared, false)
+  })
+
+  it('summarizes the complete filtered demo result with signed net money', () => {
+    assert.deepEqual(
+      summarizeDemoTransactions(
+        '2026-07',
+        'expense',
+        'supermarket',
+        translator('en'),
+        3,
+        3,
+        null,
+        'uncleared',
+      ),
+      {
+        transactionCount: 1,
+        income: 0,
+        expense: 38_640,
+        net: -38_640,
+      },
+    )
   })
 
   it('ranks monthly expense categories by exact total and retains transaction counts', () => {

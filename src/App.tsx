@@ -16,6 +16,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
 import { SpendingTrend } from './components/SpendingTrend'
 import { TransactionDialog } from './components/TransactionDialog'
+import { TransactionFilterSummary } from './components/TransactionFilterSummary'
 import { TransactionList } from './components/TransactionList'
 import {
   TransactionToolbar,
@@ -207,9 +208,12 @@ function App({ initialMonth }: { initialMonth: string }) {
   const moneyView = view === 'overview' || view === 'transactions'
   const transactionCountLabel = loading
     ? t('loadingTransactionCount')
-    : data.transactions.length === 200
-      ? t('latestTransactionCount')
-      : t('transactionCount', { count: data.transactions.length })
+    : data.transactionFilterSummary.transactionCount > data.transactions.length
+      ? t('limitedTransactionCount', {
+          visible: data.transactions.length,
+          total: data.transactionFilterSummary.transactionCount,
+        })
+      : t('transactionCount', { count: data.transactionFilterSummary.transactionCount })
 
   return (
     <div className="app-shell">
@@ -299,6 +303,12 @@ function App({ initialMonth }: { initialMonth: string }) {
                 csvImportButtonRef={csvImportButtonRef}
                 aiImportButtonRef={aiImportButtonRef}
               />
+              {view === 'transactions' ? (
+                <TransactionFilterSummary
+                  summary={data.transactionFilterSummary}
+                  loading={loading}
+                />
+              ) : null}
             </div>
             {view === 'transactions' && importMode === 'csv' ? (
               <CsvImportPanel

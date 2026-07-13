@@ -174,6 +174,13 @@ export type Transaction = TransactionInput & {
   recurringRuleName?: string | null
 }
 
+export type TransactionFilterSummary = {
+  transactionCount: number
+  income: number
+  expense: number
+  net: number
+}
+
 const recurringRuleFieldsSchema = z.object({
   name: z.string().trim().min(1).max(80),
   type: transactionTypeSchema,

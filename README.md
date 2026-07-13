@@ -48,6 +48,9 @@ knowledge and explains every command and dashboard click.
   across the 200 most recent matching transactions in each month, with inactive
   references still available for historical review and an explicit notice at the
   result limit.
+- Review the exact match count, income, expense, and net amount for the current
+  transaction filters. These totals cover every match, not only the 200 rows kept
+  in the interactive list.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state.
@@ -422,6 +425,7 @@ PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
 GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
+GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
@@ -453,10 +457,11 @@ statement, so a stale or partial list writes nothing. There is no account/catego
 disabling the last active choice or a choice used by an active recurring rule.
 
 Transactions are ordered from newest to oldest by transaction date. A response
-contains at most 200 transactions. When that limit is reached, the UI explicitly
-states that it is showing the 200 most recent transactions instead of describing
-the truncated result as complete. The optional `status` filter is the same
-cleared/uncleared filter used by the uncapped CSV export.
+contains at most 200 transactions. When more rows match, the UI states exactly
+how many are visible out of the complete result. The adjacent filtered summary
+uses a separate aggregate query over every match, so its count, income, expense,
+and signed net are not truncated by the list limit. The optional `status` filter
+is shared by the aggregate and uncapped CSV export.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income

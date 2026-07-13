@@ -13,6 +13,7 @@ import {
   demoCategories,
   demoSummary,
   getDemoTransactions,
+  summarizeDemoTransactions,
   updateDemo,
 } from '../lib/demo'
 import type {
@@ -21,6 +22,7 @@ import type {
   Summary,
   Transaction,
   TransactionClearingStatus,
+  TransactionFilterSummary,
   TransactionInput,
   TransactionType,
 } from '../lib/schema'
@@ -30,6 +32,7 @@ export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 
 type Snapshot = {
   transactions: Transaction[]
+  transactionFilterSummary: TransactionFilterSummary
   summary: Summary
   accounts: Account[]
   categories: Category[]
@@ -46,6 +49,16 @@ function demoSnapshot(
 ): Snapshot {
   return {
     transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status),
+    transactionFilterSummary: summarizeDemoTransactions(
+      month,
+      type,
+      search,
+      undefined,
+      accountId,
+      categoryId,
+      tag,
+      status,
+    ),
     summary: demoSummary(month),
     accounts: demoAccounts,
     categories: demoCategories,
@@ -82,13 +95,14 @@ export function useMoneyData(
     if (tag) query.set('tag', tag.slice(1))
     if (status !== 'all') query.set('status', status)
 
-    const [transactions, summary, accounts, categories] = await Promise.all([
+    const [transactions, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${query}`),
+      api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
     ])
-    return { transactions, summary, accounts, categories }
+    return { transactions, transactionFilterSummary, summary, accounts, categories }
   }, [accountId, categoryId, month, search, status, tag, type])
 
   const refresh = useCallback(
@@ -241,6 +255,16 @@ export function useMoneyData(
         ? {
             ...snapshot,
             transactions: getDemoTransactions(month, type, search, t, accountId, categoryId, tag, status),
+            transactionFilterSummary: summarizeDemoTransactions(
+              month,
+              type,
+              search,
+              t,
+              accountId,
+              categoryId,
+              tag,
+              status,
+            ),
           }
         : snapshot,
     [accountId, categoryId, month, search, snapshot, source, status, t, tag, type],

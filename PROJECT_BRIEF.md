@@ -48,6 +48,8 @@ not operate an independent database server or a multi-user identity system.
 - Stack income/expense, cleared/uncleared, account, and category filters; retain
   inactive references as historical filter choices and clear incompatible
   category filters when the selected transaction type changes.
+- Show exact count, income, expense, and signed net for every transaction matching
+  the current filters, independently of the interactive 200-row display cap.
 - Export all transactions matching the selected month and filters as CSV without
   the interactive 200-row limit; keep disaster-recovery backups separate.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
@@ -179,6 +181,7 @@ PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
 GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...  (latest 200)
+GET    /api/transactions/summary?month=YYYY-MM&type=...&status=...&search=...  (uncapped aggregate)
 POST   /api/transactions
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
@@ -276,7 +279,7 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
   account/category/type/clearing/search filters, matching filtered transaction
-  CSV export,
+  aggregate and CSV export,
   ranked category-spending drilldown, monthly plan-versus-actual review,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,

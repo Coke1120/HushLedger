@@ -18,6 +18,7 @@ import type {
   Summary,
   Transaction,
   TransactionClearingStatus,
+  TransactionFilterSummary,
   TransactionInput,
   TransactionUpdateInput,
   TransactionType,
@@ -62,6 +63,8 @@ type SummaryRow = {
   income: number
   expense: number
 }
+
+type TransactionFilterSummaryRow = Omit<TransactionFilterSummary, 'net'>
 
 export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRuleName'> & {
   recurringRuleId: string | null
@@ -208,11 +211,7 @@ export async function listTransactionsForExport(
   return selectTransactions(database, query, false)
 }
 
-async function selectTransactions(
-  database: D1Database,
-  query: TransactionQuery,
-  limited: boolean,
-): Promise<TransactionView[]> {
+function transactionQueryWhere(query: TransactionQuery) {
   const { start, end } = monthRangeDates(query.month)
   const filters = ['t.occurred_on >= ?', 't.occurred_on < ?']
   const values: Array<string | number> = [start, end]
@@ -256,9 +255,43 @@ async function selectTransactions(
     values.push(`#${query.tag}`)
   }
 
+  return { clause: filters.join(' AND '), values }
+}
+
+export async function summarizeTransactions(
+  database: D1Database,
+  query: TransactionQuery,
+): Promise<TransactionFilterSummary> {
+  const { clause, values } = transactionQueryWhere(query)
+  const row = await database.prepare(`
+    SELECT
+      COUNT(*) AS transactionCount,
+      COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END), 0) AS income,
+      COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END), 0) AS expense
+    FROM transactions t
+    INNER JOIN accounts a ON a.id = t.account_id
+    INNER JOIN categories category ON category.id = t.category_id
+    WHERE ${clause}
+  `)
+    .bind(...values)
+    .first<TransactionFilterSummaryRow>()
+
+  const transactionCount = row?.transactionCount ?? 0
+  const income = row?.income ?? 0
+  const expense = row?.expense ?? 0
+  return { transactionCount, income, expense, net: income - expense }
+}
+
+async function selectTransactions(
+  database: D1Database,
+  query: TransactionQuery,
+  limited: boolean,
+): Promise<TransactionView[]> {
+  const { clause, values } = transactionQueryWhere(query)
+
   const result = await database.prepare(`
     ${transactionSelect}
-    WHERE ${filters.join(' AND ')}
+    WHERE ${clause}
     ORDER BY t.occurred_on DESC, t.created_at DESC, t.id DESC
     ${limited ? 'LIMIT 200' : ''}
   `)

@@ -10,6 +10,7 @@ import type {
   Summary,
   Transaction,
   TransactionClearingStatus,
+  TransactionFilterSummary,
   TransactionInput,
   TransactionType,
 } from './schema'
@@ -242,6 +243,28 @@ export function getDemoTransactions(
   return demoTransactions
     .map((transaction) => localizeDemoTransaction(transaction, t))
     .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag, status))
+}
+
+export function summarizeDemoTransactions(
+  month: string,
+  type: TransactionType | 'all',
+  search: string,
+  t?: Translator,
+  accountId: number | null = null,
+  categoryId: number | null = null,
+  tag: string | null = null,
+  status: TransactionClearingStatus | 'all' = 'all',
+): TransactionFilterSummary {
+  const rows = getDemoTransactions(month, type, search, t, accountId, categoryId, tag, status)
+  const income = rows.reduce(
+    (sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0),
+    0,
+  )
+  const expense = rows.reduce(
+    (sum, transaction) => sum + (transaction.type === 'expense' ? transaction.amountMinor : 0),
+    0,
+  )
+  return { transactionCount: rows.length, income, expense, net: income - expense }
 }
 
 export function addDemo(input: TransactionInput) {
