@@ -4,6 +4,7 @@ import {
   deleteRecurringRuleAction,
   runDueRecurringRulesAction,
   setRecurringRuleStatusAction,
+  skipRecurringRuleOccurrenceAction,
   updateRecurringRuleAction,
 } from '../app/actions'
 import {
@@ -18,6 +19,7 @@ import {
 } from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate } from '../lib/date'
+import { advanceOccurrence } from '../lib/recurrence'
 import type {
   RecurringGenerationResult,
   RecurringRule,
@@ -273,6 +275,34 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     [mutate],
   )
 
+  const skipRuleOccurrence = useCallback(
+    async (rule: RecurringRule) => {
+      setMutatingId(rule.id)
+      return mutate({
+        successMessage: message('recurringSkipped'),
+        demoUpdate: (current) => current.map((item) => (
+          item.id === rule.id
+            ? {
+                ...item,
+                nextOccurrenceOn: advanceOccurrence(
+                  item.nextOccurrenceOn,
+                  item.frequency,
+                  item.anchorDay,
+                ),
+                revision: item.revision + 1,
+                updatedAt: new Date().toISOString(),
+              }
+            : item
+        )),
+        request: () => actionData(skipRecurringRuleOccurrenceAction(rule.id, {
+          revision: rule.revision,
+          nextOccurrenceOn: rule.nextOccurrenceOn,
+        })),
+      })
+    },
+    [mutate],
+  )
+
   const runDue = useCallback(async () => {
     if (submitting.current) return false
     setRunning(true)
@@ -312,6 +342,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
     createRule,
     editRule,
     setRuleActive,
+    skipRuleOccurrence,
     deleteRule,
     runDue,
     clearActionMessage,

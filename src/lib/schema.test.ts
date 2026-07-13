@@ -10,6 +10,7 @@ import {
   referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
+  recurringRuleSkipSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
@@ -210,7 +211,7 @@ const validRecurringRule = {
 }
 
 describe('recurring rule validation', () => {
-  it('accepts create, update, and status payloads', () => {
+  it('accepts create, update, status, skip, and delete payloads', () => {
     assert.equal(recurringRuleCreateSchema.safeParse(validRecurringRule).success, true)
     assert.equal(recurringRuleCreateSchema.safeParse({
       ...validRecurringRule,
@@ -220,7 +221,20 @@ describe('recurring rule validation', () => {
     assert.match(id, /-/)
     assert.equal(recurringRuleUpdateSchema.safeParse({ ...update, revision: 1 }).success, true)
     assert.equal(recurringRuleStatusSchema.safeParse({ isActive: false, revision: 1 }).success, true)
+    assert.equal(recurringRuleSkipSchema.safeParse({
+      revision: 1,
+      nextOccurrenceOn: '2026-08-01',
+    }).success, true)
     assert.equal(recurringRuleDeleteSchema.safeParse({ revision: 1 }).success, true)
+    assert.equal(recurringRuleSkipSchema.safeParse({
+      revision: 1,
+      nextOccurrenceOn: '2026-02-30',
+    }).success, false)
+    assert.equal(recurringRuleSkipSchema.safeParse({
+      revision: 1,
+      nextOccurrenceOn: '2026-08-01',
+      extra: true,
+    }).success, false)
   })
 
   for (const [label, patch] of [

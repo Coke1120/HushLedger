@@ -98,7 +98,9 @@ not operate an independent database server or a multi-user identity system.
 - Create a daily, weekly, or monthly recurring rule.
 - Set name, type, amount, account, category, schedule date, payee, note, and
   active state.
-- Modify, pause, resume, or delete the rule.
+- Modify, pause, resume, skip exactly one next occurrence, or delete the rule.
+- Require the displayed next date and revision when skipping so a Cron race or
+  stale tab cannot silently skip a different occurrence; create no transaction.
 - Generate due transactions from Cloudflare Cron or the authenticated manual
   action.
 - Preserve generated history when a rule changes or is deleted.
@@ -206,6 +208,7 @@ GET    /api/recurring-rules/:id
 POST   /api/recurring-rules
 PUT    /api/recurring-rules/:id
 PATCH  /api/recurring-rules/:id/status
+POST   /api/recurring-rules/:id/skip
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
 ```
@@ -329,8 +332,8 @@ database IDs. See
 - Local Next.js development and the OpenNext workerd preview read and write D1.
 - A transaction can be created, edited, cleared/uncleared, and deleted; each
   change appears in its list and monthly summary, and stale mutations are rejected.
-- Daily, weekly, and monthly rules can be created, edited, paused, resumed, run,
-  and deleted without duplicate occurrences or history loss.
+- Daily, weekly, and monthly rules can be created, edited, paused, resumed,
+  skipped once, run, and deleted without duplicate occurrences or history loss.
 - Date-only behavior is visible across UI, API, tests, and migrations.
 - `npm test`, typecheck, ESLint, Oxlint, production build, fresh migrations, and
   upgrade migrations succeed.

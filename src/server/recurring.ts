@@ -8,6 +8,7 @@ export {
   listRecurringRules,
   runDueRecurringRules,
   setRecurringRuleStatus,
+  skipRecurringRuleOccurrence,
   updateRecurringRule,
 } from '../../worker/recurring'
 

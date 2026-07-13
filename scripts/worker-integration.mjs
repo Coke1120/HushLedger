@@ -30,6 +30,12 @@ function shiftCalendarMonth(month, amount) {
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
 }
 
+function shiftCalendarDay(date, amount) {
+  const shifted = new Date(`${date}T00:00:00.000Z`)
+  shifted.setUTCDate(shifted.getUTCDate() + amount)
+  return shifted.toISOString().slice(0, 10)
+}
+
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
   if (value && typeof value === 'object') {
@@ -1345,6 +1351,7 @@ async function verifyWorkerApi() {
     monthly: '20000000-0000-4000-8000-000000000003',
     cron: '20000000-0000-4000-8000-000000000004',
     race: '20000000-0000-4000-8000-000000000007',
+    skip: '20000000-0000-4000-8000-000000000009',
   }
   const baseRule = {
     name: 'Integration rule',
@@ -1375,6 +1382,35 @@ async function verifyWorkerApi() {
     assert.equal(created.payload.data.nextOccurrenceOn, today)
     createdRules.push(created.payload.data)
   }
+
+  const skipCandidate = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.skip,
+      name: 'skip integration',
+      amountMinor: 457,
+      frequency: 'daily',
+      scheduleStartsOn: '1970-01-01',
+    },
+  })
+  assert.equal(skipCandidate.response.status, 201)
+  assert.equal(skipCandidate.payload.data.nextOccurrenceOn, today)
+  const skipped = await api(baseUrl, `/api/recurring-rules/${ruleIds.skip}/skip`, {
+    method: 'POST',
+    body: { revision: 1, nextOccurrenceOn: today },
+  })
+  assert.equal(skipped.response.status, 200)
+  assert.equal(skipped.payload.data.nextOccurrenceOn, shiftCalendarDay(today, 1))
+  assert.equal(skipped.payload.data.lastOccurrenceOn, null)
+  assert.equal(skipped.payload.data.generatedCount, 0)
+  assert.equal(skipped.payload.data.revision, 2)
+  const staleSkip = await api(baseUrl, `/api/recurring-rules/${ruleIds.skip}/skip`, {
+    method: 'POST',
+    body: { revision: 1, nextOccurrenceOn: today },
+  })
+  assert.equal(staleSkip.response.status, 409)
+  assert.equal(staleSkip.payload.error.code, 'RULE_VERSION_CONFLICT')
 
   const guardedAccountDisable = await api(baseUrl, `/api/accounts/${account.id}`, {
     method: 'PATCH',
@@ -1457,6 +1493,7 @@ async function verifyWorkerApi() {
   const beforeDelete = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(beforeDelete.response.status, 200)
   assert.equal(beforeDelete.payload.data.filter((item) => item.recurrenceDueOn === today).length, 3)
+  assert.equal(beforeDelete.payload.data.some((item) => item.recurringRuleId === ruleIds.skip), false)
   assert(
     beforeDelete.payload.data
       .filter((item) => item.recurrenceDueOn === today)
@@ -1695,6 +1732,7 @@ async function verifyWorkerApi() {
     categorySummaries: 1,
     spendingTrendQueries: 1,
     recurringForecasts: 1,
+    recurringSkips: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,

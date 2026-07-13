@@ -11,6 +11,7 @@ import {
   referenceStatusSchema,
   recurringRuleCreateSchema,
   recurringRuleDeleteSchema,
+  recurringRuleSkipSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
@@ -53,6 +54,7 @@ import {
   deleteRecurringRule,
   runDueRecurringRules,
   setRecurringRuleStatus,
+  skipRecurringRuleOccurrence,
   updateRecurringRule,
   type RecurringRuleView,
   type ReferenceErrorCode,
@@ -307,6 +309,27 @@ export async function setRecurringRuleStatusAction(
 
   return runAction('set_recurring_rule_status', async () => {
     const result = await setRecurringRuleStatus(await getDatabase(), id.data, parsed.data)
+    return recurringMutationResult(result)
+  })
+}
+
+export async function skipRecurringRuleOccurrenceAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<RecurringRuleView>> {
+  const denied = await accessDenied<RecurringRuleView>()
+  if (denied) return denied
+
+  const id = recurringRuleIdSchema.safeParse(idInput)
+  if (!id.success) return invalidRuleId(id.error.issues)
+
+  const parsed = recurringRuleSkipSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('略過週期交易資料不正確', parsed.error.issues)
+  }
+
+  return runAction('skip_recurring_rule_occurrence', async () => {
+    const result = await skipRecurringRuleOccurrence(await getDatabase(), id.data, parsed.data)
     return recurringMutationResult(result)
   })
 }

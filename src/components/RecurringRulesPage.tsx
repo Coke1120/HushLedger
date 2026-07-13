@@ -1,6 +1,7 @@
 import {
   CalendarCheck,
   CalendarClock,
+  CalendarX2,
   CircleAlert,
   CloudOff,
   LoaderCircle,
@@ -266,6 +267,22 @@ export function RecurringRulesPage({
                       <Pencil aria-hidden="true" />
                       {t('edit')}
                     </button>
+                    {rule.isActive ? (
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        onClick={() => {
+                          const date = formatDate(rule.nextOccurrenceOn)
+                          if (window.confirm(t('skipRecurringConfirm', { name: rule.name, date }))) {
+                            void recurring.skipRuleOccurrence(rule)
+                          }
+                        }}
+                        disabled={!recurring.online || busy}
+                      >
+                        <CalendarX2 aria-hidden="true" />
+                        {t('skipNextOccurrence')}
+                      </button>
+                    ) : null}
                     <button
                       className="button button-secondary"
                       type="button"

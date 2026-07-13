@@ -214,11 +214,18 @@ export const recurringRuleUpdateSchema = recurringRuleFieldsSchema.extend({
 export const recurringRuleStatusSchema = z
   .object({ isActive: z.boolean(), revision: z.number().int().positive() })
   .strict()
+export const recurringRuleSkipSchema = z
+  .object({
+    revision: z.number().int().positive(),
+    nextOccurrenceOn: calendarDateSchema,
+  })
+  .strict()
 export const recurringRuleDeleteSchema = z.object({ revision: z.number().int().positive() }).strict()
 
 export type RecurrenceFrequency = z.infer<typeof recurrenceFrequencySchema>
 export type RecurringRuleCreateInput = z.infer<typeof recurringRuleCreateSchema>
 export type RecurringRuleUpdateInput = z.infer<typeof recurringRuleUpdateSchema>
+export type RecurringRuleSkipInput = z.infer<typeof recurringRuleSkipSchema>
 
 export type RecurringRule = Omit<RecurringRuleCreateInput, 'firstOccurrenceOn'> & {
   nextOccurrenceOn: string

@@ -7,6 +7,7 @@ import type {
   RecurrenceFrequency,
   RecurringGenerationResult,
   RecurringRuleCreateInput,
+  RecurringRuleSkipInput,
   RecurringRuleUpdateInput,
   TransactionType,
 } from '../src/lib/schema'
@@ -487,6 +488,63 @@ export async function setRecurringRuleStatus(
   }
   const updated = await findRule(database, id, false)
   if (!updated) throw new Error('Recurring status update did not produce a row')
+  return { kind: 'updated', rule: toRuleView(updated) }
+}
+
+export async function skipRecurringRuleOccurrence(
+  database: D1Database,
+  id: string,
+  input: RecurringRuleSkipInput,
+): Promise<UpdateRuleResult> {
+  const current = await findRule(database, id, true)
+  if (!current || current.deletedAt) return { kind: 'not_found' }
+  if (
+    current.revision !== input.revision
+    || current.nextOccurrenceOn !== input.nextOccurrenceOn
+  ) {
+    return { kind: 'version_conflict' }
+  }
+
+  const nextOccurrenceOn = advanceOccurrence(
+    current.nextOccurrenceOn,
+    current.frequency,
+    current.anchorDay,
+  )
+  const result = await database
+    .prepare(`
+      UPDATE recurring_rules
+      SET
+        next_occurrence_on = ?,
+        last_error_code = NULL,
+        last_error_at = NULL,
+        revision = revision + 1,
+        cursor_version = cursor_version + 1,
+        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE
+        id = ?
+        AND revision = ?
+        AND cursor_version = ?
+        AND next_occurrence_on = ?
+        AND deleted_at IS NULL
+    `)
+    .bind(
+      nextOccurrenceOn,
+      id,
+      input.revision,
+      current.cursorVersion,
+      input.nextOccurrenceOn,
+    )
+    .run()
+
+  if (Number(result.meta.changes) === 0) {
+    const latest = await findRule(database, id, true)
+    return !latest || latest.deletedAt
+      ? { kind: 'not_found' }
+      : { kind: 'version_conflict' }
+  }
+
+  const updated = await findRule(database, id, false)
+  if (!updated) throw new Error('Recurring skip did not produce a row')
   return { kind: 'updated', rule: toRuleView(updated) }
 }
 

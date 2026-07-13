@@ -89,7 +89,7 @@ knowledge and explains every command and dashboard click.
   payee's latest still-active account and category without sending ledger data
   to a third party.
 - Daily, weekly, and monthly recurring transactions that can be created, edited,
-  paused, resumed, and deleted.
+  paused, resumed, skipped once without creating a transaction, and deleted.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
   duplicate occurrence for the same rule and date.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
@@ -448,6 +448,7 @@ GET    /api/recurring-rules/:id
 POST   /api/recurring-rules
 PUT    /api/recurring-rules/:id
 PATCH  /api/recurring-rules/:id/status
+POST   /api/recurring-rules/:id/skip
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
 POST   /api/ai/models
