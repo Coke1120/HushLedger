@@ -11,17 +11,10 @@ import {
 } from '../app/actions'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
-import {
-  DEFAULT_LEDGER_CURRENCY,
-  type LedgerCurrencySettings,
-} from '../lib/currency'
+import type { LedgerCurrencySettings } from '../lib/currency'
 import {
   addDemo,
   deleteDemo,
-  demoAccounts,
-  demoAccountBalances,
-  demoCategories,
-  demoNetWorthTrend,
   demoSummary,
   getDemoTransactions,
   setDemoTransactionsCategory,
@@ -29,6 +22,7 @@ import {
   summarizeDemoTransactions,
   updateDemo,
 } from '../lib/demo'
+import { buildDemoSnapshot, type DemoSnapshot } from '../lib/demoSnapshot'
 import type {
   Account,
   AccountBalance,
@@ -52,76 +46,11 @@ import { actionData } from './actionResult'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 
-type Snapshot = {
-  reportMonth: string
-  transactions: Transaction[]
-  accountTransfers: AccountTransfer[]
-  accountBalances: AccountBalance[]
-  accountRegister: AccountRegister | null
-  netWorthTrend: NetWorthTrendPoint[]
-  transactionFilterSummary: TransactionFilterSummary
-  summary: Summary
-  accounts: Account[]
-  categories: Category[]
-  emergencyFundGoal: EmergencyFundGoal | null
-  ledgerSettings: LedgerCurrencySettings
-}
+type Snapshot = DemoSnapshot
 
 type TransactionQueryResult = {
   transactions: Transaction[]
   summary: TransactionFilterSummary
-}
-
-function demoSnapshot(
-  month: string,
-  type: TransactionType | 'all',
-  search: string,
-  accountId: number | null,
-  categoryId: number | null,
-  payee: string | null,
-  tag: string | null,
-  status: TransactionClearingStatus | 'all',
-  sort: TransactionSort,
-  duplicatesOnly: boolean,
-  scope: TransactionDateScope,
-  dateFrom: string,
-  dateTo: string,
-): Snapshot {
-  return {
-    reportMonth: month,
-    transactions: getDemoTransactions(
-      month, type, search, undefined, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo, payee,
-    ),
-    accountTransfers: [],
-    accountBalances: demoAccountBalances(month),
-    accountRegister: null,
-    netWorthTrend: demoNetWorthTrend(month),
-    transactionFilterSummary: summarizeDemoTransactions(
-      month,
-      type,
-      search,
-      undefined,
-      accountId,
-      categoryId,
-      tag,
-      status,
-      duplicatesOnly,
-      scope,
-      dateFrom,
-      dateTo,
-      payee,
-    ),
-    summary: demoSummary(month),
-    accounts: demoAccounts,
-    categories: demoCategories,
-    emergencyFundGoal: null,
-    ledgerSettings: {
-      currency: DEFAULT_LEDGER_CURRENCY,
-      updatedAt: '1970-01-01T00:00:00.000Z',
-      canChangeCurrency: false,
-    },
-  }
 }
 
 export function useMoneyData(
@@ -142,7 +71,7 @@ export function useMoneyData(
 ) {
   const { setLedgerCurrency, t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
-    demoSnapshot(
+    buildDemoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
       dateFrom, dateTo,
     )
@@ -220,6 +149,13 @@ export function useMoneyData(
     }
   }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
+  const setDemoSnapshot = useCallback(() => {
+    setSnapshot((current) => buildDemoSnapshot(
+      month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
+      dateFrom, dateTo, current.ledgerSettings.currency,
+    ))
+  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, sort, status, tag, type])
+
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
       const sequence = ++requestSequence.current
@@ -228,11 +164,7 @@ export function useMoneyData(
       if (!navigator.onLine) {
         setOnline(false)
         if (allowDemoFallback) {
-          setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
           setSource('demo')
         }
         return false
@@ -249,11 +181,7 @@ export function useMoneyData(
       } catch {
         if (sequence !== requestSequence.current) return false
         if (allowDemoFallback) {
-          setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
           setSource('demo')
         } else {
           setSource('error')
@@ -261,7 +189,7 @@ export function useMoneyData(
         return false
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, fetchSnapshot, month, payee, scope, search, setLedgerCurrency, sort, status, tag, type],
+    [fetchSnapshot, setDemoSnapshot, setLedgerCurrency],
   )
 
   useEffect(() => {
@@ -276,11 +204,7 @@ export function useMoneyData(
     }
     const handleOffline = () => {
       setOnline(false)
-      setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
-      setSnapshot(demoSnapshot(
-        month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-        dateFrom, dateTo,
-      ))
+      setDemoSnapshot()
       setSource('demo')
     }
     window.addEventListener('online', handleOnline)
@@ -289,7 +213,7 @@ export function useMoneyData(
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, setLedgerCurrency, sort, status, tag, type])
+  }, [refresh, setDemoSnapshot])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {
@@ -308,10 +232,7 @@ export function useMoneyData(
         if (source === 'demo') {
           if (original) updateDemo(input)
           else addDemo(input)
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
           setActionMessage(message(original ? 'demoTransactionChanged' : 'demoTransactionSaved'))
           return true
         }
@@ -341,7 +262,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
+    [refresh, setDemoSnapshot, source],
   )
 
   const removeTransaction = useCallback(
@@ -360,10 +281,7 @@ export function useMoneyData(
 
         if (source === 'demo') {
           deleteDemo(transaction.id)
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
           setActionMessage(message('demoTransactionChanged'))
           return true
         }
@@ -380,7 +298,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
+    [refresh, setDemoSnapshot, source],
   )
 
   const setSelectedTransactionsClearing = useCallback(
@@ -408,10 +326,7 @@ export function useMoneyData(
             setSaveError(message('errorTransactionVersionConflict'))
             return false
           }
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
         } else {
           await actionData(setTransactionsClearingAction(input))
           const refreshed = await refresh(false)
@@ -439,7 +354,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
+    [refresh, setDemoSnapshot, source],
   )
 
   const setSelectedTransactionsCategory = useCallback(
@@ -473,10 +388,7 @@ export function useMoneyData(
             ))
             return false
           }
-          setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-            dateFrom, dateTo,
-          ))
+          setDemoSnapshot()
         } else {
           await actionData(setTransactionsCategoryAction(input))
           const refreshed = await refresh(false)
@@ -501,7 +413,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
+    [refresh, setDemoSnapshot, source],
   )
 
   const saveAccountTransfer = useCallback(
@@ -580,7 +492,7 @@ export function useMoneyData(
             ...snapshot,
             transactions: getDemoTransactions(
               month, type, search, t, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-              dateFrom, dateTo, payee,
+              dateFrom, dateTo, payee, snapshot.ledgerSettings.currency,
             ),
             transactionFilterSummary: summarizeDemoTransactions(
               month,
@@ -596,6 +508,7 @@ export function useMoneyData(
               dateFrom,
               dateTo,
               payee,
+              snapshot.ledgerSettings.currency,
             ),
             summary: demoSummary(month, t),
           }

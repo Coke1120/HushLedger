@@ -10,6 +10,7 @@ import { mergePayeeSummaries, normalizePayee } from './payeeMemory'
 import { buildMonthlySpendingTrend } from './spendingTrend'
 import { noteHasTransactionTag } from './transactionTags'
 import { supportedLocales, translate, type MessageKey, type Translator } from '../i18n'
+import type { SupportedCurrency } from './currency'
 import type {
   Account,
   AccountBalance,
@@ -337,8 +338,14 @@ export function getDemoTransactions(
   dateFrom: string | null = null,
   dateTo: string | null = null,
   payee: string | null = null,
+  currency: SupportedCurrency | null = null,
 ) {
-  const localized = demoTransactions.map((transaction) => localizeDemoTransaction(transaction, t))
+  const localized = demoTransactions.map((transaction) => {
+    const localizedTransaction = localizeDemoTransaction(transaction, t)
+    return currency === null
+      ? localizedTransaction
+      : { ...localizedTransaction, currency }
+  })
   return localized
     .filter((transaction) => matchesQuery(
       transaction, month, type, search, accountId, categoryId, tag, status, scope, dateFrom, dateTo,
@@ -383,6 +390,7 @@ export function summarizeDemoTransactions(
   dateFrom: string | null = null,
   dateTo: string | null = null,
   payee: string | null = null,
+  currency: SupportedCurrency | null = null,
 ): TransactionFilterSummary {
   const rows = getDemoTransactions(
     month,
@@ -399,6 +407,7 @@ export function summarizeDemoTransactions(
     dateFrom,
     dateTo,
     payee,
+    currency,
   )
   return { transactionCount: rows.length, ...exactTransactionTotals(rows) }
 }
