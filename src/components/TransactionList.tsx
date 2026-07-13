@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useI18n } from '../i18n'
 import type { Transaction } from '../lib/schema'
+import { transactionTagsFromNote } from '../lib/transactionTags'
 
 const iconMap: Record<string, LucideIcon> = {
   banknote: Banknote,
@@ -31,10 +32,18 @@ const iconMap: Record<string, LucideIcon> = {
 type TransactionListProps = {
   transactions: Transaction[]
   loading: boolean
+  tagFilter: string | null
   onEdit: (transaction: Transaction) => void
+  onTagSelect: (tag: string | null) => void
 }
 
-export function TransactionList({ transactions, loading, onEdit }: TransactionListProps) {
+export function TransactionList({
+  transactions,
+  loading,
+  tagFilter,
+  onEdit,
+  onTagSelect,
+}: TransactionListProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
 
   if (loading) {
@@ -62,8 +71,9 @@ export function TransactionList({ transactions, loading, onEdit }: TransactionLi
         const accountName = localizeEntityName(transaction.accountName, transaction.accountLocalizationKey)
         const title = transaction.payee || categoryName
         const generatedLabel = t('generatedByRule', { name: transaction.recurringRuleName ?? t('unnamedRule') })
+        const tags = transactionTagsFromNote(transaction.note)
         return (
-          <li key={transaction.id}>
+          <li className="transaction-list-item" key={transaction.id}>
             <button className="transaction-row" type="button" onClick={() => onEdit(transaction)}>
               <span className="sr-only">{t('edit')}</span>
               <span
@@ -94,6 +104,25 @@ export function TransactionList({ transactions, loading, onEdit }: TransactionLi
                 {formatMoney(transaction.amountMinor)}
               </strong>
             </button>
+            {tags.length > 0 ? (
+              <div className="transaction-tags" aria-label={t('transactionTags')}>
+                {tags.map((tag) => {
+                  const selected = tag === tagFilter
+                  return (
+                    <button
+                      className={selected ? 'is-active' : undefined}
+                      type="button"
+                      key={tag}
+                      aria-pressed={selected}
+                      aria-label={t(selected ? 'removeTagFilter' : 'filterByTag', { tag })}
+                      onClick={() => onTagSelect(selected ? null : tag)}
+                    >
+                      {tag}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
           </li>
         )
       })}

@@ -107,7 +107,7 @@ describe('transaction validation', () => {
 })
 
 describe('transaction query validation', () => {
-  it('accepts month, type, account, category, and a bounded search string', () => {
+  it('accepts month, type, account, category, search, and an exact note tag', () => {
     assert.deepEqual(
       transactionQuerySchema.parse({
         month: '2026-07',
@@ -115,8 +115,16 @@ describe('transaction query validation', () => {
         accountId: '2',
         categoryId: '3',
         search: '超級市場',
+        tag: '旅程',
       }),
-      { month: '2026-07', type: 'expense', accountId: 2, categoryId: 3, search: '超級市場' },
+      {
+        month: '2026-07',
+        type: 'expense',
+        accountId: 2,
+        categoryId: 3,
+        search: '超級市場',
+        tag: '旅程',
+      },
     )
   })
 
@@ -126,6 +134,8 @@ describe('transaction query validation', () => {
     { accountId: '0' },
     { categoryId: '1.5' },
     { search: 'x'.repeat(81) },
+    { tag: 'trip,' },
+    { tag: '#trip' },
   ].entries()) {
     it(`rejects invalid query ${index}`, () => {
       assert.equal(transactionQuerySchema.safeParse(query).success, false)

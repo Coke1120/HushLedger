@@ -242,7 +242,10 @@ async function seedCsvExportRows() {
      )
      INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
      SELECT printf('30000000-0000-4000-8000-%012d', value),'expense',100 + value,'HKD',1,3,'${today}','export bulk',''
-     FROM sequence;`,
+     FROM sequence;
+     UPDATE transactions SET note = 'Trip planning #Summer2026' WHERE id = '30000000-0000-4000-8000-000000000001';
+     UPDATE transactions SET note = 'Near miss #Summer20260' WHERE id = '30000000-0000-4000-8000-000000000002';
+     UPDATE transactions SET note = 'Escaped ##Summer2026' WHERE id = '30000000-0000-4000-8000-000000000003';`,
     '--yes',
   ])
 }
@@ -492,6 +495,26 @@ async function verifyWorkerApi() {
   const invalidAccountFilter = await api(baseUrl, `/api/transactions?month=${month}&accountId=0`)
   assert.equal(invalidAccountFilter.response.status, 400)
   assert.equal(invalidAccountFilter.payload.error.code, 'INVALID_QUERY')
+
+  const invalidTagFilter = await api(baseUrl, `/api/transactions?month=${month}&tag=Summer2026%2C`)
+  assert.equal(invalidTagFilter.response.status, 400)
+  assert.equal(invalidTagFilter.payload.error.code, 'INVALID_QUERY')
+
+  const exactTagFilter = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&tag=Summer2026`,
+  )
+  assert.equal(exactTagFilter.response.status, 200, JSON.stringify(exactTagFilter.payload))
+  assert.deepEqual(exactTagFilter.payload.data.map(({ id }) => id), [
+    '30000000-0000-4000-8000-000000000001',
+  ])
+
+  const caseSensitiveTagFilter = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&tag=summer2026`,
+  )
+  assert.equal(caseSensitiveTagFilter.response.status, 200)
+  assert.deepEqual(caseSensitiveTagFilter.payload.data, [])
 
   const duplicateAccountFilter = await api(
     baseUrl,
@@ -887,6 +910,14 @@ async function verifyWorkerApi() {
   assert.match(uncappedCsvExport.payload.split('\r\n', 1)[0], /Transaction ID$/)
   const uncappedCsvRows = uncappedCsvExport.payload.trimEnd().split('\r\n').length - 1
   assert.equal(uncappedCsvRows, 205)
+
+  const taggedCsvExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&tag=Summer2026`,
+  )
+  assert.equal(taggedCsvExport.response.status, 200)
+  assert.equal(taggedCsvExport.payload.trimEnd().split('\r\n').length - 1, 1)
+  assert.match(taggedCsvExport.payload, /Trip planning #Summer2026/)
 
   const referenceFilteredCsvExport = await api(
     baseUrl,
@@ -1479,8 +1510,9 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
-    transactionFilterGuards: 2,
+    transactionFilterGuards: 3,
     transactionFilterQueries: 3,
+    transactionTagQueries: 4,
     categorySummaries: 1,
     recurringForecasts: 1,
     payeeSuggestions: 1,

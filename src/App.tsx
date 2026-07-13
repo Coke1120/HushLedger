@@ -37,6 +37,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [view, setView] = useState<AppView>('overview')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
@@ -51,7 +52,14 @@ function App({ initialMonth }: { initialMonth: string }) {
   const importPanelRef = useRef<HTMLElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
-  const data = useMoneyData(month, filter, deferredSearch, accountFilterId, categoryFilterId)
+  const data = useMoneyData(
+    month,
+    filter,
+    deferredSearch,
+    accountFilterId,
+    categoryFilterId,
+    tagFilter,
+  )
   const {
     clearActionMessage,
     refresh: refreshMoneyData,
@@ -139,12 +147,20 @@ function App({ initialMonth }: { initialMonth: string }) {
     const category = data.categories.find((item) => item.id === categoryId)
     if (!category) return
     setSearch('')
+    setTagFilter(null)
     setFilter(category.type)
     setAccountFilterId(null)
     setCategoryFilterId(category.id)
     setImportMode(null)
     changeView('transactions')
   }, [changeView, data.categories])
+
+  const changeTagFilter = useCallback((tag: string | null) => {
+    setTagFilter(tag)
+    if (!tag) return
+    setImportMode(null)
+    changeView('transactions')
+  }, [changeView])
 
   const openRecurringRules = useCallback(() => {
     setImportMode(null)
@@ -241,6 +257,7 @@ function App({ initialMonth }: { initialMonth: string }) {
               </button>
               <TransactionToolbar
                 search={search}
+                tagFilter={tagFilter}
                 filter={filter}
                 month={month}
                 accounts={data.accounts}
@@ -250,6 +267,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 canExport={data.source === 'live' && data.online}
                 canImport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
+                onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onAccountFilterChange={setAccountFilterId}
                 onCategoryFilterChange={setCategoryFilterId}
@@ -284,7 +302,13 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onImported={() => data.refresh(false)}
               />
             ) : null}
-            <TransactionList transactions={transactions} loading={loading} onEdit={openTransaction} />
+            <TransactionList
+              transactions={transactions}
+              loading={loading}
+              tagFilter={tagFilter}
+              onEdit={openTransaction}
+              onTagSelect={changeTagFilter}
+            />
           </section>
         </div>
         <div hidden={view !== 'recurring'}>

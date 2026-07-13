@@ -38,6 +38,8 @@ not operate an independent database server or a multi-user identity system.
 - Browse the latest 200 transactions for a selected month; the UI explicitly
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
+- Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
+  from a transaction to apply an exact filter that also scopes CSV export.
 - Stack income/expense, account, and category filters; retain inactive references
   as historical filter choices and clear incompatible category filters when the
   selected transaction type changes.

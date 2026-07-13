@@ -391,7 +391,11 @@ export function TransactionDialog({
               rows={2}
               defaultValue={initialTransaction?.note}
               placeholder={t('notePlaceholder')}
+              aria-describedby="transaction-note-help"
             />
+            <small className="transaction-note-help" id="transaction-note-help">
+              {t('tagNoteHelp')}
+            </small>
           </label>
 
           {error ? (

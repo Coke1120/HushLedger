@@ -70,6 +70,7 @@ export type TransactionQuery = {
   accountId?: number
   categoryId?: number
   search?: string
+  tag?: string
 }
 
 export type CreateTransactionResult =
@@ -232,6 +233,14 @@ async function selectTransactions(
       OR category.name LIKE ? ESCAPE '\\'
     )`)
     values.push(search, search, search, search)
+  }
+
+  if (query.tag) {
+    filters.push(`instr(
+      ' ' || replace(replace(replace(t.note, char(9), ' '), char(10), ' '), char(13), ' ') || ' ',
+      ' ' || ? || ' '
+    ) > 0`)
+    values.push(`#${query.tag}`)
   }
 
   const result = await database.prepare(`

@@ -1,4 +1,5 @@
 import { monthRangeDates } from './date'
+import { noteHasTransactionTag } from './transactionTags'
 import type { MessageKey, Translator } from '../i18n'
 import type {
   Account,
@@ -201,6 +202,7 @@ function matchesQuery(
   search: string,
   accountId: number | null,
   categoryId: number | null,
+  tag: string | null,
 ) {
   const { start, end } = monthRangeDates(month)
   const needle = search.trim().toLowerCase()
@@ -210,6 +212,7 @@ function matchesQuery(
     (type === 'all' || transaction.type === type) &&
     (accountId === null || transaction.accountId === accountId) &&
     (categoryId === null || transaction.categoryId === categoryId) &&
+    (tag === null || noteHasTransactionTag(transaction.note, tag)) &&
     (!needle || `${transaction.payee} ${transaction.note}`.toLowerCase().includes(needle))
   )
 }
@@ -221,10 +224,11 @@ export function getDemoTransactions(
   t?: Translator,
   accountId: number | null = null,
   categoryId: number | null = null,
+  tag: string | null = null,
 ) {
   return demoTransactions
     .map((transaction) => localizeDemoTransaction(transaction, t))
-    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId))
+    .filter((transaction) => matchesQuery(transaction, month, type, search, accountId, categoryId, tag))
 }
 
 export function addDemo(input: TransactionInput) {

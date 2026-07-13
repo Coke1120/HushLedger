@@ -815,10 +815,37 @@ textarea:focus-visible {
   width: 18px;
 }
 
+.transaction-tag-filter {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 0 11px 0 13px;
+  gap: 7px;
+  align-items: center;
+  color: var(--brand);
+  background: var(--income-soft);
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.transaction-tag-filter svg {
+  width: 15px;
+  height: 15px;
+}
+
 .transaction-list {
   padding: 0;
   margin: 0;
   list-style: none;
+}
+
+.transaction-list-item {
+  border-bottom: 1px solid var(--line);
+}
+
+.transaction-list > li:last-child {
+  border-bottom: 0;
 }
 
 .transaction-row {
@@ -833,14 +860,9 @@ textarea:focus-visible {
   text-align: left;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--line);
   border-radius: 0;
   cursor: pointer;
   font: inherit;
-}
-
-.transaction-list > li:last-child .transaction-row {
-  border-bottom: 0;
 }
 
 .transaction-row:hover {
@@ -943,6 +965,32 @@ textarea:focus-visible {
 
 .transaction-amount.expense {
   color: var(--expense);
+}
+
+.transaction-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 24px 13px 82px;
+  margin-top: -7px;
+}
+
+.transaction-tags button {
+  min-height: 32px;
+  padding: 0 10px;
+  color: var(--brand);
+  background: var(--income-soft);
+  border: 1px solid #c2ddd3;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.transaction-tags button:hover,
+.transaction-tags button.is-active {
+  color: #ffffff;
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 .transaction-empty {
@@ -1084,7 +1132,8 @@ textarea:focus-visible {
   resize: vertical;
 }
 
-.payee-suggestion-help {
+.payee-suggestion-help,
+.transaction-note-help {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
@@ -3386,6 +3435,11 @@ textarea:focus-visible {
     width: 100%;
   }
 
+  .transaction-tag-filter {
+    min-height: 40px;
+    justify-self: start;
+  }
+
   .transaction-row {
     grid-template-columns: 44px minmax(150px, 1fr) 135px minmax(120px, auto);
     padding-inline: 20px;
@@ -3657,6 +3711,15 @@ textarea:focus-visible {
     grid-row: 1;
     align-self: end;
     font-size: 14px;
+  }
+
+  .transaction-tags {
+    padding: 0 14px 13px 67px;
+    margin-top: -8px;
+  }
+
+  .transaction-tags button {
+    min-height: 36px;
   }
 
   .mobile-navigation {

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { isValidCalendarDate, monthRangeDates } from './date'
+import { isTransactionTagName } from './transactionTags'
 
 export const transactionTypeSchema = z.enum(['expense', 'income'])
 export type TransactionType = z.infer<typeof transactionTypeSchema>
@@ -50,6 +51,7 @@ export const transactionQuerySchema = z
     accountId: z.coerce.number().int().positive().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
     search: z.string().trim().min(1).max(80).optional(),
+    tag: z.string().refine(isTransactionTagName, '標籤格式不正確').optional(),
   })
   .strict()
 

@@ -7,6 +7,7 @@ export type TransactionFilter = TransactionType | 'all'
 
 type TransactionToolbarProps = {
   search: string
+  tagFilter: string | null
   filter: TransactionFilter
   month: string
   accounts: Account[]
@@ -16,6 +17,7 @@ type TransactionToolbarProps = {
   canExport: boolean
   canImport: boolean
   onSearchChange: (value: string) => void
+  onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onAccountFilterChange: (value: number | null) => void
   onCategoryFilterChange: (value: number | null) => void
@@ -30,6 +32,7 @@ type TransactionToolbarProps = {
 
 export function TransactionToolbar({
   search,
+  tagFilter,
   filter,
   month,
   accounts,
@@ -39,6 +42,7 @@ export function TransactionToolbar({
   canExport,
   canImport,
   onSearchChange,
+  onTagFilterChange,
   onFilterChange,
   onAccountFilterChange,
   onCategoryFilterChange,
@@ -61,6 +65,7 @@ export function TransactionToolbar({
   if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
   if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
   if (search.trim()) exportQuery.set('search', search.trim())
+  if (tagFilter) exportQuery.set('tag', tagFilter.slice(1))
   const exportHref = `/api/exports/transactions?${exportQuery}`
   const visibleCategories = filter === 'all'
     ? categories
@@ -82,6 +87,18 @@ export function TransactionToolbar({
           maxLength={80}
         />
       </label>
+      {tagFilter ? (
+        <button
+          className="transaction-tag-filter"
+          type="button"
+          onClick={() => onTagFilterChange(null)}
+          aria-label={t('removeTagFilter', { tag: tagFilter })}
+          title={t('removeTagFilter', { tag: tagFilter })}
+        >
+          <span>{tagFilter}</span>
+          <X aria-hidden="true" />
+        </button>
+      ) : null}
       <div className="filter-group" aria-label={t('transactionTypeFilter')}>
         {filters.map((item) => (
           <button
