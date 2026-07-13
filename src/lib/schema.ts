@@ -48,6 +48,10 @@ export const transactionDeleteSchema = z
   .object({ updatedAt: z.string().datetime({ offset: true }) })
   .strict()
 
+export const transactionDuplicateCheckSchema = transactionFieldsSchema
+  .extend({ excludeId: transactionIdSchema.optional() })
+  .strict()
+
 export const transactionQuerySchema = z
   .object({
     month: z.string().refine((value) => {
@@ -70,6 +74,7 @@ export const transactionQuerySchema = z
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
+export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 
 const referenceNameSchema = z.string().trim().min(1).max(80)
 const updatedReferenceSchema = z.object({

@@ -14,6 +14,7 @@ import {
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
+  transactionDuplicateCheckSchema,
   transactionInputSchema,
   transactionQuerySchema,
   transactionUpdateSchema,
@@ -152,6 +153,20 @@ describe('transaction validation', () => {
       transactionUpdateSchema.safeParse({ ...fields, id, updatedAt: '2026-07-11T10:30:00.000Z' }).success,
       false,
     )
+  })
+
+  it('accepts only exact duplicate-check fields and an optional excluded transaction', () => {
+    const { id, cleared, ...candidate } = valid
+    assert.equal(cleared, false)
+    assert.deepEqual(transactionDuplicateCheckSchema.parse(candidate), candidate)
+    assert.deepEqual(transactionDuplicateCheckSchema.parse({ ...candidate, excludeId: id }), {
+      ...candidate,
+      excludeId: id,
+    })
+    assert.equal(transactionDuplicateCheckSchema.safeParse({ ...candidate, id }).success, false)
+    assert.equal(transactionDuplicateCheckSchema.safeParse({ ...candidate, cleared }).success, false)
+    assert.equal(transactionDuplicateCheckSchema.safeParse({ ...candidate, privateMemo: 'nope' }).success, false)
+    assert.equal(transactionDuplicateCheckSchema.safeParse({ ...candidate, excludeId: '1' }).success, false)
   })
 })
 

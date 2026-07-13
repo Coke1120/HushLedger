@@ -1094,6 +1094,52 @@ async function verifyWorkerApi() {
   assert.equal(createdTransaction.payload.data.amountMinor, 123)
   assert.equal(createdTransaction.payload.data.cleared, false)
 
+  const duplicateCandidate = {
+    type: transactionBody.type,
+    amountMinor: transactionBody.amountMinor,
+    currency: transactionBody.currency,
+    accountId: transactionBody.accountId,
+    categoryId: transactionBody.categoryId,
+    occurredOn: transactionBody.occurredOn,
+    payee: transactionBody.payee,
+    note: transactionBody.note,
+  }
+  const crossOriginDuplicateCheck = await api(baseUrl, '/api/transactions/duplicates', {
+    method: 'POST',
+    body: duplicateCandidate,
+    origin: 'https://attacker.invalid',
+  })
+  assert.equal(crossOriginDuplicateCheck.response.status, 403)
+  assert.equal(crossOriginDuplicateCheck.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  const exactDuplicateCheck = await api(baseUrl, '/api/transactions/duplicates', {
+    method: 'POST',
+    body: duplicateCandidate,
+  })
+  assert.equal(exactDuplicateCheck.response.status, 200)
+  assert.deepEqual(exactDuplicateCheck.payload.data, { matchCount: 1 })
+
+  const editDuplicateCheck = await api(baseUrl, '/api/transactions/duplicates', {
+    method: 'POST',
+    body: { ...duplicateCandidate, excludeId: transactionBody.id },
+  })
+  assert.equal(editDuplicateCheck.response.status, 200)
+  assert.deepEqual(editDuplicateCheck.payload.data, { matchCount: 0 })
+
+  const changedDuplicateCheck = await api(baseUrl, '/api/transactions/duplicates', {
+    method: 'POST',
+    body: { ...duplicateCandidate, note: `${duplicateCandidate.note} changed` },
+  })
+  assert.equal(changedDuplicateCheck.response.status, 200)
+  assert.deepEqual(changedDuplicateCheck.payload.data, { matchCount: 0 })
+
+  const invalidDuplicateCheck = await api(baseUrl, '/api/transactions/duplicates', {
+    method: 'POST',
+    body: { ...duplicateCandidate, cleared: false },
+  })
+  assert.equal(invalidDuplicateCheck.response.status, 400)
+  assert.equal(invalidDuplicateCheck.payload.error.code, 'VALIDATION_ERROR')
+
   const unclearedTransactions = await api(baseUrl, `/api/transactions?month=${month}&status=uncleared`)
   assert.equal(unclearedTransactions.response.status, 200)
   assert.deepEqual(unclearedTransactions.payload.data.map(({ id }) => id), [transactionBody.id])
@@ -1757,6 +1803,7 @@ async function verifyWorkerApi() {
     transactionFilterGuards: 4,
     transactionFilterQueries: 4,
     transactionFilterSummaries: 3,
+    transactionDuplicateChecks: 5,
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,

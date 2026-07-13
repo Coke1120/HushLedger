@@ -78,6 +78,10 @@ knowledge and explains every command and dashboard click.
   confirmation before one transactional D1 replacement.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
+- Before a manual create or edit, warn when the local ledger already contains an
+  exact match on type, amount, currency, account, category, date, payee, and
+  note. The check returns only a count, ignores clearing status, never calls AI,
+  and can be overridden because identical real purchases are valid.
 - Duplicate an existing transaction into a reviewable draft with a fresh UUID;
   editable details and date are copied, while recurring/import provenance is not.
 - Turn an existing manual transaction into a prefilled monthly recurring-rule
@@ -127,6 +131,11 @@ credit card, or a digital wallet. It is not an additional transaction type.
   included in CSV exports or full-ledger backups.
 - Transactions use client-generated UUIDs, so a safe retry does not create a
   duplicate transaction.
+- Manual duplicate preflight is same-origin, read-only, and exact across type,
+  amount, currency, account, category, date, payee, and note. It excludes the
+  current transaction during editing, deliberately ignores clearing status, and
+  warns rather than enforcing uniqueness. The explicit Duplicate action skips a
+  redundant preflight because the user has already chosen to create another row.
 - Duplicating a transaction opens a separate create-mode draft for review. It
   copies only editable fields, never recurring provenance, audit timestamps, or
   import identity, resets the draft to uncleared, and requires active
@@ -439,6 +448,7 @@ GET    /api/payee-suggestions  (latest references for up to 100 known payees)
 GET    /api/transactions?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&sort=amount_desc
 GET    /api/transactions/summary?month=YYYY-MM&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip
 POST   /api/transactions
+POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id

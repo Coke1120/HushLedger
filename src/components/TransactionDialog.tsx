@@ -69,13 +69,15 @@ export function TransactionDialog({
   const [payee, setPayee] = useState(initialTransaction?.payee ?? '')
   const [suggestions, setSuggestions] = useState<PayeeSuggestion[]>([])
   const [payeeMemoryApplied, setPayeeMemoryApplied] = useState(false)
+  const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
   const dialogRef = useRef<HTMLDivElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const draftIdRef = useRef(initialTransaction?.id ?? crypto.randomUUID())
-  const savingRef = useRef(saving)
+  const busyRef = useRef(saving)
+  const duplicateCheckRef = useRef(false)
   const accountChangedRef = useRef(false)
   const categoryChangedRef = useRef(false)
   const payeeRef = useRef(payee)
@@ -97,6 +99,7 @@ export function TransactionDialog({
   )
   const canDuplicate = hasActiveReferences
   const canMakeRecurring = hasActiveReferences && !transaction?.recurringRuleId
+  const busy = saving || checkingDuplicate || deleting
 
   const applyPayeeMemory = useCallback((
     nextPayee: string,
@@ -124,8 +127,8 @@ export function TransactionDialog({
   }, [accounts, categories, draft, transaction])
 
   useEffect(() => {
-    savingRef.current = saving
-  }, [saving])
+    busyRef.current = busy
+  }, [busy])
 
   useEffect(() => {
     if (transaction || draft || !online) return
@@ -148,7 +151,7 @@ export function TransactionDialog({
 
     const focusFrame = requestAnimationFrame(() => amountRef.current?.focus())
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && !savingRef.current) {
+      if (event.key === 'Escape' && !busyRef.current) {
         event.preventDefault()
         onClose()
         return
@@ -194,7 +197,7 @@ export function TransactionDialog({
   }
 
   const handleBackdropKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape' && !saving) onClose()
+    if (event.key === 'Escape' && !busy) onClose()
   }
 
   const normalizeAmountInput = (reportError: boolean) => {
@@ -256,8 +259,53 @@ export function TransactionDialog({
       return
     }
 
-    const saved = await onSubmit(parsed.data)
-    if (saved) onClose()
+    if (duplicateCheckRef.current) return
+    duplicateCheckRef.current = true
+    try {
+      if (!draft) {
+        setCheckingDuplicate(true)
+        let matchCount: number | null = null
+        try {
+          const duplicate = await api<{ matchCount: number }>('/api/transactions/duplicates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: parsed.data.type,
+              amountMinor: parsed.data.amountMinor,
+              currency: parsed.data.currency,
+              accountId: parsed.data.accountId,
+              categoryId: parsed.data.categoryId,
+              occurredOn: parsed.data.occurredOn,
+              payee: parsed.data.payee,
+              note: parsed.data.note,
+              ...(transaction ? { excludeId: transaction.id } : {}),
+            }),
+          })
+          matchCount = duplicate.matchCount
+        } catch {
+          if (!window.confirm(t('duplicateCheckUnavailableConfirm'))) {
+            setLocalError(t('possibleDuplicateNotSaved'))
+            return
+          }
+        } finally {
+          setCheckingDuplicate(false)
+        }
+
+        if (matchCount && !window.confirm(t(
+          matchCount === 1 ? 'possibleDuplicateConfirmOne' : 'possibleDuplicateConfirm',
+          { count: matchCount },
+        ))) {
+          setLocalError(t('possibleDuplicateNotSaved'))
+          return
+        }
+      }
+
+      const saved = await onSubmit(parsed.data)
+      if (saved) onClose()
+    } finally {
+      duplicateCheckRef.current = false
+      setCheckingDuplicate(false)
+    }
   }
 
   const handleDelete = async () => {
@@ -274,7 +322,7 @@ export function TransactionDialog({
     <div
       className="dialog-backdrop"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
+      onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}
       onKeyDown={handleBackdropKeyDown}
     >
       <div
@@ -288,12 +336,13 @@ export function TransactionDialog({
         <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
-          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={saving} aria-label={t('close')}>
+          <button className="icon-button dialog-close" type="button" onClick={onClose} disabled={busy} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} noValidate>
+        <form onSubmit={handleSubmit} noValidate aria-busy={busy}>
+          <fieldset className="transaction-form-fields" disabled={busy}>
           {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
           {transaction && !hasActiveReferences ? (
             <p className="duplicate-form-note">{t('duplicateUnavailableHelp')}</p>
@@ -519,11 +568,16 @@ export function TransactionDialog({
                 {t('makeRecurring')}
               </button>
             ) : null}
-            <button className="button button-primary save-button" type="submit" disabled={saving || !online}>
-              {saving && !deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
-              {saving && !deleting ? t('saving') : t(transaction ? 'saveChanges' : 'saveTransaction')}
+            <button className="button button-primary save-button" type="submit" disabled={busy || !online}>
+              {busy && !deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
+              {checkingDuplicate
+                ? t('checkingDuplicate')
+                : saving && !deleting
+                  ? t('saving')
+                  : t(transaction ? 'saveChanges' : 'saveTransaction')}
             </button>
           </div>
+          </fieldset>
         </form>
       </div>
     </div>

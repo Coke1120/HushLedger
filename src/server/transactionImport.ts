@@ -6,6 +6,7 @@ import type {
   TransactionImportRow,
   TransactionImportRowStatus,
 } from '../lib/transactionImport'
+import type { TransactionDuplicateCheckInput } from '../lib/schema'
 
 type ClassificationRow = {
   importKeyExists: number
@@ -22,6 +23,54 @@ type ClassificationRow = {
 export type TransactionImportCommitOutcome =
   | { kind: 'committed'; result: TransactionImportCommitResult }
   | { kind: 'blocked'; preview: TransactionImportPreviewResult }
+
+const exactTransactionMatchPredicate = `
+  t.type = candidate.type
+  AND t.amount_minor = candidate.amount_minor
+  AND t.currency = candidate.currency
+  AND t.account_id = candidate.account_id
+  AND t.category_id = candidate.category_id
+  AND t.occurred_on = candidate.occurred_on
+  AND t.payee = candidate.payee
+  AND t.note = candidate.note
+`
+
+export async function countExactTransactionMatches(
+  database: D1Database,
+  input: TransactionDuplicateCheckInput,
+) {
+  const row = await database.prepare(`
+    WITH candidate(
+      type,
+      amount_minor,
+      currency,
+      account_id,
+      category_id,
+      occurred_on,
+      payee,
+      note
+    ) AS (VALUES (?, ?, ?, ?, ?, ?, ?, ?))
+    SELECT COUNT(*) AS matchCount
+    FROM transactions t, candidate
+    WHERE ${exactTransactionMatchPredicate}
+      AND (? IS NULL OR t.id <> ?)
+  `)
+    .bind(
+      input.type,
+      input.amountMinor,
+      input.currency,
+      input.accountId,
+      input.categoryId,
+      input.occurredOn,
+      input.payee,
+      input.note,
+      input.excludeId ?? null,
+      input.excludeId ?? null,
+    )
+    .first<{ matchCount: number }>()
+
+  return row?.matchCount ?? 0
+}
 
 const importClassificationSql = `
   WITH candidate(
@@ -61,14 +110,7 @@ const importClassificationSql = `
     ) AS idMatches,
     EXISTS(
       SELECT 1 FROM transactions t
-      WHERE t.type = candidate.type
-        AND t.amount_minor = candidate.amount_minor
-        AND t.currency = candidate.currency
-        AND t.account_id = candidate.account_id
-        AND t.category_id = candidate.category_id
-        AND t.occurred_on = candidate.occurred_on
-        AND t.payee = candidate.payee
-        AND t.note = candidate.note
+      WHERE ${exactTransactionMatchPredicate}
     ) AS exactMatches,
     EXISTS(
       SELECT 1 FROM accounts account

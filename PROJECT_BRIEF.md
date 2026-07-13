@@ -138,6 +138,11 @@ HK$123.45 is stored as `12345`. Binary floating point is never authoritative.
 as transaction time. `cleared` is a reversible review marker, not an immutable
 reconciliation lock. `updated_at` is also the optimistic concurrency token for
 editing and deleting a transaction. Edits never replace recurring provenance.
+Before a manual create or edit, a same-origin, read-only preflight returns only
+the count of exact matches across type, amount, currency, account, category,
+date, payee, and note. Editing excludes its own row and clearing status is
+deliberately ignored. A match warns but never blocks a legitimate identical
+transaction, and no ledger data leaves the Worker for this check.
 
 ### Accounts and categories
 
@@ -193,6 +198,7 @@ GET    /api/payee-suggestions
 GET    /api/transactions?month=YYYY-MM&type=...&status=...&search=...&sort=amount_desc  (ordered 200)
 GET    /api/transactions/summary?month=YYYY-MM&type=...&status=...&search=...  (uncapped aggregate)
 POST   /api/transactions
+POST   /api/transactions/duplicates  (exact match count only)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
@@ -290,7 +296,8 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete, stackable
   account/category/type/clearing/search filters, deterministic date/amount/payee
-  ordering, matching filtered transaction aggregate and ordered CSV export,
+  ordering, warning-only exact duplicate preflight, matching filtered transaction
+  aggregate and ordered CSV export,
   browser-local saved review views,
   ranked category-spending drilldown, monthly plan-versus-actual review,
   deterministic preview-first HushLedger and
