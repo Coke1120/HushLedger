@@ -4,6 +4,10 @@ import { transactionQuerySchema } from '../lib/schema'
 
 export const summaryQuerySchema = transactionQuerySchema.pick({ month: true }).strict()
 export const accountBalanceQuerySchema = summaryQuerySchema
+export const accountRegisterQuerySchema = transactionQuerySchema
+  .pick({ month: true, accountId: true })
+  .required({ accountId: true })
+  .strict()
 export const recurringRuleIdSchema = z.string().uuid('週期交易 ID 必須是 UUID')
 export const recurringRunDueSchema = z
   .object({

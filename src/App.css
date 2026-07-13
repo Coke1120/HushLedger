@@ -1635,6 +1635,227 @@ textarea:focus-visible {
   border-top: 1px solid var(--line);
 }
 
+.account-register {
+  padding: 22px 24px 24px;
+}
+
+.account-register-back {
+  margin-bottom: 18px;
+}
+
+.account-register-heading {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.account-register-heading > span,
+.account-register-icon {
+  display: grid;
+  flex: 0 0 auto;
+  color: var(--brand);
+  background: var(--income-soft);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.account-register-heading > span {
+  width: 44px;
+  height: 44px;
+}
+
+.account-register-heading svg,
+.account-register-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.account-register-heading h2 {
+  margin: 0;
+  color: var(--brand-strong);
+  font-size: 25px;
+}
+
+.account-register-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-register-summary {
+  display: grid;
+  padding: 0;
+  margin: 20px 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.account-register-summary > div {
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.account-register-summary > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.account-register-summary dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-register-summary dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.account-register-boundary,
+.account-register-limit {
+  padding: 11px 13px;
+  margin: 0 0 16px;
+  color: var(--muted);
+  background: var(--warning-bg);
+  border: 1px solid #ecd88c;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.account-register-list {
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.account-register-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.account-register-row {
+  display: grid;
+  width: 100%;
+  min-height: 78px;
+  padding: 13px 16px;
+  grid-template-columns: 42px minmax(180px, 1fr) 125px minmax(170px, auto);
+  gap: 12px;
+  align-items: center;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font: inherit;
+}
+
+button.account-register-row:hover {
+  background: var(--surface-soft);
+}
+
+button.account-register-row:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.account-register-icon {
+  width: 38px;
+  height: 38px;
+}
+
+.account-register-icon.transfer {
+  color: var(--brand-strong);
+}
+
+.account-register-main {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.account-register-main > strong,
+.account-register-note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-register-main > strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.account-register-main small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  color: var(--expense);
+  font-size: 11px;
+}
+
+.account-register-main small .is-cleared {
+  color: var(--income);
+}
+
+.account-register-note,
+.account-register-row time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-register-row time {
+  text-align: right;
+}
+
+.account-register-money {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.account-register-money strong.income {
+  color: var(--income);
+}
+
+.account-register-money strong.expense {
+  color: var(--expense);
+}
+
+.account-register-money small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-register-empty {
+  display: flex;
+  min-height: 150px;
+  padding: 24px;
+  color: var(--muted);
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.account-register-empty strong {
+  color: var(--ink);
+}
+
+.account-register-limit {
+  margin: 14px 0 0;
+}
+
 .transaction-list-item {
   border-bottom: 1px solid var(--line);
 }
@@ -4800,6 +5021,56 @@ textarea:focus-visible {
   .transactions-panel {
     border-radius: 14px;
     box-shadow: none;
+  }
+
+  .account-register {
+    padding: 16px 14px 18px;
+  }
+
+  .account-register-heading h2 {
+    font-size: 21px;
+  }
+
+  .account-register-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-register-summary > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .account-register-row {
+    min-height: 104px;
+    padding: 12px;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    gap: 4px 10px;
+  }
+
+  .account-register-icon {
+    grid-row: 1 / 4;
+  }
+
+  .account-register-main,
+  .account-register-row time,
+  .account-register-money {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .account-register-row time {
+    grid-row: 2;
+  }
+
+  .account-register-money {
+    display: flex;
+    grid-row: 3;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    align-items: baseline;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   .transactions-heading {

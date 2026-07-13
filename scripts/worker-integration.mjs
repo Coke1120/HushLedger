@@ -1002,8 +1002,45 @@ async function verifyWorkerApi() {
     `/api/accounts/balances?month=${month}&month=${month}`,
   )
   assert.equal(duplicateBalanceMonth.response.status, 400)
+  const invalidRegisterAccount = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=0`,
+  )
+  assert.equal(invalidRegisterAccount.response.status, 400)
+  assert.equal(invalidRegisterAccount.payload.error.code, 'INVALID_QUERY')
+  const duplicateRegisterAccount = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=${account.id}&accountId=${account.id}`,
+  )
+  assert.equal(duplicateRegisterAccount.response.status, 400)
+  const missingRegisterAccount = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=999999`,
+  )
+  assert.equal(missingRegisterAccount.response.status, 404)
+  assert.equal(missingRegisterAccount.payload.error.code, 'ACCOUNT_NOT_FOUND')
+  const rejectedRegisterWrite = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=${account.id}`,
+    { method: 'POST', body: {} },
+  )
+  assert.equal(rejectedRegisterWrite.response.status, 404)
   const balancesBeforeTransfer = await api(baseUrl, `/api/accounts/balances?month=${month}`)
   assert.equal(balancesBeforeTransfer.response.status, 200, JSON.stringify(balancesBeforeTransfer.payload))
+  const bulkAccountBalance = balancesBeforeTransfer.payload.data.find(({ accountId }) => accountId === 1)
+  assert(bulkAccountBalance)
+  const cappedRegister = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=1`,
+  )
+  assert.equal(cappedRegister.response.status, 200, JSON.stringify(cappedRegister.payload))
+  assert.equal(cappedRegister.payload.data.entryCount, 205)
+  assert.equal(cappedRegister.payload.data.entries.length, 200)
+  assert.equal(cappedRegister.payload.data.endingBalanceMinor, bulkAccountBalance.recordedBalance)
+  assert.equal(
+    cappedRegister.payload.data.entries[0].runningBalanceMinor,
+    bulkAccountBalance.recordedBalance,
+  )
   const sourceBalanceBefore = balancesBeforeTransfer.payload.data.find(
     ({ accountId }) => accountId === account.id,
   )
@@ -1104,6 +1141,62 @@ async function verifyWorkerApi() {
     destinationWithUnclearedTransfer.clearedBalance,
     destinationBalanceBefore.clearedBalance,
   )
+  const sourceRegister = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=${account.id}`,
+  )
+  assert.equal(sourceRegister.response.status, 200, JSON.stringify(sourceRegister.payload))
+  assert.equal(sourceRegister.payload.data.accountId, account.id)
+  assert.equal(sourceRegister.payload.data.startingBalanceMinor, null)
+  assert.equal(sourceRegister.payload.data.availableFrom, today)
+  assert.equal(sourceRegister.payload.data.endingBalanceMinor, 50_000)
+  assert.equal(sourceRegister.payload.data.entryCount, 2)
+  assert.deepEqual(
+    sourceRegister.payload.data.entries.map((entry) => ({
+      kind: entry.kind,
+      sourceId: entry.sourceId,
+      amountMinor: entry.amountMinor,
+      runningBalanceMinor: entry.runningBalanceMinor,
+      cleared: entry.cleared,
+      transferDirection: entry.transferDirection,
+    })),
+    [
+      {
+        kind: 'transfer',
+        sourceId: transferBody.id,
+        amountMinor: -50_000,
+        runningBalanceMinor: 50_000,
+        cleared: false,
+        transferDirection: 'out',
+      },
+      {
+        kind: 'opening',
+        sourceId: null,
+        amountMinor: 100_000,
+        runningBalanceMinor: 100_000,
+        cleared: null,
+        transferDirection: null,
+      },
+    ],
+  )
+  const registerBeforeOpening = await api(
+    baseUrl,
+    `/api/accounts/register?month=${shiftCalendarMonth(month, -1)}&accountId=${account.id}`,
+  )
+  assert.equal(registerBeforeOpening.response.status, 200)
+  assert.equal(registerBeforeOpening.payload.data.startingBalanceMinor, null)
+  assert.equal(registerBeforeOpening.payload.data.endingBalanceMinor, null)
+  assert.equal(registerBeforeOpening.payload.data.entryCount, 0)
+  assert.deepEqual(registerBeforeOpening.payload.data.entries, [])
+  const destinationRegister = await api(
+    baseUrl,
+    `/api/accounts/register?month=${month}&accountId=${transferDestination.id}`,
+  )
+  assert.equal(destinationRegister.response.status, 200)
+  assert.equal(destinationRegister.payload.data.startingBalanceMinor, 0)
+  assert.equal(destinationRegister.payload.data.endingBalanceMinor, 50_000)
+  assert.equal(destinationRegister.payload.data.entries[0].transferDirection, 'in')
+  assert.equal(destinationRegister.payload.data.entries[0].runningBalanceMinor, 50_000)
   const netWorthWithTransfer = await api(baseUrl, `/api/reports/net-worth?month=${month}`)
   assert.equal(netWorthWithTransfer.response.status, 200)
   assert.equal(
@@ -2175,6 +2268,8 @@ async function verifyWorkerApi() {
     accountTransferFilterQueries: 3,
     accountBalanceQueries: 3,
     accountBalanceGuards: 3,
+    accountRegisterQueries: 4,
+    accountRegisterGuards: 4,
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
     ledgerBackupTables: 6,

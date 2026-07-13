@@ -7,6 +7,7 @@ import { BankImportPanel } from './components/BankImportPanel'
 import { AccountTransferDialog } from './components/AccountTransferDialog'
 import { AccountTransferList } from './components/AccountTransferList'
 import { AccountBalances } from './components/AccountBalances'
+import { AccountRegister } from './components/AccountRegister'
 import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
@@ -62,6 +63,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [filter, setFilter] = useState<TransactionFilter>('all')
   const [clearingFilter, setClearingFilter] = useState<TransactionClearingFilter>('all')
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
+  const [registerAccountId, setRegisterAccountId] = useState<number | null>(null)
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
@@ -92,6 +94,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     tagFilter,
     clearingFilter,
     view === 'transactions' ? transactionSort : 'date_desc',
+    registerAccountId,
   )
   const {
     clearActionMessage,
@@ -149,6 +152,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   )
 
   const changeView = useCallback((nextView: AppView) => {
+    if (nextView !== 'transactions') setRegisterAccountId(null)
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
@@ -166,6 +170,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
   const openImport = useCallback((mode: 'csv' | 'ai') => {
+    setRegisterAccountId(null)
     setView('transactions')
     setImportMode(mode)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -198,6 +203,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(null)
     setFilter(category.type)
     setAccountFilterId(null)
+    setRegisterAccountId(null)
     setCategoryFilterId(category.id)
     setImportMode(null)
     changeView('transactions')
@@ -209,12 +215,23 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(null)
     setFilter('all')
     setClearingFilter('all')
-    setAccountFilterId(accountId)
+    if (data.source === 'live' && data.online) {
+      setAccountFilterId(null)
+      setRegisterAccountId(accountId)
+    } else {
+      setAccountFilterId(accountId)
+      setRegisterAccountId(null)
+    }
     setCategoryFilterId(null)
     setTransactionSort('date_desc')
     setImportMode(null)
     changeView('transactions')
-  }, [changeView, data.accounts])
+  }, [changeView, data.accounts, data.online, data.source])
+
+  const closeAccountRegister = useCallback(() => {
+    setAccountFilterId(registerAccountId)
+    setRegisterAccountId(null)
+  }, [registerAccountId])
 
   const changeTagFilter = useCallback((tag: string | null) => {
     setTagFilter(tag)
@@ -286,6 +303,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(savedView.tag)
     setTransactionSort(savedView.sort)
     setImportMode(null)
+    setRegisterAccountId(null)
   }, [data.accounts, data.categories])
 
   const resetTransactionFilters = useCallback(() => {
@@ -297,6 +315,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setTagFilter(null)
     setTransactionSort('date_desc')
     setImportMode(null)
+    setRegisterAccountId(null)
   }, [])
 
   useEffect(() => {
@@ -409,8 +428,12 @@ function App({ initialMonth }: { initialMonth: string }) {
             ) : null}
           </div>
 
-          <section className="transactions-panel" aria-labelledby="transactions-title">
-            <div className="transactions-heading">
+          <section
+            className="transactions-panel"
+            aria-labelledby={registerAccountId === null ? 'transactions-title' : undefined}
+            aria-label={registerAccountId !== null ? t('accountRegisterList') : undefined}
+          >
+            {registerAccountId === null ? <div className="transactions-heading">
               <div>
                 <h2 id="transactions-title">{t('transactionRecords')}</h2>
                 <p>{transactionCountLabel}</p>
@@ -476,8 +499,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                   />
                 </>
               ) : null}
-            </div>
-            {view === 'transactions' && importMode === 'csv' ? (
+            </div> : null}
+            {registerAccountId === null && view === 'transactions' && importMode === 'csv' ? (
               <CsvImportPanel
                 accounts={data.accounts}
                 categories={data.categories}
@@ -487,7 +510,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onImported={() => data.refresh(false)}
               />
             ) : null}
-            {view === 'transactions' && importMode === 'ai' ? (
+            {registerAccountId === null && view === 'transactions' && importMode === 'ai' ? (
               <BankImportPanel
                 settings={aiSettings}
                 accounts={data.accounts}
@@ -499,7 +522,17 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onImported={() => data.refresh(false)}
               />
             ) : null}
-            {view === 'transactions' ? (
+            {view === 'transactions' && registerAccountId !== null ? (
+              <AccountRegister
+                register={data.accountRegister}
+                transactions={data.transactions}
+                transfers={data.accountTransfers}
+                loading={loading}
+                onClose={closeAccountRegister}
+                onEditTransaction={openTransaction}
+                onEditTransfer={openTransferDialog}
+              />
+            ) : view === 'transactions' ? (
               <AccountTransferList
                 transfers={data.accountTransfers}
                 loading={loading}
@@ -508,13 +541,15 @@ function App({ initialMonth }: { initialMonth: string }) {
                 onEdit={openTransferDialog}
               />
             ) : null}
-            <TransactionList
-              transactions={transactions}
-              loading={loading}
-              tagFilter={tagFilter}
-              onEdit={openTransaction}
-              onTagSelect={changeTagFilter}
-            />
+            {registerAccountId === null ? (
+              <TransactionList
+                transactions={transactions}
+                loading={loading}
+                tagFilter={tagFilter}
+                onEdit={openTransaction}
+                onTagSelect={changeTagFilter}
+              />
+            ) : null}
           </section>
         </div>
         <div hidden={view !== 'recurring'}>

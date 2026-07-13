@@ -46,8 +46,9 @@ knowledge and explains every command and dashboard click.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
   month. An optional dated opening balance anchors incomplete history, and an
   in-app statement comparison shows the exact difference without locking or
-  changing transactions. One tap opens that account's ordinary transactions and
-  both incoming and outgoing transfer activity for the same month.
+  changing transactions. One tap opens a dedicated monthly account register that
+  merges ordinary transactions with both transfer legs and shows the exact
+  recorded balance after every entry.
 - A six-month recorded net-worth trend across every active and inactive account,
   including negative debts. Months with unknown pre-opening history are marked
   unavailable instead of silently omitting an account, and selecting a month
@@ -191,6 +192,11 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Account activity drilldown filters transactions and transfers on the server.
   The 200-transfer display limit is applied after the account filter, rather than
   fetching an unrelated global slice and hiding rows in the browser.
+- The account register orders dated opening balances, transactions, and incoming
+  or outgoing transfer legs in one stable stream. When a month exceeds 200 rows,
+  it returns the newest 200 but calculates every displayed running balance from
+  the complete month. Activity before a dated opening balance is never presented
+  as trustworthy history.
 - Disabled accounts and categories are unavailable to new entries. An existing
   transaction may keep and edit against its archived references until the user
   explicitly reassigns them to active ones.
@@ -471,6 +477,7 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 GET    /api/health
 GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
+GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)
 GET    /api/reports/net-worth?month=YYYY-MM  (six complete-or-unavailable month-end net-worth points)
 POST   /api/accounts
 PATCH  /api/accounts  (reorder one complete active/inactive group)
@@ -544,6 +551,13 @@ as an exclusive cutoff. It includes transfers in each account but never feeds
 them back into income, expense, category, plan, trend, or CSV totals. A statement
 value entered in the UI stays in component memory only and is compared with the
 cleared balance; it is not sent to an API or written to D1.
+
+The account register is also read-only. Its starting balance uses the dated
+opening balance plus every earlier recorded movement inside that account's known
+history. A dated opening inside the selected month appears as the first trusted
+entry; months entirely before that date remain unavailable. The endpoint merges
+both sides of transfers without converting them into income or expense and uses
+stable date, creation-time, and ID ordering for same-day entries.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income

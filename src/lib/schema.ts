@@ -446,6 +446,35 @@ export type AccountBalance = {
   unclearedBalance: number | null
 }
 
+export type AccountRegisterEntry = {
+  entryId: string
+  sourceId: string | null
+  kind: 'opening' | 'transaction' | 'transfer'
+  occurredOn: string
+  amountMinor: number
+  runningBalanceMinor: number
+  cleared: boolean | null
+  payee: string
+  note: string
+  categoryName: string | null
+  categoryLocalizationKey: CategoryLocalizationKey | null
+  counterpartyAccountName: string | null
+  counterpartyAccountLocalizationKey: AccountLocalizationKey | null
+  transferDirection: 'in' | 'out' | null
+}
+
+export type AccountRegister = {
+  accountId: number
+  accountName: string
+  accountLocalizationKey: AccountLocalizationKey | null
+  month: string
+  availableFrom: string | null
+  startingBalanceMinor: number | null
+  endingBalanceMinor: number | null
+  entryCount: number
+  entries: AccountRegisterEntry[]
+}
+
 export type NetWorthTrendPoint = {
   month: string
   netWorthMinor: number | null

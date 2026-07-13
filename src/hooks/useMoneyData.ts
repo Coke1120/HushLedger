@@ -24,6 +24,7 @@ import {
 import type {
   Account,
   AccountBalance,
+  AccountRegister,
   AccountTransfer,
   AccountTransferInput,
   Category,
@@ -44,6 +45,7 @@ type Snapshot = {
   transactions: Transaction[]
   accountTransfers: AccountTransfer[]
   accountBalances: AccountBalance[]
+  accountRegister: AccountRegister | null
   netWorthTrend: NetWorthTrendPoint[]
   transactionFilterSummary: TransactionFilterSummary
   summary: Summary
@@ -65,6 +67,7 @@ function demoSnapshot(
     transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status, sort),
     accountTransfers: [],
     accountBalances: demoAccountBalances(month),
+    accountRegister: null,
     netWorthTrend: demoNetWorthTrend(month),
     transactionFilterSummary: summarizeDemoTransactions(
       month,
@@ -91,6 +94,7 @@ export function useMoneyData(
   tag: string | null,
   status: TransactionClearingStatus | 'all',
   sort: TransactionSort,
+  registerAccountId: number | null,
 ) {
   const { t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
@@ -105,9 +109,10 @@ export function useMoneyData(
   const submitting = useRef(false)
 
   const fetchSnapshot = useCallback(async (): Promise<Snapshot> => {
+    const effectiveAccountId = registerAccountId ?? accountId
     const query = new URLSearchParams({ month })
     if (type !== 'all') query.set('type', type)
-    if (accountId !== null) query.set('accountId', String(accountId))
+    if (effectiveAccountId !== null) query.set('accountId', String(effectiveAccountId))
     if (categoryId !== null) query.set('categoryId', String(categoryId))
     if (search.trim()) query.set('search', search.trim())
     if (tag) query.set('tag', tag.slice(1))
@@ -115,20 +120,23 @@ export function useMoneyData(
     const transactionQuery = new URLSearchParams(query)
     if (sort !== 'date_desc') transactionQuery.set('sort', sort)
     const transferQuery = new URLSearchParams({ month })
-    if (accountId !== null) transferQuery.set('accountId', String(accountId))
+    if (effectiveAccountId !== null) transferQuery.set('accountId', String(effectiveAccountId))
 
-    const [transactions, accountTransfers, accountBalances, netWorthTrend, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
+    const [transactions, accountTransfers, accountBalances, accountRegister, netWorthTrend, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
       api<AccountTransfer[]>(`/api/transfers?${transferQuery}`),
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
+      registerAccountId === null
+        ? Promise.resolve(null)
+        : api<AccountRegister>(`/api/accounts/register?month=${encodeURIComponent(month)}&accountId=${registerAccountId}`),
       api<NetWorthTrendPoint[]>(`/api/reports/net-worth?month=${encodeURIComponent(month)}`),
       api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
     ])
-    return { transactions, accountTransfers, accountBalances, netWorthTrend, transactionFilterSummary, summary, accounts, categories }
-  }, [accountId, categoryId, month, search, sort, status, tag, type])
+    return { transactions, accountTransfers, accountBalances, accountRegister, netWorthTrend, transactionFilterSummary, summary, accounts, categories }
+  }, [accountId, categoryId, month, registerAccountId, search, sort, status, tag, type])
 
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
