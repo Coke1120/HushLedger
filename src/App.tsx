@@ -114,6 +114,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     refresh: refreshMoneyData,
     removeTransaction,
     removeAccountTransfer,
+    setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
     saveAccountTransfer,
     saveTransaction: saveMoneyTransaction,
@@ -626,6 +627,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                   transactionSort,
                 ].join('|')}
                 transactions={transactions}
+                categories={data.categories}
                 loading={loading}
                 tagFilter={tagFilter}
                 duplicateReview={duplicatesOnly}
@@ -633,6 +635,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 saving={data.saving}
                 onEdit={openTransaction}
                 onTagSelect={changeTagFilter}
+                onSetCategory={setSelectedTransactionsCategory}
                 onSetClearing={setSelectedTransactionsClearing}
               />
             ) : null}

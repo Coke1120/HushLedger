@@ -20,6 +20,7 @@ import type {
   PayeeSuggestion,
   Summary,
   Transaction,
+  TransactionCategoryBatchInput,
   TransactionClearingBatchInput,
   TransactionClearingStatus,
   TransactionDateScope,
@@ -110,6 +111,18 @@ export type DeleteTransactionResult =
 export type SetTransactionsClearingResult =
   | { kind: 'updated'; count: number }
   | { kind: 'version_conflict' }
+
+export type SetTransactionsCategoryResult =
+  | { kind: 'updated'; count: number }
+  | { kind: 'version_conflict' }
+  | { kind: 'reference_invalid'; code: 'CATEGORY_INVALID' | 'CATEGORY_TYPE_MISMATCH' }
+
+type TransactionCategoryGuardRow = {
+  desiredCount: number
+  currentCount: number
+  compatibleCount: number
+  targetActive: number
+}
 
 const transactionSelect = `
   SELECT
@@ -661,6 +674,101 @@ export async function setTransactionsClearing(
   return Number(updated.meta.changes) > 0
     ? { kind: 'updated', count: input.transactions.length }
     : { kind: 'version_conflict' }
+}
+
+export async function setTransactionsCategory(
+  database: D1Database,
+  input: TransactionCategoryBatchInput,
+): Promise<SetTransactionsCategoryResult> {
+  const desired = JSON.stringify(input.transactions)
+  const guard = database.prepare(`
+    WITH
+    desired AS (
+      SELECT
+        json_extract(value, '$.id') AS desired_id,
+        json_extract(value, '$.updatedAt') AS expected_updated_at
+      FROM json_each(?)
+    ),
+    target AS (
+      SELECT type
+      FROM categories
+      WHERE id = ? AND is_active = 1
+    )
+    SELECT
+      (SELECT COUNT(*) FROM desired) AS desiredCount,
+      (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN transactions AS current
+          ON current.id = desired.desired_id
+          AND current.updated_at = desired.expected_updated_at
+      ) AS currentCount,
+      (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN transactions AS current
+          ON current.id = desired.desired_id
+          AND current.updated_at = desired.expected_updated_at
+        INNER JOIN target ON target.type = current.type
+      ) AS compatibleCount,
+      EXISTS(SELECT 1 FROM target) AS targetActive
+  `).bind(desired, input.categoryId)
+  const update = database.prepare(`
+    WITH
+    desired AS (
+      SELECT
+        json_extract(value, '$.id') AS desired_id,
+        json_extract(value, '$.updatedAt') AS expected_updated_at
+      FROM json_each(?)
+    ),
+    target AS (
+      SELECT type
+      FROM categories
+      WHERE id = ? AND is_active = 1
+    )
+    UPDATE transactions
+    SET
+      category_id = ?,
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
+    WHERE id IN (SELECT desired_id FROM desired)
+      AND EXISTS(SELECT 1 FROM target WHERE target.type = transactions.type)
+      AND (SELECT COUNT(*) FROM desired) = (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN transactions AS current
+          ON current.id = desired.desired_id
+          AND current.updated_at = desired.expected_updated_at
+      )
+      AND (SELECT COUNT(*) FROM desired) = (
+        SELECT COUNT(*)
+        FROM desired
+        INNER JOIN transactions AS current
+          ON current.id = desired.desired_id
+          AND current.updated_at = desired.expected_updated_at
+        INNER JOIN target ON target.type = current.type
+      )
+    RETURNING id
+  `).bind(desired, input.categoryId, input.categoryId)
+  const [guardResult, updateResult] = await database.batch([guard, update])
+  const guardRow = guardResult.results[0] as TransactionCategoryGuardRow | undefined
+  if (!guardRow) throw new Error('Bulk transaction category guard returned no row')
+  if (Number(guardRow.targetActive) !== 1) {
+    return { kind: 'reference_invalid', code: 'CATEGORY_INVALID' }
+  }
+  if (Number(guardRow.currentCount) !== Number(guardRow.desiredCount)) {
+    return { kind: 'version_conflict' }
+  }
+  if (Number(guardRow.compatibleCount) !== Number(guardRow.desiredCount)) {
+    return { kind: 'reference_invalid', code: 'CATEGORY_TYPE_MISMATCH' }
+  }
+  if (updateResult.results.length !== input.transactions.length) {
+    throw new Error('Bulk transaction category update did not return every selected row')
+  }
+  return { kind: 'updated', count: input.transactions.length }
 }
 
 export async function deleteTransaction(

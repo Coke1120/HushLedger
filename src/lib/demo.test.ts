@@ -4,8 +4,10 @@ import { translate, type Locale, type Translator } from '../i18n'
 import {
   addDemo,
   deleteDemo,
+  demoCategories,
   demoSummary,
   getDemoTransactions,
+  setDemoTransactionsCategory,
   setDemoTransactionsClearing,
   summarizeDemoTransactions,
   updateDemo,
@@ -124,6 +126,70 @@ describe('localized demo data', () => {
         }),
       })
       assert.equal(restored.kind, 'updated')
+    }
+  })
+
+  it('recategorizes only same-type demo transactions with current versions', () => {
+    const source = getDemoTransactions('2026-07', 'expense', '')[0]
+    const target = demoCategories.find(({ id, isActive, type }) => (
+      isActive && type === 'expense' && id !== source?.categoryId
+    ))
+    const incomeCategory = demoCategories.find(({ isActive, type }) => isActive && type === 'income')
+    assert(source)
+    assert(target)
+    assert(incomeCategory)
+
+    const ids = [
+      '40000000-0000-4000-8000-000000000001',
+      '40000000-0000-4000-8000-000000000002',
+    ]
+
+    try {
+      ids.forEach((id, index) => addDemo({
+        id,
+        type: 'expense',
+        amountMinor: 100 + index,
+        currency: 'HKD',
+        accountId: source.accountId,
+        categoryId: source.categoryId,
+        occurredOn: `2026-07-${20 + index}`,
+        cleared: false,
+        payee: `Bulk category ${index + 1}`,
+        note: '',
+      }))
+      const originals = getDemoTransactions('2026-07', 'expense', 'Bulk category')
+      const versions = originals.map(({ id, updatedAt }) => ({ id, updatedAt }))
+      assert.equal(versions.length, 2)
+
+      assert.deepEqual(setDemoTransactionsCategory({
+        categoryId: target.id,
+        transactions: versions.map((version, index) => (
+          index === 1 ? { ...version, updatedAt: '2026-01-01T00:00:00.000Z' } : version
+        )),
+      }), { kind: 'version_conflict' })
+      assert(originals.every(({ id }) => (
+        getDemoTransactions('2026-07', 'expense', 'Bulk category').find((item) => item.id === id)?.categoryId
+          === source.categoryId
+      )))
+
+      assert.deepEqual(setDemoTransactionsCategory({
+        categoryId: incomeCategory.id,
+        transactions: versions,
+      }), { kind: 'reference_invalid', code: 'CATEGORY_TYPE_MISMATCH' })
+      assert.deepEqual(setDemoTransactionsCategory({ categoryId: target.id, transactions: versions }), {
+        kind: 'updated',
+        count: 2,
+      })
+      assert(ids.every((id) => (
+        getDemoTransactions('2026-07', 'expense', 'Bulk category').find((item) => item.id === id)?.categoryId
+          === target.id
+      )))
+    } finally {
+      ids.forEach((id) => {
+        if (getDemoTransactions('2026-07', 'expense', 'Bulk category').some((item) => item.id === id)) {
+          deleteDemo(id)
+        }
+      })
     }
   })
 

@@ -1518,6 +1518,28 @@ textarea:focus-visible {
   justify-content: flex-end;
 }
 
+.transaction-bulk-category {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) auto;
+  gap: 8px;
+}
+
+.transaction-bulk-category label {
+  min-width: 0;
+}
+
+.transaction-bulk-category select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 34px 0 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
 .transaction-bulk-toolbar .button {
   min-height: 40px;
 }
@@ -5449,8 +5471,13 @@ button.account-register-row:focus-visible {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .transaction-bulk-buttons .button:first-child,
-  .transaction-bulk-buttons .button:last-child {
+  .transaction-bulk-category {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-bulk-buttons > .button:first-child,
+  .transaction-bulk-buttons > .button:last-child {
     grid-column: 1 / -1;
   }
 

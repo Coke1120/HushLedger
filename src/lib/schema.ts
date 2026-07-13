@@ -57,25 +57,37 @@ const transactionVersionSchema = z
   })
   .strict()
 
-export const transactionClearingBatchSchema = z
-  .object({
-    cleared: z.boolean(),
-    transactions: z.array(transactionVersionSchema).min(1).max(200),
-  })
-  .strict()
-  .superRefine((value, context) => {
+const transactionVersionBatchSchema = z
+  .array(transactionVersionSchema)
+  .min(1)
+  .max(200)
+  .superRefine((transactions, context) => {
     const ids = new Set<string>()
-    value.transactions.forEach((transaction, index) => {
+    transactions.forEach((transaction, index) => {
       if (ids.has(transaction.id)) {
         context.addIssue({
           code: 'custom',
-          path: ['transactions', index, 'id'],
+          path: [index, 'id'],
           message: '每筆交易只能選取一次',
         })
       }
       ids.add(transaction.id)
     })
   })
+
+export const transactionClearingBatchSchema = z
+  .object({
+    cleared: z.boolean(),
+    transactions: transactionVersionBatchSchema,
+  })
+  .strict()
+
+export const transactionCategoryBatchSchema = z
+  .object({
+    categoryId: z.number().int().positive(),
+    transactions: transactionVersionBatchSchema,
+  })
+  .strict()
 
 export const transactionDuplicateCheckSchema = transactionFieldsSchema
   .extend({ excludeId: transactionIdSchema.optional() })
@@ -162,6 +174,7 @@ export const transactionQuerySchema = z
 
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
+export type TransactionCategoryBatchInput = z.infer<typeof transactionCategoryBatchSchema>
 export type TransactionClearingBatchInput = z.infer<typeof transactionClearingBatchSchema>
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>

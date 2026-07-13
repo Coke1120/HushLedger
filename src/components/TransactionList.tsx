@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
-import type { Transaction } from '../lib/schema'
+import type { Category, Transaction } from '../lib/schema'
 import { transactionTagsFromNote } from '../lib/transactionTags'
 
 const iconMap: Record<string, LucideIcon> = {
@@ -37,6 +37,7 @@ const iconMap: Record<string, LucideIcon> = {
 
 type TransactionListProps = {
   transactions: Transaction[]
+  categories: Category[]
   loading: boolean
   tagFilter: string | null
   duplicateReview: boolean
@@ -44,11 +45,13 @@ type TransactionListProps = {
   saving: boolean
   onEdit: (transaction: Transaction) => void
   onTagSelect: (tag: string | null) => void
+  onSetCategory: (transactions: Transaction[], categoryId: number) => Promise<boolean>
   onSetClearing: (transactions: Transaction[], cleared: boolean) => Promise<boolean>
 }
 
 export function TransactionList({
   transactions,
+  categories,
   loading,
   tagFilter,
   duplicateReview,
@@ -56,11 +59,13 @@ export function TransactionList({
   saving,
   onEdit,
   onTagSelect,
+  onSetCategory,
   onSetClearing,
 }: TransactionListProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [bulkCategoryId, setBulkCategoryId] = useState<number | null>(null)
   const [applying, setApplying] = useState(false)
 
   if (loading) {
@@ -83,10 +88,19 @@ export function TransactionList({
   const selectedTransactions = transactions.filter(({ id }) => selectedIds.has(id))
   const allSelected = selectedTransactions.length === transactions.length
   const busy = saving || applying
+  const selectedType = selectedTransactions.length > 0
+    && selectedTransactions.every(({ type }) => type === selectedTransactions[0]?.type)
+    ? selectedTransactions[0]!.type
+    : null
+  const availableCategories = selectedType
+    ? categories.filter(({ isActive, type }) => isActive && type === selectedType)
+    : []
+  const selectedCategoryIsValid = availableCategories.some(({ id }) => id === bulkCategoryId)
 
   const finishSelecting = () => {
     setSelecting(false)
     setSelectedIds(new Set())
+    setBulkCategoryId(null)
   }
 
   const applyClearing = async (cleared: boolean) => {
@@ -94,6 +108,16 @@ export function TransactionList({
     setApplying(true)
     try {
       if (await onSetClearing(selectedTransactions, cleared)) finishSelecting()
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const applyCategory = async () => {
+    if (busy || selectedTransactions.length === 0 || !selectedCategoryIsValid || bulkCategoryId === null) return
+    setApplying(true)
+    try {
+      if (await onSetCategory(selectedTransactions, bulkCategoryId)) finishSelecting()
     } finally {
       setApplying(false)
     }
@@ -110,7 +134,12 @@ export function TransactionList({
           {selecting ? (
             <>
               <span className="transaction-selected-count" role="status" aria-live="polite">
-                {t('selectedTransactionCount', { count: selectedTransactions.length })}
+                {t(
+                  selectedTransactions.length === 1
+                    ? 'selectedTransactionCountOne'
+                    : 'selectedTransactionCount',
+                  { count: selectedTransactions.length },
+                )}
               </span>
               <div className="transaction-bulk-buttons">
                 <button
@@ -124,6 +153,40 @@ export function TransactionList({
                   <ListChecks aria-hidden="true" />
                   {t(allSelected ? 'clearTransactionSelection' : 'selectAllShownTransactions')}
                 </button>
+                <div className="transaction-bulk-category">
+                  <label>
+                    <span className="sr-only">{t('changeSelectedCategory')}</span>
+                    <select
+                      value={bulkCategoryId ?? ''}
+                      onChange={(event) => setBulkCategoryId(
+                        event.target.value ? Number(event.target.value) : null,
+                      )}
+                      disabled={busy || selectedType === null}
+                      title={selectedTransactions.length > 0 && selectedType === null
+                        ? t('selectSameTypeForCategory')
+                        : t('changeSelectedCategory')}
+                    >
+                      <option value="">
+                        {t(selectedTransactions.length > 0 && selectedType === null
+                          ? 'selectSameTypeForCategory'
+                          : 'changeSelectedCategory')}
+                      </option>
+                      {availableCategories.map((category) => (
+                        <option value={category.id} key={category.id}>
+                          {localizeEntityName(category.name, category.localizationKey)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={busy || !selectedCategoryIsValid}
+                    onClick={() => void applyCategory()}
+                  >
+                    {t('applySelectedCategory')}
+                  </button>
+                </div>
                 <button
                   className="button button-secondary"
                   type="button"

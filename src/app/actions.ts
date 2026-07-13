@@ -18,6 +18,7 @@ import {
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
+  transactionCategoryBatchSchema,
   transactionClearingBatchSchema,
   transactionIdSchema,
   transactionInputSchema,
@@ -38,6 +39,7 @@ import { sanitizeValidationIssues } from '../server/http'
 import {
   createTransaction,
   deleteTransaction,
+  setTransactionsCategory,
   setTransactionsClearing,
   updateTransaction,
   type TransactionView,
@@ -280,6 +282,27 @@ export async function setTransactionsClearingAction(
       return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
     }
     return revalidatedSuccess({ updated: result.count, cleared: parsed.data.cleared })
+  })
+}
+
+export async function setTransactionsCategoryAction(
+  input: unknown,
+): Promise<ActionResult<{ updated: number; categoryId: number }>> {
+  const denied = await accessDenied<{ updated: number; categoryId: number }>()
+  if (denied) return denied
+
+  const parsed = transactionCategoryBatchSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('批次交易分類資料不正確', parsed.error.issues)
+  }
+
+  return runAction('set_transactions_category', async () => {
+    const result = await setTransactionsCategory(await getDatabase(), parsed.data)
+    if (result.kind === 'version_conflict') {
+      return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
+    }
+    if (result.kind === 'reference_invalid') return referenceError(result.code)
+    return revalidatedSuccess({ updated: result.count, categoryId: parsed.data.categoryId })
   })
 }
 

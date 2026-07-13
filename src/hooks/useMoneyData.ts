@@ -4,6 +4,7 @@ import {
   createTransactionAction,
   deleteAccountTransferAction,
   deleteTransactionAction,
+  setTransactionsCategoryAction,
   setTransactionsClearingAction,
   updateAccountTransferAction,
   updateTransactionAction,
@@ -19,6 +20,7 @@ import {
   demoNetWorthTrend,
   demoSummary,
   getDemoTransactions,
+  setDemoTransactionsCategory,
   setDemoTransactionsClearing,
   summarizeDemoTransactions,
   updateDemo,
@@ -342,13 +344,79 @@ export function useMoneyData(
           }
         }
 
-        setActionMessage(message('bulkTransactionsClearingUpdated', {
-          count: transactions.length,
-          status: message(cleared ? 'cleared' : 'uncleared'),
-        }))
+        setActionMessage(message(
+          transactions.length === 1
+            ? 'bulkTransactionsClearingUpdatedOne'
+            : 'bulkTransactionsClearingUpdated',
+          {
+            count: transactions.length,
+            status: message(cleared ? 'cleared' : 'uncleared'),
+          },
+        ))
         return true
       } catch (error) {
         setSaveError(messageForError(error, 'transactionBulkClearingFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [accountId, categoryId, duplicatesOnly, month, refresh, scope, search, sort, source, status, tag, type],
+  )
+
+  const setSelectedTransactionsCategory = useCallback(
+    async (transactions: Transaction[], targetCategoryId: number) => {
+      if (submitting.current || transactions.length === 0) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      const input = {
+        categoryId: targetCategoryId,
+        transactions: transactions.map(({ id, updatedAt }) => ({ id, updatedAt })),
+      }
+
+      try {
+        if (!navigator.onLine) {
+          setSaveError(message('transactionOfflineError'))
+          return false
+        }
+
+        if (source === 'demo') {
+          const result = setDemoTransactionsCategory(input)
+          if (result.kind === 'version_conflict') {
+            setSaveError(message('errorTransactionVersionConflict'))
+            return false
+          }
+          if (result.kind === 'reference_invalid') {
+            setSaveError(message(
+              result.code === 'CATEGORY_INVALID' ? 'errorCategoryInvalid' : 'errorCategoryMismatch',
+            ))
+            return false
+          }
+          setSnapshot(demoSnapshot(
+            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+          ))
+        } else {
+          await actionData(setTransactionsCategoryAction(input))
+          const refreshed = await refresh(false)
+          if (!refreshed) {
+            setActionMessage(message('transactionSavedRefreshFailed'))
+            return true
+          }
+        }
+
+        setActionMessage(message(
+          transactions.length === 1
+            ? 'bulkTransactionsCategoryUpdatedOne'
+            : 'bulkTransactionsCategoryUpdated',
+          { count: transactions.length },
+        ))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transactionBulkCategoryFailed'))
         return false
       } finally {
         submitting.current = false
@@ -464,6 +532,7 @@ export function useMoneyData(
     refresh,
     saveTransaction,
     removeTransaction,
+    setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
     saveAccountTransfer,
     removeAccountTransfer,

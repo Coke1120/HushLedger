@@ -50,6 +50,10 @@ not operate an independent database server or a multi-user identity system.
 - Stack income/expense, cleared/uncleared, account, and category filters; retain
   inactive references as historical filter choices and clear incompatible
   category filters when the selected transaction type changes.
+- Explicitly select shown transactions to change their clearing state together,
+  or move a same-type selection to an active matching category. Bound each batch
+  to 200 conflict-tokened rows and leave every row untouched when any selected
+  version or target-category invariant fails.
 - Order the current transaction scope by date, amount, or payee in either
   direction while keeping the default newest-first overview and blank payees last.
 - Show exact count, income, expense, and signed net for every transaction matching
@@ -227,6 +231,8 @@ GET    /api/transactions?month=YYYY-MM&scope=month|all&type=...&status=...&searc
 GET    /api/transactions/summary?month=YYYY-MM&scope=month|all&type=...&status=...&search=...  (uncapped aggregate)
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact match count only)
+PATCH  /api/transactions/category  (atomic same-type category update for 1-200 versioned rows)
+PATCH  /api/transactions/clearing  (atomic clearing update for 1-200 versioned rows)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
@@ -331,6 +337,7 @@ uses Wrangler D1 export and restore.
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   selected-month or all-history account/category/type/clearing/search filters,
+  conflict-safe bulk clearing and same-type recategorization,
   deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
   matching filtered transaction
   aggregate and ordered CSV export,

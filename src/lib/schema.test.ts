@@ -17,6 +17,7 @@ import {
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
   transactionDeleteSchema,
+  transactionCategoryBatchSchema,
   transactionClearingBatchSchema,
   transactionDuplicateCheckSchema,
   transactionInputSchema,
@@ -200,6 +201,29 @@ describe('transaction validation', () => {
         id: `30000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
         updatedAt,
       })),
+    }).success, false)
+  })
+
+  it('accepts only a strict target category and unique transaction versions for bulk recategorization', () => {
+    const updatedAt = '2026-07-11T10:30:00.000Z'
+    const transactions = [
+      { id: valid.id, updatedAt },
+      { id: '019f5087-229b-7ce3-a76f-95c833dcf252', updatedAt },
+    ]
+
+    assert.deepEqual(transactionCategoryBatchSchema.parse({ categoryId: 4, transactions }), {
+      categoryId: 4,
+      transactions,
+    })
+    assert.equal(transactionCategoryBatchSchema.safeParse({ categoryId: 0, transactions }).success, false)
+    assert.equal(transactionCategoryBatchSchema.safeParse({
+      categoryId: 4,
+      transactions: [transactions[0], transactions[0]],
+    }).success, false)
+    assert.equal(transactionCategoryBatchSchema.safeParse({
+      categoryId: 4,
+      transactions,
+      applyToFuture: true,
     }).success, false)
   })
 

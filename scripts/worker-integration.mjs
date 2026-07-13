@@ -971,6 +971,8 @@ async function verifyWorkerApi() {
     .find(({ id }) => id === enabledAccount.payload.data.id)
   let expenseCategory = reorderedCategories.payload.data
     .find(({ id }) => id === enabledCategory.payload.data.id)
+  const incomeCategory = categoriesAfterOrder.payload.data
+    .find(({ isActive, type }) => isActive && type === 'income')
   const transferDestination = reorderedAccounts.payload.data.find(({ id, isActive, currency }) => (
     id !== account?.id && isActive && currency === 'HKD'
   ))
@@ -979,6 +981,7 @@ async function verifyWorkerApi() {
   ))
   assert(account)
   assert(expenseCategory)
+  assert(incomeCategory)
   assert(transferDestination)
   assert(unrelatedTransferAccount)
 
@@ -1539,6 +1542,123 @@ async function verifyWorkerApi() {
   })
   assert.equal(restoredBulkClearing.response.status, 200)
   assert.deepEqual(restoredBulkClearing.payload.data, { updated: 2, cleared: true })
+
+  const bulkCategoryBefore = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkCategoryBefore.every(({ payload }) => payload.data.categoryId === 3))
+  const bulkCategoryVersions = bulkCategoryBefore.map(({ payload }) => ({
+    id: payload.data.id,
+    updatedAt: payload.data.updatedAt,
+  }))
+  const crossOriginBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    origin: 'https://attacker.invalid',
+    body: { categoryId: expenseCategory.id, transactions: bulkCategoryVersions },
+  })
+  assert.equal(crossOriginBulkCategory.response.status, 403)
+  assert.equal(crossOriginBulkCategory.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const duplicateBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: {
+      categoryId: expenseCategory.id,
+      transactions: [bulkCategoryVersions[0], bulkCategoryVersions[0]],
+    },
+  })
+  assert.equal(duplicateBulkCategory.response.status, 400)
+  assert.equal(duplicateBulkCategory.payload.error.code, 'VALIDATION_ERROR')
+  const missingBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: { categoryId: 999999, transactions: bulkCategoryVersions },
+  })
+  assert.equal(missingBulkCategory.response.status, 400)
+  assert.equal(missingBulkCategory.payload.error.code, 'CATEGORY_INVALID')
+  const mismatchedBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: { categoryId: incomeCategory.id, transactions: bulkCategoryVersions },
+  })
+  assert.equal(mismatchedBulkCategory.response.status, 400)
+  assert.equal(mismatchedBulkCategory.payload.error.code, 'CATEGORY_TYPE_MISMATCH')
+
+  const mixedIncomeTransaction = {
+    id: '53000000-0000-4000-8000-000000000001',
+    type: 'income',
+    amountMinor: 100,
+    currency: 'HKD',
+    accountId: account.id,
+    categoryId: incomeCategory.id,
+    occurredOn: `${month}-15`,
+    cleared: false,
+    payee: 'Mixed bulk category guard',
+    note: '',
+  }
+  const createdMixedIncome = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: mixedIncomeTransaction,
+  })
+  assert.equal(createdMixedIncome.response.status, 201)
+  const partiallyCompatibleBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: {
+      categoryId: expenseCategory.id,
+      transactions: [
+        bulkCategoryVersions[0],
+        { id: mixedIncomeTransaction.id, updatedAt: createdMixedIncome.payload.data.updatedAt },
+      ],
+    },
+  })
+  assert.equal(partiallyCompatibleBulkCategory.response.status, 400)
+  assert.equal(partiallyCompatibleBulkCategory.payload.error.code, 'CATEGORY_TYPE_MISMATCH')
+  const bulkExpenseAfterMixedGuard = await api(baseUrl, `/api/transactions/${bulkClearingIds[0]}`)
+  const bulkIncomeAfterMixedGuard = await api(baseUrl, `/api/transactions/${mixedIncomeTransaction.id}`)
+  assert.equal(bulkExpenseAfterMixedGuard.payload.data.categoryId, 3)
+  assert.equal(bulkIncomeAfterMixedGuard.payload.data.categoryId, incomeCategory.id)
+  const deletedMixedIncome = await api(baseUrl, `/api/transactions/${mixedIncomeTransaction.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: bulkIncomeAfterMixedGuard.payload.data.updatedAt },
+  })
+  assert.equal(deletedMixedIncome.response.status, 200)
+
+  const recategorizedBulk = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: { categoryId: expenseCategory.id, transactions: bulkCategoryVersions },
+  })
+  assert.equal(recategorizedBulk.response.status, 200, JSON.stringify(recategorizedBulk.payload))
+  assert.deepEqual(recategorizedBulk.payload.data, { updated: 2, categoryId: expenseCategory.id })
+  const bulkCategoryAfter = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkCategoryAfter.every(({ payload }) => payload.data.categoryId === expenseCategory.id))
+  const currentBulkCategoryVersions = bulkCategoryAfter.map(({ payload }) => ({
+    id: payload.data.id,
+    updatedAt: payload.data.updatedAt,
+  }))
+  const staleBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: {
+      categoryId: 3,
+      transactions: [bulkCategoryVersions[0], currentBulkCategoryVersions[1]],
+    },
+  })
+  assert.equal(staleBulkCategory.response.status, 409)
+  assert.equal(staleBulkCategory.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+  const bulkCategoryAfterConflict = await Promise.all(
+    bulkClearingIds.map((id) => api(baseUrl, `/api/transactions/${id}`)),
+  )
+  assert(bulkCategoryAfterConflict.every(({ payload }) => payload.data.categoryId === expenseCategory.id))
+
+  const restoredBulkCategory = await api(baseUrl, '/api/transactions/category', {
+    method: 'PATCH',
+    body: {
+      categoryId: 3,
+      transactions: bulkCategoryAfterConflict.map(({ payload }) => ({
+        id: payload.data.id,
+        updatedAt: payload.data.updatedAt,
+      })),
+    },
+  })
+  assert.equal(restoredBulkCategory.response.status, 200)
+  assert.deepEqual(restoredBulkCategory.payload.data, { updated: 2, categoryId: 3 })
 
   const transaction = {
     id: '10000000-0000-4000-8000-000000000001',
@@ -2446,6 +2566,8 @@ async function verifyWorkerApi() {
     transactionDuplicateReviews: 4,
     transactionBulkClearingGuards: 3,
     transactionBulkClearingWrites: 2,
+    transactionBulkCategoryGuards: 6,
+    transactionBulkCategoryWrites: 2,
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,
@@ -2681,6 +2803,10 @@ try {
       ...nextAiEvidence,
     }),
   )
+} catch (error) {
+  const workerOutput = workerProcess?.output().trim()
+  if (workerOutput) console.error(workerOutput)
+  throw error
 } finally {
   await stopWorker()
   await stopNext()

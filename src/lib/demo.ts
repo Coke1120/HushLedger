@@ -12,6 +12,7 @@ import type {
   MonthlySpendingSummary,
   Summary,
   Transaction,
+  TransactionCategoryBatchInput,
   TransactionClearingBatchInput,
   TransactionClearingStatus,
   TransactionDateScope,
@@ -426,6 +427,40 @@ export function setDemoTransactionsClearing(input: TransactionClearingBatchInput
   demoTransactions = demoTransactions.map((transaction) => (
     selectedIds.has(transaction.id)
       ? { ...transaction, cleared: input.cleared, updatedAt }
+      : transaction
+  ))
+  return { kind: 'updated' as const, count: input.transactions.length }
+}
+
+export function setDemoTransactionsCategory(input: TransactionCategoryBatchInput) {
+  const category = demoCategories.find(({ id, isActive }) => id === input.categoryId && isActive)
+  if (!category) return { kind: 'reference_invalid' as const, code: 'CATEGORY_INVALID' as const }
+
+  const currentById = new Map(demoTransactions.map((transaction) => [transaction.id, transaction]))
+  const selected = input.transactions.map(({ id, updatedAt }) => {
+    const transaction = currentById.get(id)
+    return transaction?.updatedAt === updatedAt ? transaction : null
+  })
+  if (selected.some((transaction) => transaction === null)) {
+    return { kind: 'version_conflict' as const }
+  }
+  if (selected.some((transaction) => transaction?.type !== category.type)) {
+    return { kind: 'reference_invalid' as const, code: 'CATEGORY_TYPE_MISMATCH' as const }
+  }
+
+  const selectedIds = new Set(input.transactions.map(({ id }) => id))
+  const updatedAt = new Date().toISOString()
+  demoTransactions = demoTransactions.map((transaction) => (
+    selectedIds.has(transaction.id)
+      ? {
+          ...transaction,
+          categoryId: category.id,
+          categoryName: category.name,
+          categoryLocalizationKey: category.localizationKey,
+          categoryIcon: category.icon,
+          categoryColor: category.color,
+          updatedAt,
+        }
       : transaction
   ))
   return { kind: 'updated' as const, count: input.transactions.length }
