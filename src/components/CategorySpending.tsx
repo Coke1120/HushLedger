@@ -22,6 +22,7 @@ export function CategorySpending({
 }: CategorySpendingProps) {
   const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [breakdown, setBreakdown] = useState<SpendingBreakdown>('category')
+  const [expandedBreakdown, setExpandedBreakdown] = useState<string | null>(null)
   const percentFormatter = useMemo(
     () => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }),
     [locale],
@@ -43,9 +44,12 @@ export function CategorySpending({
         color: 'var(--accent)',
         onSelect: () => onSelectPayee(payee.payee),
       }))
-  const visibleItems = items.slice(0, visibleItemLimit)
-  const remainingItems = items.length - visibleItems.length
   const payeeBreakdown = breakdown === 'payee'
+  const expansionKey = `${summary.month}:${breakdown}`
+  const showAll = expandedBreakdown === expansionKey
+  const visibleItems = showAll ? items : items.slice(0, visibleItemLimit)
+  const hiddenItemCount = Math.max(0, items.length - visibleItemLimit)
+  const listId = `category-spending-${breakdown}-list`
 
   return (
     <section
@@ -89,7 +93,7 @@ export function CategorySpending({
         </div>
       ) : (
         <>
-          <ol className="category-spending-list">
+          <ol className="category-spending-list" id={listId}>
             {visibleItems.map((item) => {
               const share = summary.expense > 0 ? item.amountMinor / summary.expense : 0
               const percent = percentFormatter.format(share)
@@ -142,12 +146,24 @@ export function CategorySpending({
               )
             })}
           </ol>
-          {remainingItems > 0 ? (
-            <p className="category-spending-more">
-              {t(payeeBreakdown ? 'moreSpendingPayees' : 'moreSpendingCategories', {
-                count: remainingItems,
-              })}
-            </p>
+          {hiddenItemCount > 0 ? (
+            <div className="category-spending-actions">
+              <button
+                className="button button-secondary"
+                type="button"
+                aria-controls={listId}
+                aria-expanded={showAll}
+                onClick={() => setExpandedBreakdown(showAll ? null : expansionKey)}
+              >
+                {showAll
+                  ? t(payeeBreakdown
+                    ? 'showFewerSpendingPayees'
+                    : 'showFewerSpendingCategories')
+                  : t(payeeBreakdown ? 'moreSpendingPayees' : 'moreSpendingCategories', {
+                    count: hiddenItemCount,
+                  })}
+              </button>
+            </div>
           ) : null}
         </>
       )}

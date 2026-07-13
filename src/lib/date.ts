@@ -42,6 +42,13 @@ export function trailingTwelveMonthRange(month: string) {
   }
 }
 
+export function trailingSevenDayRange(end: string) {
+  if (!isValidCalendarDate(end)) throw new Error('End date must use YYYY-MM-DD format')
+  const start = new Date(`${end}T00:00:00.000Z`)
+  start.setUTCDate(start.getUTCDate() - 6)
+  return { start: start.toISOString().slice(0, 10), end }
+}
+
 export function isValidCalendarDate(value: string) {
   if (!datePattern.test(value)) return false
   const parsed = new Date(`${value}T00:00:00.000Z`)

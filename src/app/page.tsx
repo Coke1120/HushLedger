@@ -4,5 +4,6 @@ import { currentHongKongDate } from '../lib/date'
 
 export default async function HomePage() {
   await connection()
-  return <App initialMonth={currentHongKongDate().month} />
+  const today = currentHongKongDate()
+  return <App initialDate={today.date} initialMonth={today.month} />
 }

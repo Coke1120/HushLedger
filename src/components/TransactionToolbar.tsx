@@ -1,7 +1,7 @@
 import { AlertTriangle, Download, FileUp, Search, Sparkles, X } from 'lucide-react'
 import { useState, type RefObject } from 'react'
 import { useI18n } from '../i18n'
-import { trailingTwelveMonthRange } from '../lib/date'
+import { trailingSevenDayRange, trailingTwelveMonthRange } from '../lib/date'
 import type {
   Account,
   Category,
@@ -15,7 +15,7 @@ import { transactionQueryFromFilters } from '../lib/transactionQuery'
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
-type TransactionDateScopeOption = TransactionDateScope | 'trailing12'
+type TransactionDateScopeOption = TransactionDateScope | 'trailing7' | 'trailing12'
 
 type TransactionToolbarProps = {
   search: string
@@ -30,6 +30,7 @@ type TransactionToolbarProps = {
   sort: TransactionSort
   showSort: boolean
   month: string
+  currentDate: string
   accounts: Account[]
   categories: Category[]
   accountFilterId: number | null
@@ -70,6 +71,7 @@ export function TransactionToolbar({
   sort,
   showSort,
   month,
+  currentDate,
   accounts,
   categories,
   accountFilterId,
@@ -98,12 +100,19 @@ export function TransactionToolbar({
 }: TransactionToolbarProps) {
   const { localizeEntityName, t } = useI18n()
   const [exportState, setExportState] = useState<ExportState>('idle')
+  const trailingSevenDays = trailingSevenDayRange(currentDate)
   const trailingTwelveMonths = trailingTwelveMonthRange(month)
   const dateScopeOption: TransactionDateScopeOption = (
     dateScope === 'range'
-    && dateFrom === trailingTwelveMonths.start
-    && dateTo === trailingTwelveMonths.end
-  ) ? 'trailing12' : dateScope
+    && dateFrom === trailingSevenDays.start
+    && dateTo === trailingSevenDays.end
+  )
+    ? 'trailing7'
+    : dateScope === 'range'
+      && dateFrom === trailingTwelveMonths.start
+      && dateTo === trailingTwelveMonths.end
+      ? 'trailing12'
+      : dateScope
   const filters: Array<{ value: TransactionFilter; label: string }> = [
     { value: 'all', label: t('all') },
     { value: 'expense', label: t('expense') },
@@ -244,6 +253,12 @@ export function TransactionToolbar({
               value={dateScopeOption}
               onChange={(event) => {
                 const nextScope = event.target.value as TransactionDateScopeOption
+                if (nextScope === 'trailing7') {
+                  onDateFromChange(trailingSevenDays.start)
+                  onDateToChange(trailingSevenDays.end)
+                  onDateScopeChange('range')
+                  return
+                }
                 if (nextScope === 'trailing12') {
                   onDateFromChange(trailingTwelveMonths.start)
                   onDateToChange(trailingTwelveMonths.end)
@@ -255,6 +270,7 @@ export function TransactionToolbar({
               title={t('transactionDateScopeHelp')}
             >
               <option value="month">{t('selectedMonth')}</option>
+              <option value="trailing7">{t('trailingSevenDays')}</option>
               <option value="trailing12">{t('trailingTwelveMonths')}</option>
               <option value="range">{t('customRange')}</option>
               <option value="all">{t('allHistory')}</option>

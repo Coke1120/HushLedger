@@ -65,7 +65,7 @@ const initialAiSettings: AiProviderSettings = {
   model: '',
 }
 
-function App({ initialMonth }: { initialMonth: string }) {
+function App({ initialDate, initialMonth }: { initialDate: string; initialMonth: string }) {
   const { localizeEntityName, t } = useI18n()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
@@ -605,6 +605,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 sort={transactionSort}
                 showSort={view === 'transactions'}
                 month={month}
+                currentDate={initialDate}
                 accounts={data.accounts}
                 categories={data.categories}
                 accountFilterId={accountFilterId}

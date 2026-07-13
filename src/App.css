@@ -1364,7 +1364,8 @@ textarea:focus-visible {
   color: var(--income);
 }
 
-.recurring-forecast-actions {
+.recurring-forecast-actions,
+.category-spending-actions {
   display: flex;
   margin-top: 14px;
   justify-content: flex-end;

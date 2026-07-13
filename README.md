@@ -34,10 +34,12 @@ knowledge and explains every command and dashboard click.
 - A zero-filled six-month recorded cash-flow trend comparing income, expenses,
   and net movement without treating transfers, opening balances, or forecasts as cash flow,
   with private-screen masking and one-tap navigation to any month in the chart.
-- A ranked top-five monthly expense breakdown switchable between categories and
-  named payees, with exact totals, transaction counts, and one-tap drilldown into
-  matching ledger records. Payee drilldown uses a trimmed, case-insensitive exact
-  match rather than broad text search.
+- A ranked monthly expense breakdown switchable between categories and named
+  payees, with exact totals, transaction counts, and one-tap drilldown into
+  matching ledger records. Five rows stay visible by default, while an explicit
+  action reveals the complete private aggregate already returned for that month.
+  Payee drilldown uses a trimmed, case-insensitive exact match rather than broad
+  text search.
 - Optional monthly plans on expense categories, with planned, recorded, and
   remaining-or-over amounts shown together. A complete roll-up separates total
   planned spending, recorded spending in planned categories, the net plan
@@ -81,12 +83,13 @@ knowledge and explains every command and dashboard click.
   to assistive technology; HushLedger does not capture global single-letter keys.
 - Stack search, income/expense, cleared/uncleared, account, category, and exact
   possible-duplicate filters across the 200 most recent matching transactions.
-  Review the selected month, one-click 12 complete calendar months through it,
+  Review the selected month, the seven Hong Kong calendar dates ending when the
+  page loaded, one-click 12 complete calendar months through the selected month,
   an inclusive custom date range, or all history without changing the monthly
-  overview, balances, transfers, plans, or forecasts. The 12-month preset becomes
-  a visible fixed inclusive range, so later month navigation does not silently
-  move it. Inactive references remain available for historical review, and the
-  result limit is disclosed explicitly.
+  overview, balances, transfers, plans, or forecasts. Both quick reviews become
+  visible fixed inclusive ranges; the 12-month range becomes custom if later
+  month navigation would otherwise move it. Inactive references remain available
+  for historical review, and the result limit is disclosed explicitly.
   Duplicate review is read-only and marks candidates instead of deleting either
   entry.
 - Order a transaction review by newest or oldest date, largest or smallest

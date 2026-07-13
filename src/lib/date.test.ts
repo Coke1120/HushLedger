@@ -7,6 +7,7 @@ import {
   isValidCalendarDate,
   monthRangeDates,
   shiftMonth,
+  trailingSevenDayRange,
   trailingTwelveMonthRange,
 } from './date'
 
@@ -50,6 +51,25 @@ describe('Hong Kong date helpers', () => {
       start: '2023-03-01',
       end: '2024-02-29',
     })
+  })
+
+  it('builds seven inclusive calendar dates ending at the supplied Hong Kong date', () => {
+    assert.deepEqual(trailingSevenDayRange('2026-07-13'), {
+      start: '2026-07-07',
+      end: '2026-07-13',
+    })
+    assert.deepEqual(trailingSevenDayRange('2026-01-03'), {
+      start: '2025-12-28',
+      end: '2026-01-03',
+    })
+    assert.deepEqual(trailingSevenDayRange('2024-03-02'), {
+      start: '2024-02-25',
+      end: '2024-03-02',
+    })
+  })
+
+  it('rejects an invalid trailing-seven-day boundary', () => {
+    assert.throws(() => trailingSevenDayRange('2026-02-29'), /YYYY-MM-DD/)
   })
 
   for (const [date, expected] of [
