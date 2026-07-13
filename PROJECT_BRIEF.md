@@ -302,7 +302,6 @@ GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
 POST   /api/exports/transactions  (primary private body query; uncapped CSV)
-GET    /api/exports/transactions?...  (legacy URL-query compatibility; uncapped CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
@@ -327,9 +326,11 @@ the server independently validates amount, currency, account state, category
 state, category type, content type, body size, and same-origin mutation.
 Database and stack errors are never returned to the client.
 
-The transaction export is the one successful non-JSON response: an attachment
+The transaction export is a successful non-JSON response: an attachment
 with UTF-8 BOM, exact signed decimal amounts, CRLF records, formula-safe user
-text, a stable transaction UUID, and clearing status. Import parses that contract
+text, a stable transaction UUID, and clearing status. It requires a same-origin
+JSON `POST`, keeps filters out of URLs, and rejects `GET` navigation so another
+site cannot initiate a plaintext download. Import parses that contract
 in the browser,
 resolves account/category names without guessing, previews exact matches and
 conflicts against D1, and writes selected rows in a transactional batch. Import

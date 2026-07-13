@@ -6,7 +6,6 @@ import {
   apiRoute,
   guardMutationRequest,
   jsonError,
-  queryObject,
   readApiJson,
   sanitizeValidationIssues,
 } from '../../../../server/http'
@@ -42,7 +41,7 @@ async function exportTransactions(input: unknown) {
   })
 }
 
-export const GET = apiRoute(async (request) => exportTransactions(queryObject(request)))
+export const GET = apiNotFound
 
 export const POST = apiRoute(async (request) => {
   const guarded = guardMutationRequest(request)

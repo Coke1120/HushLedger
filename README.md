@@ -663,7 +663,6 @@ GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
 POST   /api/exports/transactions  (primary private CSV export; JSON filters in the body)
-GET    /api/exports/transactions?...  (legacy compatibility; URL query filters)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
@@ -733,7 +732,10 @@ destination account. No payee rule or additional tracking table is created.
 The transaction export route returns a downloadable UTF-8 CSV rather than the
 JSON success envelope. It applies the same month, filters, and ordering, is
 not restricted to 200 rows, and appends `Transaction ID` plus `Cleared` for
-deterministic round trips. Import parses the file in the browser. HushLedger exports open
+deterministic round trips. Export requires an explicit same-origin JSON `POST`,
+keeps financial filters out of the URL, and leaves `GET` unavailable so a
+cross-site top-level navigation cannot trigger a plaintext download. Import
+parses the file in the browser. HushLedger exports open
 directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,
 five numeric date formats, one signed amount or separate debit/credit columns,
 optional sign reversal, an optional source ID, explicit account/category defaults,

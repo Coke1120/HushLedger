@@ -443,6 +443,10 @@ async function api(baseUrl, path, { method = 'GET', body, origin = baseUrl } = {
   return { response, payload, bytes }
 }
 
+function exportTransactionCsv(baseUrl, body) {
+  return api(baseUrl, '/api/exports/transactions', { method: 'POST', body })
+}
+
 function downloadLedgerBackup(baseUrl, { origin = baseUrl } = {}) {
   return api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -2238,6 +2242,15 @@ async function verifyWorkerApi() {
   assert.equal(invalidPrivateExport.response.status, 400)
   assert.equal(invalidPrivateExport.payload.error.code, 'INVALID_QUERY')
 
+  const navigationCsvExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&search=export%20bulk`,
+  )
+  assert.equal(navigationCsvExport.response.status, 404)
+  assert.equal(navigationCsvExport.payload.error.code, 'NOT_FOUND')
+  assert.match(navigationCsvExport.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(navigationCsvExport.response.headers.get('content-disposition'), null)
+
   const duplicateSummaryMonth = await api(
     baseUrl,
     `/api/transactions/summary?month=${month}&month=${month}`,
@@ -2359,10 +2372,7 @@ async function verifyWorkerApi() {
     accentedMonthlySummary.payload.data.expenseByPayee.find(({ payee }) => payee === 'Épicerie'),
     { payee: 'Épicerie', amountMinor: 400, transactionCount: 2 },
   )
-  const accentedPayeeExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&payee=${encodeURIComponent('épicerie')}`,
-  )
+  const accentedPayeeExport = await exportTransactionCsv(baseUrl, { month, payee: 'épicerie' })
   assert.equal(accentedPayeeExport.response.status, 200)
   assert.equal(accentedPayeeExport.payload.trimEnd().split('\r\n').length - 1, 2)
 
@@ -2374,7 +2384,7 @@ async function verifyWorkerApi() {
   )))
   assert(deletedAccentedPayees.every(({ response }) => response.status === 200))
 
-  const uncappedCsvExport = await api(baseUrl, `/api/exports/transactions?month=${month}&search=export%20bulk`)
+  const uncappedCsvExport = await exportTransactionCsv(baseUrl, { month, search: 'export bulk' })
   assert.equal(uncappedCsvExport.response.status, 200)
   assert.match(uncappedCsvExport.response.headers.get('content-type') ?? '', /^text\/csv;\s*charset=utf-8/i)
   assert.match(uncappedCsvExport.response.headers.get('cache-control') ?? '', /private.*no-store/)
@@ -2494,25 +2504,25 @@ async function verifyWorkerApi() {
   assert.equal(rejectedSort.response.status, 400)
   assert.equal(rejectedSort.payload.error.code, 'INVALID_QUERY')
 
-  const sortedCsvExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&search=export%20bulk&sort=amount_desc`,
-  )
+  const sortedCsvExport = await exportTransactionCsv(baseUrl, {
+    month,
+    search: 'export bulk',
+    sort: 'amount_desc',
+  })
   assert.equal(sortedCsvExport.response.status, 200)
   assert.equal(sortedCsvExport.payload.split('\r\n')[1].split(',')[2], '-3.05')
 
-  const taggedCsvExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&tag=Summer2026`,
-  )
+  const taggedCsvExport = await exportTransactionCsv(baseUrl, { month, tag: 'Summer2026' })
   assert.equal(taggedCsvExport.response.status, 200)
   assert.equal(taggedCsvExport.payload.trimEnd().split('\r\n').length - 1, 1)
   assert.match(taggedCsvExport.payload, /Trip planning #Summer2026/)
 
-  const referenceFilteredCsvExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&accountId=1&categoryId=3&search=export%20bulk`,
-  )
+  const referenceFilteredCsvExport = await exportTransactionCsv(baseUrl, {
+    month,
+    accountId: 1,
+    categoryId: 3,
+    search: 'export bulk',
+  })
   assert.equal(referenceFilteredCsvExport.response.status, 200)
   assert.equal(referenceFilteredCsvExport.payload.trimEnd().split('\r\n').length - 1, 205)
 
@@ -2984,10 +2994,11 @@ async function verifyWorkerApi() {
     net: transactionBody.amountMinor * -2,
   })
 
-  const duplicateReviewExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&search=integration%20test&duplicates=exact`,
-  )
+  const duplicateReviewExport = await exportTransactionCsv(baseUrl, {
+    month,
+    search: 'integration test',
+    duplicates: 'exact',
+  })
   assert.equal(duplicateReviewExport.response.status, 200)
   assert.equal(duplicateReviewExport.payload.trimEnd().split('\r\n').length - 1, 2)
 
@@ -3136,10 +3147,11 @@ async function verifyWorkerApi() {
   })
   assert.equal(removedPausedRule.response.status, 200)
 
-  const filteredCsvExport = await api(
-    baseUrl,
-    `/api/exports/transactions?month=${month}&type=expense&search=edited%20integration%20test`,
-  )
+  const filteredCsvExport = await exportTransactionCsv(baseUrl, {
+    month,
+    type: 'expense',
+    search: 'edited integration test',
+  })
   assert.equal(filteredCsvExport.response.status, 200)
   assert.match(filteredCsvExport.payload, /2026-\d{2}-\d{2},expense,-4\.56,HKD/)
   assert.match(filteredCsvExport.payload, /"edited integration test"/)
