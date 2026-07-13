@@ -5,6 +5,7 @@ import {
 } from './cashFlowTrend'
 import { monthRangeDates } from './date'
 import { buildNetWorthTrend, netWorthTrendMonths } from './netWorthTrend'
+import { exactTransactionTotals } from './money'
 import { mergePayeeSummaries, normalizePayee } from './payeeMemory'
 import { buildMonthlySpendingTrend } from './spendingTrend'
 import { noteHasTransactionTag } from './transactionTags'
@@ -399,15 +400,7 @@ export function summarizeDemoTransactions(
     dateTo,
     payee,
   )
-  const income = rows.reduce(
-    (sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0),
-    0,
-  )
-  const expense = rows.reduce(
-    (sum, transaction) => sum + (transaction.type === 'expense' ? transaction.amountMinor : 0),
-    0,
-  )
-  return { transactionCount: rows.length, income, expense, net: income - expense }
+  return { transactionCount: rows.length, ...exactTransactionTotals(rows) }
 }
 
 export function addDemo(input: TransactionInput) {
@@ -512,8 +505,7 @@ export function deleteDemo(id: string) {
 
 export function demoSummary(month: string, t?: Translator): Summary {
   const rows = getDemoTransactions(month, 'all', '', t)
-  const income = rows.reduce((sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0), 0)
-  const expense = rows.reduce((sum, transaction) => sum + (transaction.type === 'expense' ? transaction.amountMinor : 0), 0)
+  const totals = exactTransactionTotals(rows)
   const expenseByCategory = [...rows.reduce((categories, transaction) => {
     if (transaction.type !== 'expense') return categories
     const existing = categories.get(transaction.categoryId)
@@ -567,9 +559,9 @@ export function demoSummary(month: string, t?: Translator): Summary {
   const cashFlowTrend = buildMonthlyCashFlowTrend(month, cashFlowTrendRows)
   return {
     month,
-    income,
-    expense,
-    balance: income - expense,
+    income: totals.income,
+    expense: totals.expense,
+    balance: totals.net,
     cashFlowTrend,
     spendingTrend: buildMonthlySpendingTrend(
       month,

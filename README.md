@@ -659,9 +659,12 @@ Transactions default to newest-first and accept only the documented date,
 amount, or payee ordering values. A response contains at most 200 transactions.
 When more rows match, the UI states exactly
 how many are visible out of the complete result. The adjacent filtered summary
-uses a separate order-independent aggregate query over every match, so its count, income, expense,
-and signed net are not truncated by the list limit. The optional `status` filter
-is shared by the aggregate and uncapped CSV export.
+uses a separate order-independent aggregate query over every match, so its count,
+income, expense, and signed net are not truncated by the list limit. Monthly and
+filtered reports fail closed if otherwise-valid entries would combine beyond
+JavaScript's exact safe-integer range; HushLedger never returns a rounded money
+total as if it were exact. The optional `status` filter is shared by the aggregate
+and uncapped CSV export.
 
 Transfers are a separate ledger surface because movement between owned accounts
 must not affect income or expense reporting. New transfers require two active

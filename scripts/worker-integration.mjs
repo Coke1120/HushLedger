@@ -1576,6 +1576,90 @@ async function verifyWorkerApi() {
   assert(transferDestination)
   assert(unrelatedTransferAccount)
 
+  const oversizedPayee = 'Oversized aggregate QA'
+  const oversizedTransactionBodies = [
+    {
+      id: '59000000-0000-4000-8000-000000000001',
+      amountMinor: Number.MAX_SAFE_INTEGER,
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000002',
+      amountMinor: 2,
+    },
+  ].map(({ id, amountMinor }) => ({
+    id,
+    type: 'income',
+    amountMinor,
+    currency: account.currency,
+    accountId: account.id,
+    categoryId: incomeCategory.id,
+    occurredOn: today,
+    cleared: false,
+    payee: oversizedPayee,
+    note: '',
+  }))
+  const oversizedTransactions = await Promise.all(oversizedTransactionBodies.map((body) => (
+    api(baseUrl, '/api/transactions', { method: 'POST', body })
+  )))
+  assert(oversizedTransactions.every(({ response }) => response.status === 201))
+  assert(oversizedTransactions.every(({ payload }) => (
+    typeof payload.data.updatedAt === 'string'
+  )))
+
+  const encodedOversizedPayee = encodeURIComponent(oversizedPayee)
+  const oversizedSummaries = await Promise.all([
+    api(baseUrl, `/api/summary?month=${month}`),
+    api(
+      baseUrl,
+      `/api/transactions/summary?month=${month}&search=${encodedOversizedPayee}`,
+    ),
+    api(
+      baseUrl,
+      `/api/transactions/summary?month=${month}&payee=${encodedOversizedPayee}`,
+    ),
+  ])
+  for (const result of oversizedSummaries) {
+    assert.equal(result.response.status, 500, JSON.stringify(result.payload))
+    assert.equal(result.payload.ok, false)
+    assert.equal(result.payload.error.code, 'INTERNAL_ERROR')
+    assert.equal(result.payload.data, undefined)
+  }
+
+  const deletedOversizedTransactions = await Promise.all(oversizedTransactions.map(
+    ({ payload }, index) => api(
+      baseUrl,
+      `/api/transactions/${oversizedTransactionBodies[index].id}`,
+      { method: 'DELETE', body: { updatedAt: payload.data.updatedAt } },
+    ),
+  ))
+  assert(deletedOversizedTransactions.every(({ response }) => response.status === 200))
+  assert(deletedOversizedTransactions.every(({ payload }, index) => (
+    payload.data.id === oversizedTransactionBodies[index].id
+      && payload.data.deleted === true
+  )))
+
+  const recoveredSummaries = await Promise.all([
+    api(baseUrl, `/api/summary?month=${month}`),
+    api(
+      baseUrl,
+      `/api/transactions/summary?month=${month}&search=${encodedOversizedPayee}`,
+    ),
+    api(
+      baseUrl,
+      `/api/transactions/summary?month=${month}&payee=${encodedOversizedPayee}`,
+    ),
+  ])
+  assert.equal(recoveredSummaries[0].response.status, 200)
+  for (const result of recoveredSummaries.slice(1)) {
+    assert.equal(result.response.status, 200)
+    assert.deepEqual(result.payload.data, {
+      transactionCount: 0,
+      income: 0,
+      expense: 0,
+      net: 0,
+    })
+  }
+
   const invalidTransferAccountFilter = await api(
     baseUrl,
     `/api/transfers?month=${month}&accountId=0`,

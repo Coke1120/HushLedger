@@ -7,6 +7,7 @@ import {
   type MonthlyCashFlowQueryRow,
 } from '../lib/cashFlowTrend'
 import { monthRangeDates, shiftMonth } from '../lib/date'
+import { exactTransactionTotals } from '../lib/money'
 import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
 import {
@@ -441,22 +442,15 @@ export async function summarizeTransactions(
     // ponytail: D1 has no Unicode case folding; scan the already-filtered personal ledger.
     // Add an indexed normalized payee key if this becomes a measured bottleneck.
     const transactions = await selectTransactions(database, query, false)
-    return transactions.reduce<TransactionFilterSummary>((summary, transaction) => {
-      summary.transactionCount += 1
-      summary[transaction.type] += transaction.amountMinor
-      summary.net += transaction.type === 'income'
-        ? transaction.amountMinor
-        : -transaction.amountMinor
-      return summary
-    }, { transactionCount: 0, income: 0, expense: 0, net: 0 })
+    return { transactionCount: transactions.length, ...exactTransactionTotals(transactions) }
   }
 
   const { clause, values } = transactionQueryWhere(query)
   const row = await database.prepare(`
     SELECT
       COUNT(*) AS transactionCount,
-      COALESCE(SUM(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END), 0) AS income,
-      COALESCE(SUM(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END), 0) AS expense
+      TOTAL(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END) AS income,
+      TOTAL(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END) AS expense
     FROM transactions t
     INNER JOIN accounts a ON a.id = t.account_id
     INNER JOIN categories category ON category.id = t.category_id
@@ -465,10 +459,15 @@ export async function summarizeTransactions(
     .bind(...values)
     .first<TransactionFilterSummaryRow>()
 
-  const transactionCount = row?.transactionCount ?? 0
-  const income = row?.income ?? 0
-  const expense = row?.expense ?? 0
-  return { transactionCount, income, expense, net: income - expense }
+  if (!row) throw new Error('Transaction summary aggregate is missing')
+  if (!Number.isSafeInteger(row.transactionCount) || row.transactionCount < 0) {
+    throw new Error('Transaction count exceeds the safe integer range')
+  }
+  const totals = exactTransactionTotals([
+    { type: 'income', amountMinor: row.income },
+    { type: 'expense', amountMinor: row.expense },
+  ])
+  return { transactionCount: row.transactionCount, ...totals }
 }
 
 async function selectTransactions(
@@ -820,8 +819,8 @@ export async function getSummary(database: D1Database, month: string): Promise<S
   ] = await Promise.all([
     database.prepare(`
       SELECT
-        COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END), 0) AS expense
+        TOTAL(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END) AS income,
+        TOTAL(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END) AS expense
       FROM transactions
       WHERE occurred_on >= ? AND occurred_on < ?
     `)
@@ -848,7 +847,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category.localization_key AS categoryLocalizationKey,
         category.icon AS categoryIcon,
         category.color AS categoryColor,
-        SUM(t.amount_minor) AS amountMinor,
+        TOTAL(t.amount_minor) AS amountMinor,
         COUNT(*) AS transactionCount
       FROM transactions t
       INNER JOIN categories category ON category.id = t.category_id
@@ -867,7 +866,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     database.prepare(`
       SELECT
         MIN(trim(payee)) AS payee,
-        SUM(amount_minor) AS amountMinor,
+        TOTAL(amount_minor) AS amountMinor,
         COUNT(*) AS transactionCount
       FROM transactions
       WHERE type = 'expense'
@@ -887,7 +886,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category.icon AS categoryIcon,
         category.color AS categoryColor,
         category.monthly_plan_minor AS plannedMinor,
-        COALESCE(SUM(t.amount_minor), 0) AS spentMinor
+        TOTAL(t.amount_minor) AS spentMinor
       FROM categories category
       LEFT JOIN transactions t
         ON t.category_id = category.id
@@ -930,14 +929,17 @@ export async function getSummary(database: D1Database, month: string): Promise<S
       .all<RecurringForecastRule>(),
   ])
 
-  const income = row?.income ?? 0
-  const expense = row?.expense ?? 0
+  if (!row) throw new Error('Monthly summary aggregate is missing')
+  const totals = exactTransactionTotals([
+    { type: 'income', amountMinor: row.income },
+    { type: 'expense', amountMinor: row.expense },
+  ])
   const cashFlowTrend = buildMonthlyCashFlowTrend(month, cashFlowTrendResult.results)
   return {
     month,
-    income,
-    expense,
-    balance: income - expense,
+    income: totals.income,
+    expense: totals.expense,
+    balance: totals.net,
     cashFlowTrend,
     spendingTrend: buildMonthlySpendingTrend(
       month,

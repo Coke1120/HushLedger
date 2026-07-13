@@ -413,7 +413,8 @@ reminder does not prove that a backup file was retained off-platform.
   conflict-safe bulk clearing and same-type recategorization,
   deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
   matching filtered transaction
-  aggregate and ordered CSV export,
+  aggregate and ordered CSV export, with monthly and filtered money totals failing
+  closed instead of publishing rounded values outside exact safe-integer precision,
   browser-local saved review views,
   ranked category-or-payee spending drilldown, monthly plan-versus-actual review,
   recorded-balance emergency-fund progress,

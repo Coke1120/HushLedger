@@ -4,6 +4,36 @@ import { DEFAULT_LEDGER_CURRENCY } from './currency'
 export const DEFAULT_CURRENCY = DEFAULT_LEDGER_CURRENCY
 
 const amountPattern = /^(?:0|[1-9]\d*)(?:\.(\d{1,2}))?$/
+const maximumSafeMoney = BigInt(Number.MAX_SAFE_INTEGER)
+
+export function exactTransactionTotals(
+  entries: readonly { type: 'income' | 'expense'; amountMinor: number }[],
+) {
+  let income = 0n
+  let expense = 0n
+
+  for (const entry of entries) {
+    if (!Number.isSafeInteger(entry.amountMinor) || entry.amountMinor < 0) {
+      throw new Error('Transaction amount must be a non-negative safe integer')
+    }
+
+    if (entry.type === 'income') {
+      income += BigInt(entry.amountMinor)
+    } else {
+      expense += BigInt(entry.amountMinor)
+    }
+  }
+
+  if (income > maximumSafeMoney || expense > maximumSafeMoney) {
+    throw new Error('Transaction total exceeds the safe integer range')
+  }
+
+  return {
+    income: Number(income),
+    expense: Number(expense),
+    net: Number(income - expense),
+  }
+}
 
 export const formatMoney = (minor: number, currency: string = DEFAULT_CURRENCY, locale = 'zh-Hant') => {
   if (!Number.isSafeInteger(minor)) throw new Error('Amount exceeds the safe integer range')

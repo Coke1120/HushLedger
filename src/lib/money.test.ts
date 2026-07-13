@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  exactTransactionTotals,
   formatAmountInput,
   formatMoney,
   formatSignedAmountInput,
@@ -10,6 +11,41 @@ import {
 } from './money'
 
 describe('two-decimal money helpers', () => {
+  it('accumulates transaction totals exactly by direction', () => {
+    assert.deepEqual(exactTransactionTotals([
+      { type: 'income', amountMinor: 12_345 },
+      { type: 'expense', amountMinor: 2_345 },
+      { type: 'income', amountMinor: 5 },
+    ]), { income: 12_350, expense: 2_345, net: 10_005 })
+  })
+
+  it('accepts exact directional totals at the safe-integer boundary', () => {
+    assert.deepEqual(exactTransactionTotals([
+      { type: 'income', amountMinor: Number.MAX_SAFE_INTEGER },
+      { type: 'expense', amountMinor: Number.MAX_SAFE_INTEGER },
+    ]), {
+      income: Number.MAX_SAFE_INTEGER,
+      expense: Number.MAX_SAFE_INTEGER,
+      net: 0,
+    })
+  })
+
+  it('rejects individually safe transactions whose directional total is unsafe', () => {
+    assert.throws(() => exactTransactionTotals([
+      { type: 'expense', amountMinor: Number.MAX_SAFE_INTEGER },
+      { type: 'expense', amountMinor: 1 },
+    ]), /safe integer range/)
+  })
+
+  it('rejects invalid transaction amounts before accumulating them', () => {
+    assert.throws(() => exactTransactionTotals([
+      { type: 'income', amountMinor: -1 },
+    ]), /non-negative safe integer/)
+    assert.throws(() => exactTransactionTotals([
+      { type: 'income', amountMinor: Number.MAX_SAFE_INTEGER + 1 },
+    ]), /non-negative safe integer/)
+  })
+
   it('formats integer minor units with the selected ledger currency', () => {
     assert.match(formatMoney(12_345), /HK\$123\.45/)
     assert.match(formatMoney(5), /HK\$0\.05/)
