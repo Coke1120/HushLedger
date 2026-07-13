@@ -484,7 +484,8 @@ textarea:focus-visible {
   background: var(--warning-bg);
 }
 
-.recurring-forecast-totals {
+.recurring-forecast-totals,
+.monthly-plan-rollup {
   display: grid;
   overflow: hidden;
   padding: 0;
@@ -492,10 +493,18 @@ textarea:focus-visible {
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: 12px;
+}
+
+.recurring-forecast-totals {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.recurring-forecast-total {
+.monthly-plan-rollup {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.recurring-forecast-total,
+.monthly-plan-rollup-item {
   display: grid;
   min-width: 0;
   min-height: 68px;
@@ -504,11 +513,13 @@ textarea:focus-visible {
   align-content: center;
 }
 
-.recurring-forecast-total + .recurring-forecast-total {
+.recurring-forecast-total + .recurring-forecast-total,
+.monthly-plan-rollup-item + .monthly-plan-rollup-item {
   border-left: 1px solid var(--line);
 }
 
-.recurring-forecast-total dt {
+.recurring-forecast-total dt,
+.monthly-plan-rollup-item dt {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -517,7 +528,8 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.recurring-forecast-total dd {
+.recurring-forecast-total dd,
+.monthly-plan-rollup-item dd {
   min-width: 0;
   overflow: hidden;
   margin: 0;
@@ -534,6 +546,10 @@ textarea:focus-visible {
 }
 
 .recurring-forecast-total.expense dd {
+  color: var(--expense);
+}
+
+.monthly-plan-rollup-item dd.expense {
   color: var(--expense);
 }
 
@@ -5603,27 +5619,32 @@ button.account-register-row:focus-visible {
     font-size: 18px;
   }
 
-  .recurring-forecast-total {
+  .recurring-forecast-total,
+  .monthly-plan-rollup-item {
     min-height: 50px;
     padding: 9px 11px;
   }
 
-  .recurring-forecast-totals {
+  .recurring-forecast-totals,
+  .monthly-plan-rollup {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .recurring-forecast-total {
+  .recurring-forecast-total,
+  .monthly-plan-rollup-item {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
     align-items: center;
   }
 
-  .recurring-forecast-total + .recurring-forecast-total {
+  .recurring-forecast-total + .recurring-forecast-total,
+  .monthly-plan-rollup-item + .monthly-plan-rollup-item {
     border-top: 1px solid var(--line);
     border-left: 0;
   }
 
-  .recurring-forecast-total dd {
+  .recurring-forecast-total dd,
+  .monthly-plan-rollup-item dd {
     font-size: 15px;
   }
 

@@ -906,7 +906,6 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         AND t.occurred_on >= ?
         AND t.occurred_on < ?
       WHERE category.type = 'expense'
-        AND category.is_active = 1
         AND category.monthly_plan_minor IS NOT NULL
       GROUP BY
         category.id,
@@ -915,7 +914,9 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         category.icon,
         category.color,
         category.monthly_plan_minor,
+        category.is_active,
         category.sort_order
+      HAVING category.is_active = 1 OR COUNT(t.id) > 0
       ORDER BY category.sort_order ASC, category.id ASC
     `)
       .bind(start, end)

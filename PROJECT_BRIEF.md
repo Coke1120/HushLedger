@@ -38,8 +38,10 @@ not operate an independent database server or a multi-user identity system.
   transaction count; select one to open the corresponding exact transaction
   filter without turning a payee into a broad text search.
 - Compare optional monthly expense-category plans with recorded spending and the
-  exact remaining-or-over amount; treat plans as recurring guardrails, not cash
-  allocation, rollover, or envelope balances.
+  exact remaining-or-over amount. Roll up every plan into total planned spending,
+  spending recorded in planned categories, the net difference, and spending
+  outside plans; treat all of these as recurring guardrails, not cash allocation,
+  rollover, or envelope balances.
 - Review one optional emergency-fund checkpoint against the recorded month-end
   balance of one active cash, bank, or wallet account in the ledger currency.
   Treat it only as a user-chosen progress comparison: it does not create or

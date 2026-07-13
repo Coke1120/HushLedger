@@ -904,6 +904,31 @@ async function verifyWorkerApi() {
     plannedMinor: 50_000,
     spentMinor: 41_615,
   }])
+  const plannedCategory = categoriesResult.payload.data.find(({ id }) => id === 3)
+  assert(plannedCategory)
+  const disabledPlannedCategory = await api(baseUrl, '/api/categories/3', {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: plannedCategory.updatedAt },
+  })
+  assert.equal(disabledPlannedCategory.response.status, 200)
+  const inactivePlanSummary = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.deepEqual(inactivePlanSummary.payload.data.monthlySpendingPlans, [{
+    categoryId: 3,
+    categoryName: '餐飲',
+    categoryLocalizationKey: 'category.food',
+    categoryIcon: 'utensils',
+    categoryColor: '#C16B4B',
+    plannedMinor: 50_000,
+    spentMinor: 41_615,
+  }])
+  const reenabledPlannedCategory = await api(baseUrl, '/api/categories/3', {
+    method: 'PATCH',
+    body: {
+      isActive: true,
+      updatedAt: disabledPlannedCategory.payload.data.updatedAt,
+    },
+  })
+  assert.equal(reenabledPlannedCategory.response.status, 200)
   assert.equal(categorySummary.payload.data.spendingTrend.length, 6)
   assert.deepEqual(categorySummary.payload.data.spendingTrend.slice(-2), [
     { month: previousMonth, amountMinor: 12_345, transactionCount: 1 },

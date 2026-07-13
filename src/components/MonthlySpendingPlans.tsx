@@ -1,6 +1,7 @@
 import { Target } from 'lucide-react'
 import { useMemo } from 'react'
 import { useI18n } from '../i18n'
+import { summarizeMonthlyPlans } from '../lib/monthlyPlanRollup'
 import type { Summary } from '../lib/schema'
 
 type MonthlySpendingPlansProps = {
@@ -23,6 +24,17 @@ export function MonthlySpendingPlans({
   )
   const visiblePlans = summary.monthlySpendingPlans.slice(0, visiblePlanLimit)
   const remainingPlans = summary.monthlySpendingPlans.length - visiblePlans.length
+  const rollup = useMemo(
+    () => summarizeMonthlyPlans(summary.expense, summary.monthlySpendingPlans),
+    [summary.expense, summary.monthlySpendingPlans],
+  )
+  const differenceLabel = rollup
+    ? privacyMode
+      ? t('monthlyPlansCombinedDifference')
+      : rollup.differenceMinor >= 0
+        ? t('monthlyPlansCombinedRemaining')
+        : t('monthlyPlansCombinedOver')
+    : ''
 
   return (
     <section
@@ -49,6 +61,28 @@ export function MonthlySpendingPlans({
         </div>
       ) : (
         <>
+          {rollup ? (
+            <dl className="monthly-plan-rollup" aria-label={t('monthlyPlansRollupLabel')}>
+              <div className="monthly-plan-rollup-item">
+                <dt>{t('monthlyPlansTotalPlanned')}</dt>
+                <dd>{formatMoney(rollup.plannedMinor)}</dd>
+              </div>
+              <div className="monthly-plan-rollup-item">
+                <dt>{t('monthlyPlansSpentWithinPlans')}</dt>
+                <dd>{formatMoney(rollup.spentInPlansMinor)}</dd>
+              </div>
+              <div className="monthly-plan-rollup-item">
+                <dt>{differenceLabel}</dt>
+                <dd className={!privacyMode && rollup.differenceMinor < 0 ? 'expense' : undefined}>
+                  {formatMoney(Math.abs(rollup.differenceMinor))}
+                </dd>
+              </div>
+              <div className="monthly-plan-rollup-item">
+                <dt>{t('monthlyPlansOutsidePlans')}</dt>
+                <dd>{formatMoney(rollup.outsidePlansMinor)}</dd>
+              </div>
+            </dl>
+          ) : null}
           <ol className="category-spending-list">
             {visiblePlans.map((plan) => {
               const name = localizeEntityName(plan.categoryName, plan.categoryLocalizationKey)
@@ -87,7 +121,9 @@ export function MonthlySpendingPlans({
                       </span>
                     </span>
                     <span className="category-spending-amount">
-                      <strong className={remainingMinor < 0 ? 'expense' : undefined}>{spent}</strong>
+                      <strong className={!privacyMode && remainingMinor < 0 ? 'expense' : undefined}>
+                        {spent}
+                      </strong>
                       <small>{visibleStatus} · {percent}</small>
                     </span>
                     <span className="category-spending-track" aria-hidden="true">
