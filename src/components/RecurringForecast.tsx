@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useI18n } from '../i18n'
 import {
   recurringForecastOccurrences,
+  recurringForecastPeriods,
   summarizeRecurringForecast,
 } from '../lib/recurringForecast'
 import type { Summary } from '../lib/schema'
@@ -14,9 +15,20 @@ type RecurringForecastProps = {
 }
 
 const visibleOccurrenceLimit = 6
+const privacyTotalsPlaceholder = {
+  incomeMinor: 0,
+  expenseMinor: 0,
+  netMinor: 0,
+}
+
+function previousCalendarDate(date: string) {
+  const previous = new Date(`${date}T00:00:00.000Z`)
+  previous.setUTCDate(previous.getUTCDate() - 1)
+  return previous.toISOString().slice(0, 10)
+}
 
 export function RecurringForecast({ summary, loading, onManage }: RecurringForecastProps) {
-  const { formatDate, formatMoney, t } = useI18n()
+  const { formatDate, formatMoney, privacyMode, t } = useI18n()
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const showAll = expandedMonth === summary.month
   const occurrences = recurringForecastOccurrences(summary.recurringForecast)
@@ -25,6 +37,9 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
     ? occurrences
     : occurrences.slice(0, visibleOccurrenceLimit)
   const totals = summarizeRecurringForecast(summary.recurringForecast)
+  const displayedTotals = totals ?? (privacyMode ? privacyTotalsPlaceholder : null)
+  const periods = recurringForecastPeriods(summary.month, summary.recurringForecast)
+    .filter(({ startOn, endOnExclusive }) => startOn < endOnExclusive)
 
   return (
     <section
@@ -51,22 +66,84 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
         </div>
       ) : (
         <>
-          {totals ? (
+          {displayedTotals ? (
             <dl className="recurring-forecast-totals">
               <div className="recurring-forecast-total income">
                 <dt>{t('scheduledIncome')}</dt>
-                <dd>{formatMoney(totals.incomeMinor)}</dd>
+                <dd>{formatMoney(displayedTotals.incomeMinor)}</dd>
               </div>
               <div className="recurring-forecast-total expense">
                 <dt>{t('scheduledExpense')}</dt>
-                <dd>{formatMoney(totals.expenseMinor)}</dd>
+                <dd>{formatMoney(displayedTotals.expenseMinor)}</dd>
               </div>
               <div className="recurring-forecast-total net">
                 <dt>{t('scheduledNet')}</dt>
-                <dd>{formatMoney(totals.netMinor)}</dd>
+                <dd>{formatMoney(displayedTotals.netMinor)}</dd>
               </div>
             </dl>
           ) : null}
+          <section
+            className="recurring-forecast-periods"
+            aria-labelledby="recurring-forecast-periods-title"
+          >
+            <header className="recurring-forecast-periods-heading">
+              <h3 id="recurring-forecast-periods-title">{t('scheduledCashFlowByWeek')}</h3>
+              <p>{t('scheduledCashFlowByWeekHelp')}</p>
+            </header>
+            <ol className="recurring-forecast-period-list">
+              {periods.map((period) => {
+                const inclusiveEndOn = previousCalendarDate(period.endOnExclusive)
+                const formattedStartOn = formatDate(period.startOn)
+                const formattedEndOn = formatDate(inclusiveEndOn)
+                const rangeLabel = period.startOn === inclusiveEndOn
+                  ? formattedStartOn
+                  : t('savedViewDateRange', { from: formattedStartOn, to: formattedEndOn })
+                const displayedPeriodTotals = period.totals
+                  ?? (privacyMode ? privacyTotalsPlaceholder : null)
+                const netClassName = !privacyMode && period.totals
+                  ? period.totals.netMinor > 0
+                    ? 'income'
+                    : period.totals.netMinor < 0
+                      ? 'expense'
+                      : undefined
+                  : undefined
+
+                return (
+                  <li className="recurring-forecast-period" key={period.index}>
+                    <h4 className="recurring-forecast-period-range" aria-label={rangeLabel}>
+                      <time dateTime={period.startOn}>{formattedStartOn}</time>
+                      {period.startOn === inclusiveEndOn ? null : (
+                        <>
+                          <span aria-hidden="true">–</span>
+                          <time dateTime={inclusiveEndOn}>{formattedEndOn}</time>
+                        </>
+                      )}
+                    </h4>
+                    {displayedPeriodTotals ? (
+                      <dl className="recurring-forecast-period-totals">
+                        <div className="recurring-forecast-period-total income">
+                          <dt>{t('scheduledIncome')}</dt>
+                          <dd>{formatMoney(displayedPeriodTotals.incomeMinor)}</dd>
+                        </div>
+                        <div className="recurring-forecast-period-total expense">
+                          <dt>{t('scheduledExpense')}</dt>
+                          <dd>{formatMoney(displayedPeriodTotals.expenseMinor)}</dd>
+                        </div>
+                        <div className="recurring-forecast-period-total">
+                          <dt>{t('scheduledNet')}</dt>
+                          <dd className={netClassName}>{formatMoney(displayedPeriodTotals.netMinor)}</dd>
+                        </div>
+                      </dl>
+                    ) : (
+                      <p className="recurring-forecast-period-unavailable">
+                        {t('scheduledPeriodTotalsUnavailable')}
+                      </p>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+          </section>
           <ol className="category-spending-list" id="recurring-forecast-list">
             {visibleOccurrences.map((occurrence) => {
               const date = formatDate(occurrence.occurrenceOn)

@@ -45,10 +45,12 @@ knowledge and explains every command and dashboard click.
   guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
   generated, expanded into an exact chronological list of every scheduled date
-  with rule name, optional payee, amount, and income/expense label. Longer lists
-  can be expanded without changing the exact scheduled income, expense, and net
-  totals. Forecast values never change recorded or available balance, and a
-  provider statement remains authoritative for the actual date and amount.
+  with rule name, optional payee, amount, and income/expense label. A fixed
+  day-1-anchored weekly view groups those exact dates into seven-day scheduled
+  income, expense, and net periods, including zero periods and a final period
+  that may be shorter. Longer lists can be expanded without changing the exact totals.
+  Forecast values never change recorded or available balance, and a provider
+  statement remains authoritative for the actual date and amount.
 - Amounts stored in the ledger's selected currency as integer minor units to
   avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected

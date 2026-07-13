@@ -23,6 +23,13 @@ export type RecurringForecastTotals = {
   netMinor: number
 }
 
+export type RecurringForecastPeriod = {
+  index: 1 | 2 | 3 | 4 | 5
+  startOn: string
+  endOnExclusive: string
+  totals: RecurringForecastTotals | null
+}
+
 export type RecurringForecastOccurrence = {
   recurringRuleId: string
   name: string
@@ -31,6 +38,27 @@ export type RecurringForecastOccurrence = {
   payee: string
   frequency: RecurrenceFrequency
   occurrenceOn: string
+}
+
+const safeIntegerLimit = BigInt(Number.MAX_SAFE_INTEGER)
+
+function safeRecurringForecastTotals(
+  incomeMinor: bigint,
+  expenseMinor: bigint,
+): RecurringForecastTotals | null {
+  if (incomeMinor > safeIntegerLimit || expenseMinor > safeIntegerLimit) return null
+
+  return {
+    incomeMinor: Number(incomeMinor),
+    expenseMinor: Number(expenseMinor),
+    netMinor: Number(incomeMinor - expenseMinor),
+  }
+}
+
+function addCalendarDays(date: string, days: number) {
+  const shifted = new Date(`${date}T00:00:00.000Z`)
+  shifted.setUTCDate(shifted.getUTCDate() + days)
+  return shifted.toISOString().slice(0, 10)
 }
 
 export function recurringForecastOccurrences(
@@ -62,14 +90,48 @@ export function summarizeRecurringForecast(
     else expenseMinor += total
   }
 
-  const safeIntegerLimit = BigInt(Number.MAX_SAFE_INTEGER)
-  if (incomeMinor > safeIntegerLimit || expenseMinor > safeIntegerLimit) return null
+  return safeRecurringForecastTotals(incomeMinor, expenseMinor)
+}
 
-  return {
-    incomeMinor: Number(incomeMinor),
-    expenseMinor: Number(expenseMinor),
-    netMinor: Number(incomeMinor - expenseMinor),
+export function recurringForecastPeriods(
+  month: string,
+  forecast: readonly ScheduledRecurringSummary[],
+): RecurringForecastPeriod[] {
+  const { start, end } = monthRangeDates(month)
+  const boundaries = [0, 7, 14, 21, 28, 35].map((days) => {
+    const boundary = addCalendarDays(start, days)
+    return boundary < end ? boundary : end
+  })
+  const totals = Array.from({ length: 5 }, () => ({ incomeMinor: 0n, expenseMinor: 0n }))
+
+  for (const rule of forecast) {
+    if (!Number.isSafeInteger(rule.amountMinor) || rule.amountMinor < 0) {
+      throw new Error('Recurring forecast amount must be a non-negative safe integer')
+    }
+
+    for (const occurrenceOn of rule.occurrenceDates) {
+      if (occurrenceOn < start || occurrenceOn >= end) {
+        throw new Error('Recurring forecast occurrence is outside the selected month')
+      }
+
+      const periodIndex = boundaries.findIndex((boundary, index) => (
+        index < 5 && occurrenceOn >= boundary && occurrenceOn < boundaries[index + 1]
+      ))
+      if (periodIndex < 0) {
+        throw new Error('Recurring forecast occurrence is outside the selected periods')
+      }
+
+      totals[periodIndex][rule.type === 'income' ? 'incomeMinor' : 'expenseMinor']
+        += BigInt(rule.amountMinor)
+    }
   }
+
+  return totals.map((total, index) => ({
+    index: (index + 1) as RecurringForecastPeriod['index'],
+    startOn: boundaries[index],
+    endOnExclusive: boundaries[index + 1],
+    totals: safeRecurringForecastTotals(total.incomeMinor, total.expenseMinor),
+  }))
 }
 
 export function recurringForecastForMonth(

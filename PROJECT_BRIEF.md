@@ -50,9 +50,11 @@ not operate an independent database server or a multi-user identity system.
   transfers, or verify a provider balance.
 - Review active recurring entries that remain ungenerated in the selected month
   as an expandable chronological list of every scheduled date, rule name,
-  optional payee, amount, and income/expense label. Keep exact income, expense,
-  and net forecast totals separate from recorded or available balance, and direct
-  the user to the provider statement for the actual date and amount.
+  optional payee, amount, and income/expense label. Group those exact dates into
+  fixed seven-day periods starting on day 1, including zero periods and a final
+  period that may be shorter. Keep exact income, expense, and net forecast totals separate from
+  recorded or available balance, and direct the user to the provider statement
+  for the actual date and amount.
 - Browse the latest 200 matching transactions for the selected month, an
   inclusive fixed date range, or all history; the UI explicitly discloses the
   cap when it is reached. Widening the transaction date scope does not change
@@ -136,11 +138,12 @@ not operate an independent database server or a multi-user identity system.
   action.
 - Preserve generated history when a rule changes or is deleted.
 - Use the overview forecast to see every ungenerated occurrence in the selected
-  month in stable date order, with an explicit expansion control and exact income,
-  expense, and net totals. Generated ledger entries remain part of actual totals
-  instead, and forecast money never becomes recorded or available balance by
-  presentation alone. Scheduled dates are ledger-generation dates, not verified
-  provider due dates or payment confirmations.
+  month in stable date order, with an explicit expansion control, exact monthly
+  totals, and fixed day-1-anchored seven-day cash-flow periods. Generated ledger
+  entries remain part of actual totals instead, and forecast money never becomes
+  recorded or available balance by presentation alone. Scheduled dates are
+  ledger-generation dates, not verified provider due dates or payment
+  confirmations.
 
 ## Data contract
 
