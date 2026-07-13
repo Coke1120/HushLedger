@@ -2,6 +2,7 @@ import 'server-only'
 
 import { monthRangeDates, shiftMonth } from '../lib/date'
 import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
+import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
 import {
   recurringForecastForMonth,
   type RecurringForecastRule,
@@ -14,6 +15,7 @@ import type {
   Category,
   CategoryLocalizationKey,
   ExpenseCategorySummary,
+  ExpensePayeeSummary,
   MonthlySpendingSummary,
   MonthlySpendingPlanSummary,
   NetWorthTrendPoint,
@@ -87,6 +89,7 @@ export type TransactionQuery = {
   type?: TransactionType
   accountId?: number
   categoryId?: number
+  payee?: string
   search?: string
   tag?: string
   status?: TransactionClearingStatus
@@ -395,6 +398,10 @@ function transactionQueryWhere(query: TransactionQuery) {
     values.push(query.categoryId)
   }
 
+  if (query.payee) {
+    filters.push("trim(t.payee) <> ''")
+  }
+
   if (query.status) {
     filters.push('t.cleared = ?')
     values.push(query.status === 'cleared' ? 1 : 0)
@@ -442,6 +449,20 @@ export async function summarizeTransactions(
   database: D1Database,
   query: TransactionQuery,
 ): Promise<TransactionFilterSummary> {
+  if (query.payee) {
+    // ponytail: D1 has no Unicode case folding; scan the already-filtered personal ledger.
+    // Add an indexed normalized payee key if this becomes a measured bottleneck.
+    const transactions = await selectTransactions(database, query, false)
+    return transactions.reduce<TransactionFilterSummary>((summary, transaction) => {
+      summary.transactionCount += 1
+      summary[transaction.type] += transaction.amountMinor
+      summary.net += transaction.type === 'income'
+        ? transaction.amountMinor
+        : -transaction.amountMinor
+      return summary
+    }, { transactionCount: 0, income: 0, expense: 0, net: 0 })
+  }
+
   const { clause, values } = transactionQueryWhere(query)
   const row = await database.prepare(`
     SELECT
@@ -468,6 +489,7 @@ async function selectTransactions(
   limited: boolean,
 ): Promise<TransactionView[]> {
   const { clause, values } = transactionQueryWhere(query)
+  const normalizedPayee = query.payee ? normalizePayee(query.payee) : null
   const orderBy: Record<TransactionSort, string> = {
     date_desc: 't.occurred_on DESC, t.created_at DESC, t.id DESC',
     date_asc: 't.occurred_on ASC, t.created_at ASC, t.id ASC',
@@ -481,12 +503,17 @@ async function selectTransactions(
     ${transactionSelect}
     WHERE ${clause}
     ORDER BY ${orderBy[query.sort ?? 'date_desc']}
-    ${limited ? 'LIMIT 200' : ''}
+    ${limited && normalizedPayee === null ? 'LIMIT 200' : ''}
   `)
     .bind(...values)
     .all<TransactionRow>()
 
-  return result.results.map(transactionView)
+  const transactions = result.results
+    .map(transactionView)
+    .filter((transaction) => (
+      normalizedPayee === null || normalizePayee(transaction.payee) === normalizedPayee
+    ))
+  return limited ? transactions.slice(0, 200) : transactions
 }
 
 export async function createTransaction(
@@ -799,6 +826,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     row,
     spendingTrendResult,
     expenseByCategoryResult,
+    expenseByPayeeResult,
     monthlySpendingPlansResult,
     recurringRulesResult,
   ] = await Promise.all([
@@ -846,6 +874,21 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     `)
       .bind(start, end)
       .all<ExpenseCategorySummary>(),
+    database.prepare(`
+      SELECT
+        MIN(trim(payee)) AS payee,
+        SUM(amount_minor) AS amountMinor,
+        COUNT(*) AS transactionCount
+      FROM transactions
+      WHERE type = 'expense'
+        AND occurred_on >= ?
+        AND occurred_on < ?
+        AND trim(payee) <> ''
+      GROUP BY trim(payee)
+      ORDER BY amountMinor DESC, lower(payee) ASC
+    `)
+      .bind(start, end)
+      .all<ExpensePayeeSummary>(),
     database.prepare(`
       SELECT
         category.id AS categoryId,
@@ -904,6 +947,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     balance: income - expense,
     spendingTrend: buildMonthlySpendingTrend(month, spendingTrendResult.results),
     expenseByCategory: expenseByCategoryResult.results,
+    expenseByPayee: mergePayeeSummaries(expenseByPayeeResult.results),
     monthlySpendingPlans: monthlySpendingPlansResult.results,
     recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
   }

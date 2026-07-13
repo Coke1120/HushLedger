@@ -167,6 +167,7 @@ export const transactionQueryFieldsSchema = z
     status: transactionClearingStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
+    payee: z.string().trim().min(1).max(80).optional(),
     search: z.string().trim().min(1).max(80).optional(),
     tag: z.string().refine(isTransactionTagName, '標籤格式不正確').optional(),
     duplicates: z.literal('exact').optional(),
@@ -441,6 +442,7 @@ export type Summary = {
   balance: number
   spendingTrend: MonthlySpendingSummary[]
   expenseByCategory: ExpenseCategorySummary[]
+  expenseByPayee: ExpensePayeeSummary[]
   monthlySpendingPlans: MonthlySpendingPlanSummary[]
   recurringForecast: ScheduledRecurringSummary[]
 }
@@ -457,6 +459,12 @@ export type ExpenseCategorySummary = {
   categoryLocalizationKey: CategoryLocalizationKey | null
   categoryIcon: string
   categoryColor: string
+  amountMinor: number
+  transactionCount: number
+}
+
+export type ExpensePayeeSummary = {
+  payee: string
   amountMinor: number
   transactionCount: number
 }

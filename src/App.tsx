@@ -71,6 +71,7 @@ function App({ initialMonth }: { initialMonth: string }) {
   const [registerAccountId, setRegisterAccountId] = useState<number | null>(null)
   const [registerMode, setRegisterMode] = useState<'review' | 'reconcile'>('review')
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
+  const [payeeFilter, setPayeeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
@@ -111,6 +112,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     deferredSearch,
     accountFilterId,
     categoryFilterId,
+    payeeFilter,
     tagFilter,
     clearingFilter,
     view === 'transactions' ? transactionSort : 'date_desc',
@@ -263,9 +265,24 @@ function App({ initialMonth }: { initialMonth: string }) {
     setAccountFilterId(null)
     setRegisterAccountId(null)
     setCategoryFilterId(category.id)
+    setPayeeFilter(null)
     setImportMode(null)
     changeView('transactions')
   }, [changeView, data.categories])
+
+  const openPayeeTransactions = useCallback((payee: string) => {
+    setSearch('')
+    setTransactionDateScope('month')
+    setTagFilter(null)
+    setDuplicatesOnly(false)
+    setFilter('expense')
+    setAccountFilterId(null)
+    setRegisterAccountId(null)
+    setCategoryFilterId(null)
+    setPayeeFilter(payee)
+    setImportMode(null)
+    changeView('transactions')
+  }, [changeView])
 
   const openAccountRegister = useCallback((accountId: number, mode: 'review' | 'reconcile') => {
     if (!data.accounts.some((account) => account.id === accountId)) return
@@ -275,6 +292,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setFilter('all')
     setClearingFilter('all')
     setDuplicatesOnly(false)
+    setPayeeFilter(null)
     if (data.source === 'live' && data.online) {
       setAccountFilterId(null)
       setRegisterAccountId(accountId)
@@ -351,13 +369,14 @@ function App({ initialMonth }: { initialMonth: string }) {
       status: clearingFilter,
       accountId: accountFilterId,
       categoryId: categoryFilterId,
+      payee: payeeFilter,
       search: search.trim(),
       tag: tagFilter,
       duplicates: duplicatesOnly,
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
+  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, payeeFilter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -378,6 +397,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setClearingFilter(savedView.status)
     setAccountFilterId(accountId)
     setCategoryFilterId(categoryId)
+    setPayeeFilter(savedView.payee)
     setSearch(savedView.search)
     setTagFilter(savedView.tag)
     setDuplicatesOnly(savedView.duplicates)
@@ -392,6 +412,7 @@ function App({ initialMonth }: { initialMonth: string }) {
     setClearingFilter('all')
     setAccountFilterId(null)
     setCategoryFilterId(null)
+    setPayeeFilter(null)
     setSearch('')
     setTagFilter(null)
     setDuplicatesOnly(false)
@@ -497,7 +518,8 @@ function App({ initialMonth }: { initialMonth: string }) {
                 <CategorySpending
                   summary={data.summary}
                   loading={loading}
-                  onSelect={openCategoryTransactions}
+                  onSelectCategory={openCategoryTransactions}
+                  onSelectPayee={openPayeeTransactions}
                 />
                 <MonthlySpendingPlans
                   summary={data.summary}
@@ -536,6 +558,7 @@ function App({ initialMonth }: { initialMonth: string }) {
               </button>
               <TransactionToolbar
                 search={search}
+                payeeFilter={payeeFilter}
                 tagFilter={tagFilter}
                 filter={filter}
                 clearingFilter={clearingFilter}
@@ -553,6 +576,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                 canExport={data.source === 'live' && data.online}
                 canImport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
+                onPayeeFilterChange={setPayeeFilter}
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
@@ -587,6 +611,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                       || clearingFilter !== 'all'
                       || accountFilterId !== null
                       || categoryFilterId !== null
+                      || payeeFilter !== null
                       || search.trim().length > 0
                       || tagFilter !== null
                       || duplicatesOnly
@@ -660,6 +685,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                   clearingFilter,
                   accountFilterId,
                   categoryFilterId,
+                  payeeFilter,
                   deferredSearch,
                   tagFilter,
                   duplicatesOnly,

@@ -62,6 +62,7 @@ export function SavedTransactionViews({
         ? localizeEntityName(category.name, category.localizationKey)
         : t('savedViewMissingReference'))
     }
+    if (view.payee) parts.push(t('savedViewPayee', { payee: view.payee }))
     if (view.search) parts.push(t('savedViewSearch', { search: view.search }))
     if (view.tag) parts.push(view.tag)
     if (view.duplicates) parts.push(t('savedViewPossibleDuplicates'))

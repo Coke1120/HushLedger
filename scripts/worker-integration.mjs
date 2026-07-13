@@ -538,6 +538,11 @@ async function verifyWorkerApi() {
     amountMinor: 41_615,
     transactionCount: 205,
   }])
+  assert.deepEqual(categorySummary.payload.data.expenseByPayee, [{
+    payee: 'export bulk',
+    amountMinor: 41_615,
+    transactionCount: 205,
+  }])
   assert.deepEqual(categorySummary.payload.data.monthlySpendingPlans, [{
     categoryId: 3,
     categoryName: '餐飲',
@@ -1372,6 +1377,99 @@ async function verifyWorkerApi() {
     expense: 0,
     net: 0,
   })
+
+  const exactPayeeRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&payee=%20EXPORT%20BULK%20`,
+  )
+  assert.equal(exactPayeeRows.response.status, 200)
+  assert.equal(exactPayeeRows.payload.data.length, 200)
+  const exactPayeeSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&payee=%20EXPORT%20BULK%20`,
+  )
+  assert.equal(exactPayeeSummary.response.status, 200)
+  assert.deepEqual(exactPayeeSummary.payload.data, completeFilterSummary.payload.data)
+  const differentPayeeRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&payee=export%20bulk%20shop`,
+  )
+  assert.equal(differentPayeeRows.response.status, 200)
+  assert.deepEqual(differentPayeeRows.payload.data, [])
+  const rejectedBlankPayee = await api(baseUrl, `/api/transactions?month=${month}&payee=%20%20%20`)
+  assert.equal(rejectedBlankPayee.response.status, 400)
+  assert.equal(rejectedBlankPayee.payload.error.code, 'INVALID_QUERY')
+
+  const accentedPayeeBodies = [
+    {
+      id: '54000000-0000-4000-8000-000000000001',
+      type: 'expense',
+      amountMinor: 125,
+      currency: 'HKD',
+      accountId: 1,
+      categoryId: 3,
+      occurredOn: today,
+      cleared: false,
+      payee: ' Épicerie ',
+      note: '',
+    },
+    {
+      id: '54000000-0000-4000-8000-000000000002',
+      type: 'expense',
+      amountMinor: 275,
+      currency: 'HKD',
+      accountId: 1,
+      categoryId: 3,
+      occurredOn: today,
+      cleared: false,
+      payee: 'e\u0301PICERIE',
+      note: '',
+    },
+  ]
+  const accentedPayees = await Promise.all(accentedPayeeBodies.map((body) => (
+    api(baseUrl, '/api/transactions', { method: 'POST', body })
+  )))
+  assert(accentedPayees.every(({ response }) => response.status === 201))
+
+  const accentedPayeeRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&payee=${encodeURIComponent(' ÉPICERIE ')}`,
+  )
+  assert.equal(accentedPayeeRows.response.status, 200)
+  assert.deepEqual(
+    accentedPayeeRows.payload.data.map(({ id }) => id).sort(),
+    accentedPayeeBodies.map(({ id }) => id),
+  )
+  const accentedPayeeSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?month=${month}&payee=${encodeURIComponent('épicerie')}`,
+  )
+  assert.equal(accentedPayeeSummary.response.status, 200)
+  assert.deepEqual(accentedPayeeSummary.payload.data, {
+    transactionCount: 2,
+    income: 0,
+    expense: 400,
+    net: -400,
+  })
+  const accentedMonthlySummary = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.deepEqual(
+    accentedMonthlySummary.payload.data.expenseByPayee.find(({ payee }) => payee === 'Épicerie'),
+    { payee: 'Épicerie', amountMinor: 400, transactionCount: 2 },
+  )
+  const accentedPayeeExport = await api(
+    baseUrl,
+    `/api/exports/transactions?month=${month}&payee=${encodeURIComponent('épicerie')}`,
+  )
+  assert.equal(accentedPayeeExport.response.status, 200)
+  assert.equal(accentedPayeeExport.payload.trimEnd().split('\r\n').length - 1, 2)
+
+  const deletedAccentedPayees = await Promise.all(accentedPayees.map(({ payload }, index) => (
+    api(baseUrl, `/api/transactions/${accentedPayeeBodies[index].id}`, {
+      method: 'DELETE',
+      body: { updatedAt: payload.data.updatedAt },
+    })
+  )))
+  assert(deletedAccentedPayees.every(({ response }) => response.status === 200))
 
   const uncappedCsvExport = await api(baseUrl, `/api/exports/transactions?month=${month}&search=export%20bulk`)
   assert.equal(uncappedCsvExport.response.status, 200)
@@ -2590,9 +2688,9 @@ async function verifyWorkerApi() {
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
     uncappedCsvRows,
-    transactionFilterGuards: 4,
-    transactionFilterQueries: 4,
-    transactionFilterSummaries: 3,
+    transactionFilterGuards: 5,
+    transactionFilterQueries: 7,
+    transactionFilterSummaries: 5,
     transactionDateScopeGuards: 4,
     transactionDateScopeQueries: 3,
     transactionDateScopeSummaries: 2,
@@ -2606,6 +2704,8 @@ async function verifyWorkerApi() {
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,
+    payeeSummaries: 2,
+    payeeExports: 1,
     spendingTrendQueries: 1,
     recurringForecasts: 1,
     recurringSkips: 1,

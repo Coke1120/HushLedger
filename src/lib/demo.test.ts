@@ -35,6 +35,23 @@ describe('localized demo data', () => {
     assert.equal(getDemoTransactions('2026-07', 'all', 'supermarché', translator('fr')).length, 1)
   })
 
+  it('keeps an exact built-in payee filter valid after the locale changes', () => {
+    const englishPayee = getDemoTransactions('2026-07', 'expense', '', translator('en'))
+      .find(({ id }) => id === '7598bb40-b9ac-4cf9-b81e-d0a0f8f9334f')?.payee
+    assert.equal(englishPayee, 'Monthly rent')
+
+    const frenchRows = getDemoTransactions(
+      '2026-07', 'expense', '', translator('fr'), null, null, null, 'all', 'date_desc', false,
+      'month', null, null, englishPayee,
+    )
+    assert.equal(frenchRows.length, 1)
+    assert.equal(frenchRows[0]?.payee, 'Loyer mensuel')
+    assert.equal(summarizeDemoTransactions(
+      '2026-07', 'expense', '', translator('fr'), null, null, null, 'all', false,
+      'month', null, null, englishPayee,
+    ).transactionCount, 1)
+  })
+
   it('stacks account and category filters without changing the monthly summary', () => {
     const bankFood = getDemoTransactions('2026-07', 'all', '', undefined, 2, 3)
     const creditFood = getDemoTransactions('2026-07', 'expense', '', undefined, 3, 3)
@@ -313,6 +330,70 @@ describe('localized demo data', () => {
         { categoryId: 7, plannedMinor: 120_000, spentMinor: 118_300 },
       ],
     )
+  })
+
+  it('groups monthly expense payees consistently and supports an exact payee drill-down', () => {
+    const source = getDemoTransactions('2026-07', 'expense', '')[0]
+    assert(source)
+    const ids = [
+      '50000000-0000-4000-8000-000000000001',
+      '50000000-0000-4000-8000-000000000002',
+      '50000000-0000-4000-8000-000000000003',
+    ]
+
+    try {
+      addDemo({
+        id: ids[0],
+        type: 'expense',
+        amountMinor: 125,
+        currency: 'HKD',
+        accountId: source.accountId,
+        categoryId: source.categoryId,
+        occurredOn: '2026-07-25',
+        cleared: true,
+        payee: '  Corner Shop  ',
+        note: '',
+      })
+      addDemo({
+        id: ids[1],
+        type: 'expense',
+        amountMinor: 275,
+        currency: 'HKD',
+        accountId: source.accountId,
+        categoryId: source.categoryId,
+        occurredOn: '2026-07-26',
+        cleared: true,
+        payee: 'corner shop',
+        note: '',
+      })
+      addDemo({
+        id: ids[2],
+        type: 'expense',
+        amountMinor: 500,
+        currency: 'HKD',
+        accountId: source.accountId,
+        categoryId: source.categoryId,
+        occurredOn: '2026-07-27',
+        cleared: true,
+        payee: '   ',
+        note: '',
+      })
+
+      assert.deepEqual(
+        demoSummary('2026-07').expenseByPayee.find(({ payee }) => payee === 'Corner Shop'),
+        { payee: 'Corner Shop', amountMinor: 400, transactionCount: 2 },
+      )
+      assert.equal(demoSummary('2026-07').expenseByPayee.some(({ payee }) => payee === ''), false)
+      assert.deepEqual(
+        getDemoTransactions(
+          '2026-07', 'expense', '', undefined, null, null, null, 'all', 'date_desc', false,
+          'month', null, null, '  CORNER SHOP ',
+        ).map(({ id }) => id),
+        [ids[1], ids[0]],
+      )
+    } finally {
+      ids.forEach((id) => deleteDemo(id))
+    }
   })
 
   it('keeps edits and deletions local to the current demo session', () => {

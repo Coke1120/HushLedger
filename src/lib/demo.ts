@@ -1,8 +1,9 @@
 import { monthRangeDates } from './date'
 import { buildMonthlySpendingTrend } from './spendingTrend'
 import { buildNetWorthTrend, netWorthTrendMonths } from './netWorthTrend'
+import { mergePayeeSummaries, normalizePayee } from './payeeMemory'
 import { noteHasTransactionTag } from './transactionTags'
-import type { MessageKey, Translator } from '../i18n'
+import { supportedLocales, translate, type MessageKey, type Translator } from '../i18n'
 import type {
   Account,
   AccountBalance,
@@ -253,6 +254,19 @@ function localizeDemoTransaction(transaction: Transaction, t?: Translator): Tran
   }
 }
 
+function matchesDemoPayee(transaction: Transaction, payee: string | null) {
+  if (payee === null) return true
+  const exactPayee = normalizePayee(payee)
+  if (normalizePayee(transaction.payee) === exactPayee) return true
+
+  const copy = demoTransactionCopy[transaction.id]
+  return Boolean(
+    copy
+    && !editedDemoTransactionIds.has(transaction.id)
+    && supportedLocales.some((locale) => normalizePayee(translate(locale, copy.payee)) === exactPayee),
+  )
+}
+
 function matchesQuery(
   transaction: Transaction,
   month: string,
@@ -265,6 +279,7 @@ function matchesQuery(
   scope: TransactionDateScope,
   dateFrom: string | null,
   dateTo: string | null,
+  payee: string | null,
 ) {
   const monthRange = scope === 'month' ? monthRangeDates(month) : null
   const matchesDate = monthRange
@@ -281,6 +296,7 @@ function matchesQuery(
     (type === 'all' || transaction.type === type) &&
     (accountId === null || transaction.accountId === accountId) &&
     (categoryId === null || transaction.categoryId === categoryId) &&
+    matchesDemoPayee(transaction, payee) &&
     (status === 'all' || transaction.cleared === (status === 'cleared')) &&
     (tag === null || noteHasTransactionTag(transaction.note, tag)) &&
     (!needle || `${transaction.payee} ${transaction.note}`.toLowerCase().includes(needle))
@@ -315,11 +331,13 @@ export function getDemoTransactions(
   scope: TransactionDateScope = 'month',
   dateFrom: string | null = null,
   dateTo: string | null = null,
+  payee: string | null = null,
 ) {
   const localized = demoTransactions.map((transaction) => localizeDemoTransaction(transaction, t))
   return localized
     .filter((transaction) => matchesQuery(
       transaction, month, type, search, accountId, categoryId, tag, status, scope, dateFrom, dateTo,
+      payee,
     ))
     .filter((transaction) => !duplicatesOnly || hasExactDuplicate(transaction, localized))
     .sort((left, right) => compareDemoTransactions(left, right, sort))
@@ -359,6 +377,7 @@ export function summarizeDemoTransactions(
   scope: TransactionDateScope = 'month',
   dateFrom: string | null = null,
   dateTo: string | null = null,
+  payee: string | null = null,
 ): TransactionFilterSummary {
   const rows = getDemoTransactions(
     month,
@@ -374,6 +393,7 @@ export function summarizeDemoTransactions(
     scope,
     dateFrom,
     dateTo,
+    payee,
   )
   const income = rows.reduce(
     (sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0),
@@ -486,8 +506,8 @@ export function deleteDemo(id: string) {
   demoTransactions = demoTransactions.filter((transaction) => transaction.id !== id)
 }
 
-export function demoSummary(month: string): Summary {
-  const rows = getDemoTransactions(month, 'all', '')
+export function demoSummary(month: string, t?: Translator): Summary {
+  const rows = getDemoTransactions(month, 'all', '', t)
   const income = rows.reduce((sum, transaction) => sum + (transaction.type === 'income' ? transaction.amountMinor : 0), 0)
   const expense = rows.reduce((sum, transaction) => sum + (transaction.type === 'expense' ? transaction.amountMinor : 0), 0)
   const expenseByCategory = [...rows.reduce((categories, transaction) => {
@@ -511,6 +531,13 @@ export function demoSummary(month: string): Summary {
     return categories
   }, new Map<number, ExpenseCategorySummary>()).values()]
     .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
+  const expenseByPayee = mergePayeeSummaries(rows
+    .filter((transaction) => transaction.type === 'expense')
+    .map((transaction) => ({
+      payee: transaction.payee,
+      amountMinor: transaction.amountMinor,
+      transactionCount: 1,
+    })))
   const spendingTrendRows = [...demoTransactions.reduce((months, transaction) => {
     if (transaction.type !== 'expense') return months
     const transactionMonth = transaction.occurredOn.slice(0, 7)
@@ -534,6 +561,7 @@ export function demoSummary(month: string): Summary {
     balance: income - expense,
     spendingTrend: buildMonthlySpendingTrend(month, spendingTrendRows),
     expenseByCategory,
+    expenseByPayee,
     monthlySpendingPlans: demoCategories
       .filter((category) => category.isActive && category.monthlyPlanMinor !== null)
       .map((category) => ({

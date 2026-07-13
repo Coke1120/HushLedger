@@ -15,6 +15,7 @@ export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 
 type TransactionToolbarProps = {
   search: string
+  payeeFilter: string | null
   tagFilter: string | null
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
@@ -32,6 +33,7 @@ type TransactionToolbarProps = {
   canExport: boolean
   canImport: boolean
   onSearchChange: (value: string) => void
+  onPayeeFilterChange: (value: string | null) => void
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
@@ -53,6 +55,7 @@ type TransactionToolbarProps = {
 
 export function TransactionToolbar({
   search,
+  payeeFilter,
   tagFilter,
   filter,
   clearingFilter,
@@ -70,6 +73,7 @@ export function TransactionToolbar({
   canExport,
   canImport,
   onSearchChange,
+  onPayeeFilterChange,
   onTagFilterChange,
   onFilterChange,
   onClearingFilterChange,
@@ -104,6 +108,7 @@ export function TransactionToolbar({
   if (clearingFilter !== 'all') exportQuery.set('status', clearingFilter)
   if (accountFilterId !== null) exportQuery.set('accountId', String(accountFilterId))
   if (categoryFilterId !== null) exportQuery.set('categoryId', String(categoryFilterId))
+  if (payeeFilter !== null) exportQuery.set('payee', payeeFilter)
   if (search.trim()) exportQuery.set('search', search.trim())
   if (tagFilter) exportQuery.set('tag', tagFilter.slice(1))
   if (duplicatesOnly) exportQuery.set('duplicates', 'exact')
@@ -129,17 +134,33 @@ export function TransactionToolbar({
           maxLength={80}
         />
       </label>
-      {tagFilter ? (
-        <button
-          className="transaction-tag-filter"
-          type="button"
-          onClick={() => onTagFilterChange(null)}
-          aria-label={t('removeTagFilter', { tag: tagFilter })}
-          title={t('removeTagFilter', { tag: tagFilter })}
-        >
-          <span>{tagFilter}</span>
-          <X aria-hidden="true" />
-        </button>
+      {payeeFilter || tagFilter ? (
+        <div className="transaction-active-filters">
+          {payeeFilter ? (
+            <button
+              className="transaction-tag-filter transaction-payee-filter"
+              type="button"
+              onClick={() => onPayeeFilterChange(null)}
+              aria-label={t('removePayeeFilter', { payee: payeeFilter })}
+              title={t('removePayeeFilter', { payee: payeeFilter })}
+            >
+              <span>{payeeFilter}</span>
+              <X aria-hidden="true" />
+            </button>
+          ) : null}
+          {tagFilter ? (
+            <button
+              className="transaction-tag-filter"
+              type="button"
+              onClick={() => onTagFilterChange(null)}
+              aria-label={t('removeTagFilter', { tag: tagFilter })}
+              title={t('removeTagFilter', { tag: tagFilter })}
+            >
+              <span>{tagFilter}</span>
+              <X aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <div className="filter-group" aria-label={t('transactionTypeFilter')}>
         {filters.map((item) => (

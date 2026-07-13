@@ -64,6 +64,7 @@ function demoSnapshot(
   search: string,
   accountId: number | null,
   categoryId: number | null,
+  payee: string | null,
   tag: string | null,
   status: TransactionClearingStatus | 'all',
   sort: TransactionSort,
@@ -75,7 +76,7 @@ function demoSnapshot(
   return {
     transactions: getDemoTransactions(
       month, type, search, undefined, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo,
+      dateFrom, dateTo, payee,
     ),
     accountTransfers: [],
     accountBalances: demoAccountBalances(month),
@@ -94,6 +95,7 @@ function demoSnapshot(
       scope,
       dateFrom,
       dateTo,
+      payee,
     ),
     summary: demoSummary(month),
     accounts: demoAccounts,
@@ -107,6 +109,7 @@ export function useMoneyData(
   search: string,
   accountId: number | null,
   categoryId: number | null,
+  payee: string | null,
   tag: string | null,
   status: TransactionClearingStatus | 'all',
   sort: TransactionSort,
@@ -119,7 +122,7 @@ export function useMoneyData(
   const { t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
     demoSnapshot(
-      month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+      month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
       dateFrom, dateTo,
     )
   ))
@@ -142,6 +145,7 @@ export function useMoneyData(
     if (type !== 'all') query.set('type', type)
     if (effectiveAccountId !== null) query.set('accountId', String(effectiveAccountId))
     if (categoryId !== null) query.set('categoryId', String(categoryId))
+    if (payee !== null) query.set('payee', payee)
     if (search.trim()) query.set('search', search.trim())
     if (tag) query.set('tag', tag.slice(1))
     if (status !== 'all') query.set('status', status)
@@ -165,7 +169,7 @@ export function useMoneyData(
       api<Category[]>('/api/categories'),
     ])
     return { transactions, accountTransfers, accountBalances, accountRegister, netWorthTrend, transactionFilterSummary, summary, accounts, categories }
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, registerAccountId, scope, search, sort, status, tag, type])
+  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
   const refresh = useCallback(
     async (allowDemoFallback = true) => {
@@ -176,7 +180,7 @@ export function useMoneyData(
         setOnline(false)
         if (allowDemoFallback) {
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
           setSource('demo')
@@ -195,7 +199,7 @@ export function useMoneyData(
         if (sequence !== requestSequence.current) return false
         if (allowDemoFallback) {
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
           setSource('demo')
@@ -205,7 +209,7 @@ export function useMoneyData(
         return false
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, fetchSnapshot, month, scope, search, sort, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, fetchSnapshot, month, payee, scope, search, sort, status, tag, type],
   )
 
   useEffect(() => {
@@ -221,7 +225,7 @@ export function useMoneyData(
     const handleOffline = () => {
       setOnline(false)
       setSnapshot(demoSnapshot(
-        month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+        month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
         dateFrom, dateTo,
       ))
       setSource('demo')
@@ -232,7 +236,7 @@ export function useMoneyData(
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, refresh, scope, search, sort, status, tag, type])
+  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, status, tag, type])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {
@@ -252,7 +256,7 @@ export function useMoneyData(
           if (original) updateDemo(input)
           else addDemo(input)
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
           setActionMessage(message(original ? 'demoTransactionChanged' : 'demoTransactionSaved'))
@@ -284,7 +288,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, refresh, scope, search, sort, source, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
   )
 
   const removeTransaction = useCallback(
@@ -304,7 +308,7 @@ export function useMoneyData(
         if (source === 'demo') {
           deleteDemo(transaction.id)
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
           setActionMessage(message('demoTransactionChanged'))
@@ -323,7 +327,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, refresh, scope, search, sort, source, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
   )
 
   const setSelectedTransactionsClearing = useCallback(
@@ -352,7 +356,7 @@ export function useMoneyData(
             return false
           }
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
         } else {
@@ -382,7 +386,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, refresh, scope, search, sort, source, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
   )
 
   const setSelectedTransactionsCategory = useCallback(
@@ -417,7 +421,7 @@ export function useMoneyData(
             return false
           }
           setSnapshot(demoSnapshot(
-            month, type, search, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
+            month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
           ))
         } else {
@@ -444,7 +448,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, refresh, scope, search, sort, source, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, source, status, tag, type],
   )
 
   const saveAccountTransfer = useCallback(
@@ -523,7 +527,7 @@ export function useMoneyData(
             ...snapshot,
             transactions: getDemoTransactions(
               month, type, search, t, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-              dateFrom, dateTo,
+              dateFrom, dateTo, payee,
             ),
             transactionFilterSummary: summarizeDemoTransactions(
               month,
@@ -538,10 +542,12 @@ export function useMoneyData(
               scope,
               dateFrom,
               dateTo,
+              payee,
             ),
+            summary: demoSummary(month, t),
           }
         : snapshot,
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, scope, search, snapshot, sort, source, status, t, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, snapshot, sort, source, status, t, tag, type],
   )
 
   const clearActionMessage = useCallback(() => setActionMessage(null), [])

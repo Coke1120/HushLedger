@@ -452,6 +452,33 @@ textarea:focus-visible {
   height: 22px;
 }
 
+.category-spending-switch {
+  display: inline-grid;
+  padding: 3px;
+  margin: -2px 0 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.category-spending-switch button {
+  min-height: 38px;
+  padding: 0 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.category-spending-switch button[aria-pressed='true'] {
+  color: var(--brand);
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgb(23 72 60 / 10%);
+}
+
 .recurring-forecast-heading-icon {
   color: var(--warning);
   background: var(--warning-bg);
@@ -1501,6 +1528,14 @@ textarea:focus-visible {
   border-radius: 999px;
   font-size: 13px;
   font-weight: 750;
+}
+
+.transaction-active-filters {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .transaction-tag-filter svg {
@@ -4875,7 +4910,7 @@ button.account-register-row:focus-visible {
     grid-row: 2;
   }
 
-  .transaction-toolbar .transaction-tag-filter {
+  .transaction-toolbar .transaction-active-filters {
     grid-column: 1 / -1;
     grid-row: 3;
     justify-self: start;

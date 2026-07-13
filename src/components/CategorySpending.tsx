@@ -1,24 +1,51 @@
 import { ChartNoAxesColumnIncreasing } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { Summary } from '../lib/schema'
 
 type CategorySpendingProps = {
   summary: Summary
   loading: boolean
-  onSelect: (categoryId: number) => void
+  onSelectCategory: (categoryId: number) => void
+  onSelectPayee: (payee: string) => void
 }
 
-const visibleCategoryLimit = 5
+type SpendingBreakdown = 'category' | 'payee'
 
-export function CategorySpending({ summary, loading, onSelect }: CategorySpendingProps) {
+const visibleItemLimit = 5
+
+export function CategorySpending({
+  summary,
+  loading,
+  onSelectCategory,
+  onSelectPayee,
+}: CategorySpendingProps) {
   const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const [breakdown, setBreakdown] = useState<SpendingBreakdown>('category')
   const percentFormatter = useMemo(
     () => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }),
     [locale],
   )
-  const visibleCategories = summary.expenseByCategory.slice(0, visibleCategoryLimit)
-  const remainingCategories = summary.expenseByCategory.length - visibleCategories.length
+  const items = breakdown === 'category'
+    ? summary.expenseByCategory.map((category) => ({
+        key: `category:${category.categoryId}`,
+        name: localizeEntityName(category.categoryName, category.categoryLocalizationKey),
+        amountMinor: category.amountMinor,
+        transactionCount: category.transactionCount,
+        color: category.categoryColor,
+        onSelect: () => onSelectCategory(category.categoryId),
+      }))
+    : summary.expenseByPayee.map((payee) => ({
+        key: `payee:${payee.payee}`,
+        name: payee.payee,
+        amountMinor: payee.amountMinor,
+        transactionCount: payee.transactionCount,
+        color: 'var(--accent)',
+        onSelect: () => onSelectPayee(payee.payee),
+      }))
+  const visibleItems = items.slice(0, visibleItemLimit)
+  const remainingItems = items.length - visibleItems.length
+  const payeeBreakdown = breakdown === 'payee'
 
   return (
     <section
@@ -31,54 +58,70 @@ export function CategorySpending({ summary, loading, onSelect }: CategorySpendin
           <ChartNoAxesColumnIncreasing />
         </span>
         <div>
-          <h2 id="category-spending-title">{t('spendingByCategory')}</h2>
-          <p>{t('spendingByCategoryHelp')}</p>
+          <h2 id="category-spending-title">{t('spendingBreakdown')}</h2>
+          <p>{t('spendingBreakdownHelp')}</p>
         </div>
       </header>
 
+      <div className="category-spending-switch" aria-label={t('spendingBreakdown')}>
+        <button
+          type="button"
+          aria-pressed={!payeeBreakdown}
+          onClick={() => setBreakdown('category')}
+        >
+          {t('spendingByCategory')}
+        </button>
+        <button
+          type="button"
+          aria-pressed={payeeBreakdown}
+          onClick={() => setBreakdown('payee')}
+        >
+          {t('spendingByPayee')}
+        </button>
+      </div>
+
       {loading ? (
         <p className="category-spending-empty" role="status">{t('categorySpendingLoading')}</p>
-      ) : visibleCategories.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <div className="category-spending-empty">
-          <strong>{t('noCategorySpending')}</strong>
-          <span>{t('noCategorySpendingHelp')}</span>
+          <strong>{t(payeeBreakdown ? 'noPayeeSpending' : 'noCategorySpending')}</strong>
+          <span>{t(payeeBreakdown ? 'noPayeeSpendingHelp' : 'noCategorySpendingHelp')}</span>
         </div>
       ) : (
         <>
           <ol className="category-spending-list">
-            {visibleCategories.map((category) => {
-              const name = localizeEntityName(
-                category.categoryName,
-                category.categoryLocalizationKey,
-              )
-              const share = summary.expense > 0 ? category.amountMinor / summary.expense : 0
+            {visibleItems.map((item) => {
+              const share = summary.expense > 0 ? item.amountMinor / summary.expense : 0
               const percent = percentFormatter.format(share)
               const visiblePercent = privacyMode ? '—' : percent
               const accessibleShare = privacyMode ? t('sensitiveTextHidden') : percent
-              const amount = formatMoney(category.amountMinor)
-              const transactions = t('transactionCount', { count: category.transactionCount })
+              const amount = formatMoney(item.amountMinor)
+              const transactions = t('transactionCount', { count: item.transactionCount })
 
               return (
-                <li key={category.categoryId}>
+                <li key={item.key}>
                   <button
                     className="category-spending-row"
                     type="button"
-                    onClick={() => onSelect(category.categoryId)}
-                    aria-label={t('reviewCategorySpending', {
-                      name,
-                      amount,
-                      share: accessibleShare,
-                      transactions,
-                    })}
+                    onClick={item.onSelect}
+                    aria-label={t(
+                      payeeBreakdown ? 'reviewPayeeSpending' : 'reviewCategorySpending',
+                      {
+                        name: item.name,
+                        amount,
+                        share: accessibleShare,
+                        transactions,
+                      },
+                    )}
                   >
                     <span className="category-spending-name">
                       <span
                         className="category-spending-dot"
-                        style={{ backgroundColor: category.categoryColor }}
+                        style={{ backgroundColor: item.color }}
                         aria-hidden="true"
                       />
                       <span>
-                        <strong>{name}</strong>
+                        <strong>{item.name}</strong>
                         <small>{transactions}</small>
                       </span>
                     </span>
@@ -90,7 +133,7 @@ export function CategorySpending({ summary, loading, onSelect }: CategorySpendin
                       <span
                         style={{
                           width: privacyMode ? '0%' : `${Math.min(share * 100, 100)}%`,
-                          backgroundColor: category.categoryColor,
+                          backgroundColor: item.color,
                         }}
                       />
                     </span>
@@ -99,9 +142,11 @@ export function CategorySpending({ summary, loading, onSelect }: CategorySpendin
               )
             })}
           </ol>
-          {remainingCategories > 0 ? (
+          {remainingItems > 0 ? (
             <p className="category-spending-more">
-              {t('moreSpendingCategories', { count: remainingCategories })}
+              {t(payeeBreakdown ? 'moreSpendingPayees' : 'moreSpendingCategories', {
+                count: remainingItems,
+              })}
             </p>
           ) : null}
         </>

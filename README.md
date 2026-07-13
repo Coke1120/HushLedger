@@ -33,8 +33,10 @@ knowledge and explains every command and dashboard click.
 - Monthly income, expenses, balance, and recent transactions.
 - A zero-filled six-month expense trend for the selected month and previous five,
   with private-screen masking and one-tap navigation to any month in the chart.
-- A ranked top-five monthly expense breakdown by category, with exact totals,
-  transaction counts, and one-tap drilldown into the matching ledger records.
+- A ranked top-five monthly expense breakdown switchable between categories and
+  named payees, with exact totals, transaction counts, and one-tap drilldown into
+  matching ledger records. Payee drilldown uses a trimmed, case-insensitive exact
+  match rather than broad text search.
 - Optional monthly plans on expense categories, with planned, recorded, and
   remaining-or-over amounts shown together. Plans are recurring comparison
   guardrails only: they do not reserve cash, roll balances forward, or move money.
@@ -80,7 +82,7 @@ knowledge and explains every command and dashboard click.
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
   their selected-month, fixed custom-range, or all-history scope plus type,
-  clearing, account, category, search, tag, possible-duplicate, and ordering
+  clearing, account, category, exact payee, search, tag, possible-duplicate, and ordering
   criteria. Selected-month views follow the month navigator; custom ranges keep
   their exact dates. Views contain review criteria only and do not sync to
   Cloudflare.
@@ -309,7 +311,7 @@ and recurring-rule names are always preserved exactly as entered.
 
 The eye button in the header and the matching Settings control enable screen
 privacy mode for the current tab. It replaces displayed amounts with a stable
-currency mask, removes category-spending proportions, masks editable amount
+currency mask, removes spending-breakdown proportions, masks editable amount
 fields, and covers pasted bank text without hover-to-reveal behavior. Reloading
 turns the mode off. This is a visual screen-
 sharing aid only: it does not encrypt, delete, or alter D1 data, API responses, CSV
@@ -536,8 +538,8 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions  (latest references for up to 100 known payees)
-GET    /api/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
-GET    /api/transactions/summary?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact
+GET    /api/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/transactions/summary?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact
 POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 PATCH  /api/transactions/category  (atomic category update for 1-200 same-type, explicitly versioned rows)
@@ -550,10 +552,10 @@ POST   /api/transfers
 GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
-GET    /api/exports/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&search=...&tag=Trip&duplicates=exact&sort=amount_desc
+GET    /api/exports/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)
+GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories/payees, and remaining recurring entries)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

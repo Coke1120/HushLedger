@@ -21,6 +21,7 @@ const savedTransactionViewSchema = z.object({
   status: transactionClearingStatusSchema.or(z.literal('all')),
   accountId: z.number().int().positive().nullable(),
   categoryId: z.number().int().positive().nullable(),
+  payee: z.string().trim().min(1).max(80).nullable().default(null),
   search: z.string().trim().max(80),
   tag: z.string()
     .refine((value) => value.startsWith('#') && isTransactionTagName(value.slice(1)))
@@ -53,6 +54,7 @@ const savedTransactionViewSchema = z.object({
   || view.status !== 'all'
   || view.accountId !== null
   || view.categoryId !== null
+  || view.payee !== null
   || view.search.length > 0
   || view.tag !== null
   || view.duplicates

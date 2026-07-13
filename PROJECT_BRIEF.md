@@ -33,23 +33,25 @@ not operate an independent database server or a multi-user identity system.
 - View HKD income, expense, and balance for a selected month.
 - Compare a zero-filled six-month expense trend and select any bar to review that
   calendar month; hide relative bar heights when privacy mode is enabled.
-- Review the top five expense categories by exact total and transaction count;
-  select one to open the existing expense/category transaction filters.
+- Review the top five expense categories or named payees by exact total and
+  transaction count; select one to open the corresponding exact transaction
+  filter without turning a payee into a broad text search.
 - Compare optional monthly expense-category plans with recorded spending and the
   exact remaining-or-over amount; treat plans as recurring guardrails, not cash
   allocation, rollover, or envelope balances.
 - Review active recurring entries that remain ungenerated in the selected month,
   including each rule's next date and exact occurrence count, plus exact income,
   expense, and net forecast totals that remain separate from recorded balance.
-- Browse the latest 200 matching transactions for either the selected month or
-  all history; the UI explicitly discloses the cap when it is reached. Widening
-  the transaction date scope does not change monthly reports or account math.
+- Browse the latest 200 matching transactions for the selected month, an
+  inclusive fixed date range, or all history; the UI explicitly discloses the
+  cap when it is reached. Widening the transaction date scope does not change
+  monthly reports or account math.
 - Search payee, note, account, or category.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.
-- Stack income/expense, cleared/uncleared, account, and category filters; retain
-  inactive references as historical filter choices and clear incompatible
-  category filters when the selected transaction type changes.
+- Stack income/expense, cleared/uncleared, account, category, and exact payee
+  filters; retain inactive references as historical filter choices and clear
+  incompatible category filters when the selected transaction type changes.
 - Explicitly select shown transactions to change their clearing state together,
   or move a same-type selection to an active matching category. Bound each batch
   to 200 conflict-tokened rows and leave every row untouched when any selected
@@ -336,13 +338,13 @@ uses Wrangler D1 export and restore.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, and recurring-rule APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  selected-month or all-history account/category/type/clearing/search filters,
+  selected-month, fixed-range, or all-history account/category/payee/type/clearing/search filters,
   conflict-safe bulk clearing and same-type recategorization,
   deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
   matching filtered transaction
   aggregate and ordered CSV export,
   browser-local saved review views,
-  ranked category-spending drilldown, monthly plan-versus-actual review,
+  ranked category-or-payee spending drilldown, monthly plan-versus-actual review,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
   recurring-rule management, and language settings.

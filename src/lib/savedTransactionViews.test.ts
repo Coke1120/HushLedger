@@ -18,6 +18,7 @@ const validView: SavedTransactionView = {
   status: 'uncleared',
   accountId: 3,
   categoryId: null,
+  payee: null,
   search: '',
   tag: null,
   duplicates: false,
@@ -32,6 +33,7 @@ describe('saved transaction views', () => {
       scope: legacyScope,
       dateFrom: legacyDateFrom,
       dateTo: legacyDateTo,
+      payee: legacyPayee,
       ...legacyView
     } = validView
     assert.equal(legacySort, 'date_desc')
@@ -39,6 +41,7 @@ describe('saved transaction views', () => {
     assert.equal(legacyScope, 'month')
     assert.equal(legacyDateFrom, null)
     assert.equal(legacyDateTo, null)
+    assert.equal(legacyPayee, null)
     const parsed = parseSavedTransactionViews(JSON.stringify([
       { ...legacyView, name: '  Uncleared card  ' },
       { ...validView, id: '86192038-dc31-4672-ab86-d750adee2095', name: 'UNCLEARED CARD' },

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { payeeOptions, rememberPayeeReferences } from './payeeMemory'
+import {
+  mergePayeeSummaries,
+  normalizePayee,
+  payeeOptions,
+  rememberPayeeReferences,
+} from './payeeMemory'
 import type { Account, Category, PayeeSuggestion } from './schema'
 
 const accounts: Account[] = [
@@ -84,5 +89,16 @@ describe('payee memory', () => {
   it('offers only payees used for the selected transaction type', () => {
     assert.deepEqual(payeeOptions(suggestions, 'expense'), ['Corner Cafe'])
     assert.deepEqual(payeeOptions(suggestions, 'income'), ['Corner Cafe'])
+  })
+
+  it('merges Unicode case variants without losing totals', () => {
+    assert.deepEqual(mergePayeeSummaries([
+      { payee: ' Épicerie ', amountMinor: 125, transactionCount: 1 },
+      { payee: 'e\u0301PICERIE', amountMinor: 275, transactionCount: 2 },
+      { payee: '   ', amountMinor: 500, transactionCount: 1 },
+    ]), [
+      { payee: 'Épicerie', amountMinor: 400, transactionCount: 3 },
+    ])
+    assert.equal(normalizePayee('Épicerie'), normalizePayee('E\u0301PICERIE'))
   })
 })

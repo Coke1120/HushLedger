@@ -1,4 +1,10 @@
-import type { Account, Category, PayeeSuggestion, TransactionType } from './schema'
+import type {
+  Account,
+  Category,
+  ExpensePayeeSummary,
+  PayeeSuggestion,
+  TransactionType,
+} from './schema'
 
 export type RememberedPayeeReferences = {
   accountId: number | null
@@ -46,6 +52,28 @@ export function payeeOptions(
     .map((suggestion) => suggestion.payee)
 }
 
-function normalizePayee(payee: string) {
-  return payee.trim().toLowerCase()
+export function normalizePayee(payee: string) {
+  return payee.trim().normalize('NFC').toLowerCase()
+}
+
+export function mergePayeeSummaries(rows: readonly ExpensePayeeSummary[]) {
+  const payees = new Map<string, ExpensePayeeSummary>()
+
+  for (const row of rows) {
+    const payee = row.payee.trim().normalize('NFC')
+    if (!payee) continue
+    const key = normalizePayee(payee)
+    const existing = payees.get(key)
+    if (existing) {
+      existing.amountMinor += row.amountMinor
+      existing.transactionCount += row.transactionCount
+      if (payee < existing.payee) existing.payee = payee
+    } else {
+      payees.set(key, { ...row, payee })
+    }
+  }
+
+  return [...payees.values()].sort((left, right) => (
+    right.amountMinor - left.amountMinor || left.payee.localeCompare(right.payee)
+  ))
 }
