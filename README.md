@@ -183,6 +183,10 @@ knowledge and explains every command and dashboard click.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
+- One silent data recheck when an already-loaded live ledger tab returns from hidden state.
+  Successful responses replace stale money and recurring-rule views; failed
+  rechecks preserve the current view and never substitute demo data. HushLedger
+  adds no polling timer or background-sync service for this check.
 - A one-tap screen privacy mode that masks every formatted amount, category-share
   bar, editable amount field, pasted AI bank text, and raw mapped-CSV sample for
   safer screen sharing, and turns on automatically while the app is hidden or

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
+import type { RefreshFailureMode } from '../hooks/useMoneyData'
 import { useI18n } from '../i18n'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
@@ -35,7 +36,7 @@ type RecurringRulesPageProps = {
   focusRuleId: string | null
   ledgerContext: string
   mutable: boolean
-  onMoneyRefresh: () => Promise<boolean>
+  onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>
   onDraftClose: () => void
   onFocusRuleHandled: () => void
   onMutationStateChange: (mutating: boolean) => void

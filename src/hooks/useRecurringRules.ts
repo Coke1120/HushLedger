@@ -26,8 +26,9 @@ import type {
   RecurringRuleCreateInput,
   RecurringRuleUpdateInput,
 } from '../lib/schema'
-import type { DataSource } from './useMoneyData'
 import { actionData } from './actionResult'
+import { subscribeToForegroundRefresh } from './foregroundRefresh'
+import type { DataSource, RefreshFailureMode } from './useMoneyData'
 
 type MutationOptions = {
   successMessage: LocalizedMessage | ((result: unknown) => LocalizedMessage)
@@ -82,7 +83,7 @@ function resolveSuccessMessage(messageValue: MutationOptions['successMessage'], 
 }
 
 export function useRecurringRules(
-  onMoneyRefresh: () => Promise<boolean>,
+  onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>,
   mutable: boolean,
 ) {
   const { t } = useI18n()
@@ -97,13 +98,13 @@ export function useRecurringRules(
   const requestSequence = useRef(0)
   const submitting = useRef(false)
 
-  const refresh = useCallback(async (allowDemoFallback = true) => {
+  const refresh = useCallback(async (failureMode: RefreshFailureMode = 'demo') => {
     const sequence = ++requestSequence.current
-    setError(null)
+    if (failureMode !== 'preserve') setError(null)
 
     if (!navigator.onLine) {
       setOnline(false)
-      if (allowDemoFallback) {
+      if (failureMode === 'demo') {
         setRules(demoRules)
         setSource('demo')
       }
@@ -119,10 +120,10 @@ export function useRecurringRules(
       return true
     } catch (requestError) {
       if (sequence !== requestSequence.current) return false
-      if (allowDemoFallback) {
+      if (failureMode === 'demo') {
         setRules(demoRules)
         setSource('demo')
-      } else {
+      } else if (failureMode === 'error') {
         setSource('error')
         setError(messageForError(requestError, 'recurringLoadFailed'))
       }
@@ -135,6 +136,12 @@ export function useRecurringRules(
     return () => window.clearTimeout(timeout)
   }, [refresh])
 
+  useEffect(() => subscribeToForegroundRefresh(
+    document,
+    () => source !== 'live' || !navigator.onLine || submitting.current,
+    () => { void refresh('preserve') },
+  ), [refresh, source])
+
   useEffect(() => {
     const handleOnline = () => {
       setOnline(true)
@@ -143,6 +150,7 @@ export function useRecurringRules(
       void refresh()
     }
     const handleOffline = () => {
+      requestSequence.current += 1
       setOnline(false)
       setRules(demoRules)
       setSource('demo')
@@ -176,7 +184,10 @@ export function useRecurringRules(
         }
 
         const requestResult = await request()
-        const [rulesRefreshed] = await Promise.all([refresh(false), onMoneyRefresh()])
+        const [rulesRefreshed] = await Promise.all([
+          refresh('error'),
+          onMoneyRefresh('error'),
+        ])
         const success = resolveSuccessMessage(successMessage, requestResult)
         setActionMessage(
           rulesRefreshed ? success : message('recurringRefreshSuffix', { message: success }),

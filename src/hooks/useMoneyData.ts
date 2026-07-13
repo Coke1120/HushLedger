@@ -43,8 +43,10 @@ import type {
 } from '../lib/schema'
 import { transactionQueryFromFilters } from '../lib/transactionQuery'
 import { actionData } from './actionResult'
+import { subscribeToForegroundRefresh } from './foregroundRefresh'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
+export type RefreshFailureMode = 'demo' | 'error' | 'preserve'
 
 type Snapshot = DemoSnapshot
 
@@ -157,13 +159,13 @@ export function useMoneyData(
   }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, sort, status, tag, type])
 
   const refresh = useCallback(
-    async (allowDemoFallback = true) => {
+    async (failureMode: RefreshFailureMode = 'demo') => {
       const sequence = ++requestSequence.current
-      setSaveError(null)
+      if (failureMode !== 'preserve') setSaveError(null)
 
       if (!navigator.onLine) {
         setOnline(false)
-        if (allowDemoFallback) {
+        if (failureMode === 'demo') {
           setDemoSnapshot()
           setSource('demo')
         }
@@ -180,10 +182,10 @@ export function useMoneyData(
         return true
       } catch {
         if (sequence !== requestSequence.current) return false
-        if (allowDemoFallback) {
+        if (failureMode === 'demo') {
           setDemoSnapshot()
           setSource('demo')
-        } else {
+        } else if (failureMode === 'error') {
           setSource('error')
         }
         return false
@@ -197,12 +199,19 @@ export function useMoneyData(
     return () => window.clearTimeout(timeout)
   }, [refresh])
 
+  useEffect(() => subscribeToForegroundRefresh(
+    document,
+    () => source !== 'live' || !navigator.onLine || submitting.current,
+    () => { void refresh('preserve') },
+  ), [refresh, source])
+
   useEffect(() => {
     const handleOnline = () => {
       setOnline(true)
       void refresh()
     }
     const handleOffline = () => {
+      requestSequence.current += 1
       setOnline(false)
       setDemoSnapshot()
       setSource('demo')
@@ -243,7 +252,7 @@ export function useMoneyData(
         } else {
           await actionData(createTransactionAction(input))
         }
-        const refreshed = await refresh(false)
+        const refreshed = await refresh('error')
         setActionMessage(
           message(
             refreshed
@@ -287,7 +296,7 @@ export function useMoneyData(
         }
 
         await actionData(deleteTransactionAction(transaction.id, { updatedAt: transaction.updatedAt }))
-        const refreshed = await refresh(false)
+        const refreshed = await refresh('error')
         setActionMessage(message(refreshed ? 'transactionDeleted' : 'transactionSavedRefreshFailed'))
         return true
       } catch (error) {
@@ -329,7 +338,7 @@ export function useMoneyData(
           setDemoSnapshot()
         } else {
           await actionData(setTransactionsClearingAction(input))
-          const refreshed = await refresh(false)
+          const refreshed = await refresh('error')
           if (!refreshed) {
             setActionMessage(message('transactionSavedRefreshFailed'))
             return true
@@ -391,7 +400,7 @@ export function useMoneyData(
           setDemoSnapshot()
         } else {
           await actionData(setTransactionsCategoryAction(input))
-          const refreshed = await refresh(false)
+          const refreshed = await refresh('error')
           if (!refreshed) {
             setActionMessage(message('transactionSavedRefreshFailed'))
             return true
@@ -439,7 +448,7 @@ export function useMoneyData(
         } else {
           await actionData(createAccountTransferAction(input))
         }
-        const refreshed = await refresh(false)
+        const refreshed = await refresh('error')
         setActionMessage(message(
           refreshed
             ? original ? 'transferUpdated' : 'transferSaved'
@@ -471,7 +480,7 @@ export function useMoneyData(
           return false
         }
         await actionData(deleteAccountTransferAction(transfer.id, { updatedAt: transfer.updatedAt }))
-        const refreshed = await refresh(false)
+        const refreshed = await refresh('error')
         setActionMessage(message(refreshed ? 'transferDeleted' : 'transactionSavedRefreshFailed'))
         return true
       } catch (error) {

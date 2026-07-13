@@ -384,7 +384,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const handleLedgerRestored = useCallback(async () => {
     setSavedTransactionViews([])
     const savedViewsCleared = forgetSavedTransactionViews(() => window.localStorage)
-    const refreshed = await refreshMoneyData(false)
+    const refreshed = await refreshMoneyData('error')
     setLedgerGeneration((generation) => generation + 1)
     return { refreshed, savedViewsCleared }
   }, [refreshMoneyData])
@@ -735,7 +735,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 available={data.source === 'live' && data.online}
                 panelRef={importPanelRef}
                 onClose={closeImport}
-                onImported={() => data.refresh(false)}
+                onImported={() => data.refresh('error')}
                 onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
@@ -749,7 +749,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 panelRef={importPanelRef}
                 onClose={closeImport}
                 onConfigure={() => changeView('settings')}
-                onImported={() => data.refresh(false)}
+                onImported={() => data.refresh('error')}
                 onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
@@ -837,7 +837,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             canManageReferences={data.source === 'live' && data.online}
             ledgerRestoreInProgress={ledgerRestoreInProgress}
             otherLedgerMutationInProgress={otherLedgerMutationInProgress}
-            onReferenceRefresh={() => data.refresh(false)}
+            onReferenceRefresh={() => data.refresh('error')}
             onLedgerRestored={handleLedgerRestored}
             onLedgerMutationStateChange={setSettingsMutationInProgress}
             onLedgerRestoreStateChange={changeLedgerRestoreState}
