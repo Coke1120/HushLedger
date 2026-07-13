@@ -10,6 +10,8 @@ import {
 } from 'react'
 import {
   APP_UPDATE_MODE_STORAGE_KEY,
+  clearDevelopmentServiceWorkerState,
+  isAppServiceWorkerEnabled,
   normalizeAppUpdateMode,
   resolveControllerChange,
   type AppUpdateMode,
@@ -53,6 +55,17 @@ export function AppUpdateProvider({ children }: { children: ReactNode }) {
     if (!('serviceWorker' in navigator)) {
       const unsupportedTimeout = window.setTimeout(() => setStatus('unsupported'), 0)
       return () => window.clearTimeout(unsupportedTimeout)
+    }
+
+    if (!isAppServiceWorkerEnabled(process.env.NODE_ENV)) {
+      const wasControlled = Boolean(navigator.serviceWorker.controller)
+      void clearDevelopmentServiceWorkerState(
+        navigator.serviceWorker,
+        'caches' in window ? window.caches : undefined,
+      ).then((registrationState) => {
+        if (wasControlled && registrationState !== 'failed') window.location.reload()
+      })
+      return
     }
 
     let modeTimeout: number | undefined

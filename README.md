@@ -434,6 +434,13 @@ Open `http://localhost:3000`. Demo data remains only in the current page session
 when live data is unavailable. Mutations are blocked while offline; the app never
 pretends that an offline change was synchronized.
 
+`npm run dev` deliberately retires any HushLedger service worker on that origin
+and removes only HushLedger or legacy Workbox app-shell caches. Next.js development
+chunk URLs can remain stable across edits, so keeping the production cache-first
+worker would risk loading old application code after a restart. This cleanup does
+not touch D1, local storage, IndexedDB, or ledger data. Use `npm run preview` when
+testing the production offline shell and in-app update workflow.
+
 Local mode has no application sign-in. The project script binds the server to
 `127.0.0.1` only; protect your operating-system account and disk, and treat
 `.wrangler/` as private financial data even though Git ignores it. On macOS and

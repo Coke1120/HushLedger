@@ -368,9 +368,12 @@ reminder does not prove that a backup file was retained off-platform.
   confidentiality or authenticity. Export requires an explicit same-origin JSON
   `POST`; `GET` stays unavailable so cross-site navigation cannot trigger a
   plaintext download into a browser or synchronized Downloads folder.
-- Only the non-sensitive offline/demo shell and fingerprinted static assets may be
-  cached. API, Server Action, RSC, personalized navigation, and financial responses
-  are never cached. Offline writes and multi-device conflict sync are not claimed.
+- Only the production non-sensitive offline/demo shell and fingerprinted static
+  assets may be cached. API, Server Action, RSC, personalized navigation, and
+  financial responses are never cached. Development retires any existing app
+  worker and deletes only HushLedger or legacy Workbox shell caches so stable
+  development chunk URLs cannot return old code. Offline writes and multi-device
+  conflict sync are not claimed.
 - Screen privacy is explicitly visual and current-tab only. It never claims to
   encrypt D1, API payloads, exports, browser memory, or provider-bound bank text.
 

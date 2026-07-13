@@ -22,7 +22,7 @@ before(async () => {
 })
 
 describe('service worker privacy policy', () => {
-  it('caches only same-origin public and fingerprinted static assets', () => {
+  it('caches only same-origin public and Next static assets', () => {
     const origin = 'https://ledger.example'
     assert.equal(policy.shouldCacheStaticRequest({ method: 'GET', url: `${origin}/_next/static/chunk.js` }, origin), true)
     assert.equal(policy.shouldCacheStaticRequest({ method: 'GET', url: `${origin}/pwa-192.png` }, origin), true)

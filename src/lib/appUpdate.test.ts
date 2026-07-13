@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { normalizeAppUpdateMode, resolveControllerChange } from './appUpdate'
+import {
+  clearDevelopmentServiceWorkerState,
+  isAppServiceWorkerEnabled,
+  normalizeAppUpdateMode,
+  resolveControllerChange,
+} from './appUpdate'
 
 describe('app update preference', () => {
   it('accepts automatic updates and defaults every other value to manual', () => {
@@ -14,5 +19,79 @@ describe('app update preference', () => {
     assert.equal(resolveControllerChange(false, true, false), 'current')
     assert.equal(resolveControllerChange(true, true, false), 'restart-required')
     assert.equal(resolveControllerChange(true, true, true), 'reload')
+  })
+
+  it('enables the offline worker only for production builds', () => {
+    assert.equal(isAppServiceWorkerEnabled('production'), true)
+    assert.equal(isAppServiceWorkerEnabled('development'), false)
+    assert.equal(isAppServiceWorkerEnabled('test'), false)
+    assert.equal(isAppServiceWorkerEnabled(undefined), false)
+  })
+
+  it('removes only HushLedger development worker state', async () => {
+    const requestedScopes: string[] = []
+    const deletedCaches: string[] = []
+    let unregistered = 0
+
+    const registrationState = await clearDevelopmentServiceWorkerState({
+      async getRegistration(scope) {
+        requestedScopes.push(scope)
+        return {
+          async unregister() {
+            unregistered += 1
+            return true
+          },
+        }
+      },
+    }, {
+      async keys() {
+        return [
+          'hushledger-static-old',
+          'hushledger-offline-old',
+          'workbox-precache-v2-ledger',
+          'unrelated-app-cache',
+        ]
+      },
+      async delete(name) {
+        deletedCaches.push(name)
+        return true
+      },
+    })
+
+    assert.deepEqual(requestedScopes, ['/'])
+    assert.equal(unregistered, 1)
+    assert.equal(registrationState, 'unregistered')
+    assert.deepEqual(deletedCaches, [
+      'hushledger-static-old',
+      'hushledger-offline-old',
+      'workbox-precache-v2-ledger',
+    ])
+  })
+
+  it('keeps development cleanup best-effort when browser state is unavailable', async () => {
+    const registrationState = await clearDevelopmentServiceWorkerState({
+      async getRegistration() {
+        throw new Error('registry unavailable')
+      },
+    }, {
+      async keys() {
+        throw new Error('cache storage unavailable')
+      },
+      async delete() {
+        throw new Error('not reached')
+      },
+    })
+
+    assert.equal(registrationState, 'failed')
+  })
+
+  it('distinguishes an already-retired worker from a cleanup failure', async () => {
+    const registrationState = await clearDevelopmentServiceWorkerState({
+      async getRegistration() {
+        return undefined
+      },
+    })
+
+    assert.equal(registrationState, 'none')
   })
 })

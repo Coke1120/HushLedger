@@ -3747,6 +3747,14 @@ async function verifyNextAiDrafts() {
   nextProcess = startNextDev(nextPort)
   await waitForNextHealth(baseUrl)
 
+  const developmentServiceWorker = await fetch(`${baseUrl}/sw.js`)
+  assert.equal(developmentServiceWorker.status, 200)
+  assert.match(developmentServiceWorker.headers.get('cache-control') ?? '', /no-cache.*no-store/)
+  const developmentServiceWorkerSource = await developmentServiceWorker.text()
+  assert.match(developmentServiceWorkerSource, /skipWaiting\(\)/)
+  assert.match(developmentServiceWorkerSource, /registration\.unregister\(\)/)
+  assert.doesNotMatch(developmentServiceWorkerSource, /importScripts/)
+
   const today = hktCalendarDate()
   const month = today.slice(0, 7)
   const [accounts, categories, beforeTransactions] = await Promise.all([
@@ -3882,7 +3890,12 @@ async function verifyNextAiDrafts() {
   assert.equal(tombstonePreview.response.status, 200)
   assert.equal(tombstonePreview.payload.data.rows[0].status, 'already_imported')
 
-  return { nextAiDrafts: 1, nextAiD1Writes: 1, nextAiTombstones: 1 }
+  return {
+    nextAiDrafts: 1,
+    nextAiD1Writes: 1,
+    nextAiTombstones: 1,
+    nextDevelopmentServiceWorkerRetirements: 1,
+  }
 }
 
 async function stopWorker() {
