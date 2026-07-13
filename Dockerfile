@@ -27,7 +27,7 @@ COPY --from=build --chown=node:node /app/migrations ./migrations
 COPY --from=build --chown=node:node /app/src/lib ./src/lib
 COPY --from=build --chown=node:node /app/worker ./worker
 
-RUN mkdir /data && chown node:node /app /data
+RUN mkdir /data && chown node:node /app /data && chmod 700 /data
 
 USER node
 
@@ -37,4 +37,4 @@ VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8787/api/health').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
 
-CMD ["sh", "-c", "./node_modules/.bin/wrangler d1 migrations apply hushledger --local --persist-to=/data && exec ./node_modules/.bin/wrangler dev --local --ip=0.0.0.0 --port=8787 --persist-to=/data"]
+CMD ["sh", "-c", "umask 077 && chmod -R go-rwx /data && ./node_modules/.bin/wrangler d1 migrations apply hushledger --local --persist-to=/data && exec ./node_modules/.bin/wrangler dev --local --ip=0.0.0.0 --port=8787 --persist-to=/data"]

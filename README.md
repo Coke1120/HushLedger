@@ -422,7 +422,14 @@ pretends that an offline change was synchronized.
 
 Local mode has no application sign-in. The project script binds the server to
 `127.0.0.1` only; protect your operating-system account and disk, and treat
-`.wrangler/` as private financial data even though Git ignores it.
+`.wrangler/` as private financial data even though Git ignores it. On macOS and
+Linux, the supported `dev`, `preview`, and `db:local` scripts repair its POSIX
+modes to `0700` directories and `0600` files before use. They reject links that
+could redirect the repair outside the state tree, and macOS ACLs are removed. An
+inherited `0077` umask removes group/other mode access from subsequently created
+entries. Direct Next or Wrangler commands bypass this protection. Windows folder
+ACLs are not changed; keep the checkout inside your private user profile and
+protect the disk.
 
 The AI draft feature also works in local mode; Cloudflare deployment is not
 required. Enter the provider base URL, key, and model in Settings. Public HTTPS
@@ -453,8 +460,9 @@ Pending D1 migrations are applied automatically whenever the container starts.
 
 Keep port `8787` bound to `127.0.0.1`. Local mode has no application login, so do
 not expose this container to a LAN or the public internet. Treat its data volume
-as private financial data. Use the Cloudflare deployment path for multi-device
-access.
+as private financial data. Container startup removes group/other POSIX mode access
+from `/data` before migrations run. Use the Cloudflare deployment path for
+multi-device access.
 
 ### Docker Desktop
 
@@ -559,7 +567,7 @@ npm run types:worker
 Apply migrations locally:
 
 ```bash
-npx wrangler d1 migrations apply hushledger --local
+npm run db:local
 ```
 
 Remote migrations modify production data. Confirm the Cloudflare account,
