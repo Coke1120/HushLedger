@@ -93,6 +93,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
   const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
+  const [recurringRuleFocusId, setRecurringRuleFocusId] = useState<string | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const [savedTransactionViews, setSavedTransactionViews] = useState<SavedTransactionView[]>([])
@@ -193,6 +194,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setEditingTransfer(null)
   }, [])
   const closeRecurringDraft = useCallback(() => setRecurringDraft(null), [])
+  const clearRecurringRuleFocus = useCallback(() => setRecurringRuleFocusId(null), [])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput) => saveMoneyTransaction(input, editingTransaction ?? undefined),
@@ -368,10 +370,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     changeView('transactions')
   }, [changeView, view])
 
-  const openRecurringRules = useCallback(() => {
+  const openRecurringRules = useCallback((recurringRuleId: string) => {
+    if (ledgerInteractionLocked) return
     setImportMode(null)
+    setRecurringRuleFocusId(recurringRuleId)
     changeView('recurring')
-  }, [changeView])
+  }, [changeView, ledgerInteractionLocked])
 
   const handleLedgerRestored = useCallback(async () => {
     setSavedTransactionViews([])
@@ -797,10 +801,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             accounts={data.accounts}
             categories={data.categories}
             draft={recurringDraft}
+            focusRuleId={recurringRuleFocusId}
             ledgerContext={data.ledgerSettings.updatedAt}
             mutable={data.source === 'live' && data.online}
             onMoneyRefresh={data.refresh}
             onDraftClose={closeRecurringDraft}
+            onFocusRuleHandled={clearRecurringRuleFocus}
             onMutationStateChange={setRecurringMutationInProgress}
           />
         </div>

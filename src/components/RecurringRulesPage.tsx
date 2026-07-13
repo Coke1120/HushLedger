@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
 import { useI18n } from '../i18n'
+import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
   Account,
   Category,
@@ -31,10 +32,12 @@ type RecurringRulesPageProps = {
   accounts: Account[]
   categories: Category[]
   draft: RecurringRuleCreateInput | null
+  focusRuleId: string | null
   ledgerContext: string
   mutable: boolean
   onMoneyRefresh: () => Promise<boolean>
   onDraftClose: () => void
+  onFocusRuleHandled: () => void
   onMutationStateChange: (mutating: boolean) => void
 }
 
@@ -42,14 +45,17 @@ export function RecurringRulesPage({
   accounts,
   categories,
   draft,
+  focusRuleId,
   ledgerContext,
   mutable,
   onMoneyRefresh,
   onDraftClose,
+  onFocusRuleHandled,
   onMutationStateChange,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const recurring = useRecurringRules(onMoneyRefresh, mutable)
+  const clearRecurringActionMessage = recurring.clearActionMessage
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
@@ -90,12 +96,38 @@ export function RecurringRulesPage({
     setEditorOpen(true)
   }
 
-  const openEdit = (rule: RecurringRule) => {
-    recurring.clearActionMessage()
+  const openEdit = useCallback((rule: RecurringRule) => {
+    clearRecurringActionMessage()
     onDraftClose()
     setEditingRule(rule)
     setEditorOpen(true)
-  }
+  }, [clearRecurringActionMessage, onDraftClose])
+
+  useEffect(() => {
+    const focusedRule = resolveRecurringRuleRequest(
+      focusRuleId,
+      recurring.rules,
+      recurring.source !== 'loading',
+      !draft && !editorOpen && !deletingRule,
+      mutationsEnabled,
+    )
+    if (focusedRule === undefined) return
+    const timeout = window.setTimeout(() => {
+      onFocusRuleHandled()
+      if (focusedRule !== null) openEdit(focusedRule)
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [
+    deletingRule,
+    draft,
+    editorOpen,
+    focusRuleId,
+    mutationsEnabled,
+    onFocusRuleHandled,
+    openEdit,
+    recurring.rules,
+    recurring.source,
+  ])
 
   const createRule = useCallback(
     (input: RecurringRuleCreateInput) => recurring.createRule(input),

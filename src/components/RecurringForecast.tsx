@@ -13,7 +13,7 @@ type RecurringForecastProps = {
   accounts: readonly ForecastReference[]
   categories: readonly ForecastReference[]
   loading: boolean
-  onManage: () => void
+  onManage: (recurringRuleId: string) => void
 }
 
 type ForecastReference = {
@@ -199,7 +199,8 @@ export function RecurringForecast({
                   <button
                     className="category-spending-row recurring-forecast-row"
                     type="button"
-                    onClick={onManage}
+                    data-recurring-rule-id={occurrence.recurringRuleId}
+                    onClick={() => onManage(occurrence.recurringRuleId)}
                     aria-label={referenceContext
                       ? `${manageLabel} ${t('accountAndCategory')}: ${referenceContext}.`
                       : manageLabel}

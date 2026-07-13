@@ -107,6 +107,13 @@ describe('recurring forecast privacy rendering', () => {
     assert.match(markup, /Scheduled totals for this period are outside/)
   })
 
+  it('keeps the exact rule identity on every actionable occurrence', () => {
+    const markup = renderForecast(false)
+
+    assert.match(markup, /data-recurring-rule-id="10000000-0000-4000-8000-000000000001"/)
+    assert.match(markup, /data-recurring-rule-id="10000000-0000-4000-8000-000000000002"/)
+  })
+
   it('adds existing account and category context without breaking older API responses', () => {
     const contextualSummary: Summary = {
       ...unsafeSummary,
