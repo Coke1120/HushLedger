@@ -368,9 +368,21 @@ textarea:focus-visible {
   min-height: 178px;
   padding: 28px;
   overflow: hidden;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-radius: 18px;
+}
+
+.summary-card:not(:disabled) {
+  cursor: pointer;
+}
+
+.summary-card:not(:disabled):hover {
+  border-color: var(--focus);
+  transform: translateY(-1px);
 }
 
 .summary-label {

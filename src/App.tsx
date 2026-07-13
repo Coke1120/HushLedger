@@ -304,6 +304,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTagFilter(null)
     setDuplicatesOnly(false)
     setFilter(category.type)
+    setClearingFilter('all')
     setAccountFilterId(null)
     setRegisterAccountId(null)
     setCategoryFilterId(category.id)
@@ -318,6 +319,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTagFilter(null)
     setDuplicatesOnly(false)
     setFilter('expense')
+    setClearingFilter('all')
     setAccountFilterId(null)
     setRegisterAccountId(null)
     setCategoryFilterId(null)
@@ -468,6 +470,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setRegisterAccountId(null)
   }, [])
 
+  const openSummaryTransactions = useCallback((nextFilter: TransactionFilter) => {
+    if (ledgerInteractionLocked) return
+    resetTransactionFilters()
+    setFilter(nextFilter)
+    changeView('transactions')
+  }, [changeView, ledgerInteractionLocked, resetTransactionFilters])
+
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       try {
@@ -563,7 +572,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               onPrevious={() => setMonth((value) => shiftMonth(value, -1))}
               onNext={() => setMonth((value) => shiftMonth(value, 1))}
             />
-            <SummaryCards summary={data.summary} loading={loading} />
+            <SummaryCards
+              summary={data.summary}
+              loading={loading}
+              disabled={ledgerInteractionLocked}
+              onSelect={openSummaryTransactions}
+            />
             {view === 'overview' ? (
               <>
                 <AccountBalances
@@ -633,10 +647,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               <button
                 className="view-all-button"
                 type="button"
-                onClick={() => {
-                  setTransactionDateScope('month')
-                  changeView('transactions')
-                }}
+                disabled={ledgerInteractionLocked}
+                onClick={() => openSummaryTransactions('all')}
               >
                 {t('monthTransactions')}
                 <ChevronRight aria-hidden="true" />
