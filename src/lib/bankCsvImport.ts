@@ -1,6 +1,7 @@
 import { isValidCalendarDate } from './date'
 import { parseAmount } from './money'
-import type { Account, Category, TransactionInput, TransactionType } from './schema'
+import { rememberPayeeReferences } from './payeeMemory'
+import type { Account, Category, PayeeSuggestion, TransactionInput, TransactionType } from './schema'
 import {
   MAX_CSV_IMPORT_BYTES,
   MAX_CSV_IMPORT_ROWS,
@@ -39,6 +40,7 @@ type BankCsvBaseMapping = {
   expenseCategoryId: number
   incomeCategoryId: number
   flipSign: boolean
+  rememberPayeeCategories: boolean
 }
 
 export type BankCsvMapping = BankCsvBaseMapping & (
@@ -56,6 +58,7 @@ export type BankCsvMappingSuggestion = Partial<BankCsvBaseMapping> & {
 type ReferenceData = {
   accounts: readonly Account[]
   categories: readonly Category[]
+  payeeSuggestions?: readonly PayeeSuggestion[]
 }
 
 const headerAliases = {
@@ -156,6 +159,7 @@ export function suggestBankCsvMapping(document: BankCsvDocument): BankCsvMapping
     debitColumn,
     creditColumn,
     flipSign: false,
+    rememberPayeeCategories: true,
   }
 }
 
@@ -212,13 +216,22 @@ export async function mapBankCsvDocument(
       continue
     }
 
+    const rememberedCategoryId = mapping.rememberPayeeCategories
+      ? rememberPayeeReferences(
+          references.payeeSuggestions ?? [],
+          payee,
+          type,
+          references.accounts,
+          references.categories,
+        )?.categoryId
+      : null
     const input: TransactionInput = {
       id: crypto.randomUUID(),
       type,
       amountMinor,
       currency: 'HKD',
       accountId: account.id,
-      categoryId: type === 'expense' ? expenseCategory.id : incomeCategory.id,
+      categoryId: rememberedCategoryId ?? (type === 'expense' ? expenseCategory.id : incomeCategory.id),
       occurredOn,
       cleared: true,
       payee,

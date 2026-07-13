@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { Account, Category } from './schema'
+import type { Account, Category, PayeeSuggestion } from './schema'
 import {
   detectBankCsvDelimiter,
   mapBankCsvDocument,
@@ -10,18 +10,32 @@ import {
 } from './bankCsvImport'
 
 const updatedAt = '2026-07-13T00:00:00.000Z'
-const accounts: Account[] = [{
-  id: 2,
-  name: 'Bank',
-  type: 'bank',
-  currency: 'HKD',
-  isActive: true,
-  sortOrder: 10,
-  localizationKey: null,
-  openingBalanceMinor: null,
-  openingBalanceOn: null,
-  updatedAt,
-}]
+const accounts: Account[] = [
+  {
+    id: 2,
+    name: 'Bank',
+    type: 'bank',
+    currency: 'HKD',
+    isActive: true,
+    sortOrder: 10,
+    localizationKey: null,
+    openingBalanceMinor: null,
+    openingBalanceOn: null,
+    updatedAt,
+  },
+  {
+    id: 3,
+    name: 'Card',
+    type: 'credit_card',
+    currency: 'HKD',
+    isActive: true,
+    sortOrder: 20,
+    localizationKey: null,
+    openingBalanceMinor: null,
+    openingBalanceOn: null,
+    updatedAt,
+  },
+]
 const categories: Category[] = [
   {
     id: 10,
@@ -47,7 +61,27 @@ const categories: Category[] = [
     monthlyPlanMinor: null,
     updatedAt,
   },
+  {
+    id: 12,
+    name: 'Food',
+    type: 'expense',
+    icon: 'utensils',
+    color: '#C16B4B',
+    isActive: true,
+    sortOrder: 20,
+    localizationKey: null,
+    monthlyPlanMinor: null,
+    updatedAt,
+  },
 ]
+const payeeSuggestions: PayeeSuggestion[] = [{
+  payee: 'Cafe, Central',
+  type: 'expense',
+  accountId: 3,
+  categoryId: 12,
+  lastUsedOn: '2026-07-12',
+  useCount: 3,
+}]
 
 function baseMapping(overrides: Partial<BankCsvMapping> = {}): BankCsvMapping {
   return {
@@ -60,6 +94,7 @@ function baseMapping(overrides: Partial<BankCsvMapping> = {}): BankCsvMapping {
     expenseCategoryId: 10,
     incomeCategoryId: 11,
     flipSign: false,
+    rememberPayeeCategories: false,
     amountMode: 'signed',
     amountColumn: 2,
     debitColumn: null,
@@ -91,6 +126,7 @@ describe('generic bank CSV import', () => {
       debitColumn: null,
       creditColumn: null,
       flipSign: false,
+      rememberPayeeCategories: true,
     })
   })
 
@@ -124,6 +160,30 @@ describe('generic bank CSV import', () => {
       second.rows.map((row) => row.importKey),
     )
     assert.notEqual(first.rows[0].id, second.rows[0].id)
+  })
+
+  it('reuses an exact payee category only when the mapping option is enabled', async () => {
+    const parsed = parseBankCsvDocument([
+      'Date,Description,Amount',
+      '13/07/2026," cafe, central ",-12.50',
+      '14/07/2026,Unknown,-5.00',
+    ].join('\n'), ',')
+    assert(parsed.document)
+
+    const remembered = await mapBankCsvDocument(
+      parsed.document,
+      baseMapping({ rememberPayeeCategories: true }),
+      { accounts, categories, payeeSuggestions },
+    )
+    const defaulted = await mapBankCsvDocument(
+      parsed.document,
+      baseMapping({ rememberPayeeCategories: false }),
+      { accounts, categories, payeeSuggestions },
+    )
+
+    assert.deepEqual(remembered.rows.map(({ categoryId }) => categoryId), [12, 10])
+    assert.deepEqual(remembered.rows.map(({ accountId }) => accountId), [2, 2])
+    assert.deepEqual(defaulted.rows.map(({ categoryId }) => categoryId), [10, 10])
   })
 
   it('supports separate debit and credit columns plus sign flipping', async () => {

@@ -85,9 +85,10 @@ knowledge and explains every command and dashboard click.
   user-entered spreadsheet formulas neutralized.
 - Re-import HushLedger CSV files directly, or map a bank CSV's delimiter, date,
   description, signed amount or debit/credit columns, destination account, and
-  fallback categories in the browser. New rows are selected automatically,
-  exact matches are flagged, and import tombstones stop the same source row from
-  returning after deletion.
+  fallback categories in the browser. Bank imports can reuse the latest active
+  category for an exact payee and income/expense match. New rows are selected
+  automatically, exact matches are flagged, and import tombstones stop the same
+  source row from returning after deletion.
 - Download a versioned full-ledger JSON backup from Settings. Restore first shows
   a checksum-verified replacement report, then requires an explicit destructive
   confirmation before one transactional D1 replacement.
@@ -565,8 +566,9 @@ Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income
 and expense, ordered by recent use, and capped at 100. A new transaction only
 reuses the latest account or category when that reference is still active; the
-user can always replace either choice before saving. No payee rule or additional
-tracking table is created.
+user can always replace either choice before saving. Generic bank imports can
+optionally apply the same exact-match category memory while keeping the selected
+destination account. No payee rule or additional tracking table is created.
 
 The transaction export route returns a downloadable UTF-8 CSV rather than the
 JSON success envelope. It applies the same month, filters, and ordering, is
@@ -574,12 +576,12 @@ not restricted to 200 rows, and appends `Transaction ID` plus `Cleared` for
 deterministic round trips. Import parses the file in the browser. HushLedger exports open
 directly; other headered UTF-8 bank CSVs offer comma, semicolon, or tab delimiters,
 five numeric date formats, one signed amount or separate debit/credit columns,
-optional sign reversal, an optional source ID, and explicit account/category
-defaults. The server receives normalized rows only, previews duplicate/reference
-checks, and writes only explicitly selected rows. This convenience round trip is
-not a complete database backup. Use the Settings JSON backup for app-level
-full-ledger portability, and the encrypted D1 export and restore process in the
-[advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
+optional sign reversal, an optional source ID, explicit account/category defaults,
+and optional exact payee-category reuse. The server receives normalized rows only,
+previews duplicate/reference checks, and writes only explicitly selected rows.
+This convenience round trip is not a complete database backup. Use the Settings
+JSON backup for app-level full-ledger portability, and the encrypted D1 export
+and restore process in the [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)
 for database-level disaster recovery.
 
 The ledger backup `GET` is the other successful response without the normal JSON

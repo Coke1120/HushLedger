@@ -12,12 +12,13 @@ import {
   type BankCsvMapping,
 } from '../lib/bankCsvImport'
 import type { CsvImportParseResult } from '../lib/csvImport'
-import type { Account, Category } from '../lib/schema'
+import type { Account, Category, PayeeSuggestion } from '../lib/schema'
 
 type BankCsvMappingFormProps = {
   document: BankCsvDocument
   accounts: Account[]
   categories: Category[]
+  payeeSuggestions: PayeeSuggestion[]
   busy: boolean
   onDelimiterChange: (delimiter: BankCsvDelimiter) => void
   onMapped: (result: CsvImportParseResult) => Promise<void>
@@ -27,6 +28,7 @@ export function BankCsvMappingForm({
   document,
   accounts,
   categories,
+  payeeSuggestions,
   busy,
   onDelimiterChange,
   onMapped,
@@ -46,6 +48,9 @@ export function BankCsvMappingForm({
   const [debitColumn, setDebitColumn] = useState(suggestion.debitColumn ?? -1)
   const [creditColumn, setCreditColumn] = useState(suggestion.creditColumn ?? -1)
   const [flipSign, setFlipSign] = useState(false)
+  const [rememberPayeeCategories, setRememberPayeeCategories] = useState(
+    suggestion.rememberPayeeCategories ?? true,
+  )
   const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
   const [expenseCategoryId, setExpenseCategoryId] = useState(
     expenseCategories.find((category) => category.localizationKey === 'category.other_expense')?.id ??
@@ -77,11 +82,16 @@ export function BankCsvMappingForm({
       expenseCategoryId,
       incomeCategoryId,
       flipSign,
+      rememberPayeeCategories,
     }
     const mapping: BankCsvMapping = amountMode === 'signed'
       ? { ...base, amountMode, amountColumn, debitColumn: null, creditColumn: null }
       : { ...base, amountMode, amountColumn: null, debitColumn, creditColumn }
-    await onMapped(await mapBankCsvDocument(document, mapping, { accounts, categories }))
+    await onMapped(await mapBankCsvDocument(document, mapping, {
+      accounts,
+      categories,
+      payeeSuggestions,
+    }))
   }
 
   return (
@@ -246,6 +256,19 @@ export function BankCsvMappingForm({
         <span>
           <strong>{t('bankCsvFlipSign')}</strong>
           <small>{t('bankCsvFlipSignHelp')}</small>
+        </span>
+      </label>
+
+      <label className="bank-csv-flip-sign">
+        <input
+          type="checkbox"
+          checked={rememberPayeeCategories && payeeSuggestions.length > 0}
+          disabled={busy || payeeSuggestions.length === 0}
+          onChange={(event) => setRememberPayeeCategories(event.target.checked)}
+        />
+        <span>
+          <strong>{t('bankCsvRememberCategories')}</strong>
+          <small>{t('bankCsvRememberCategoriesHelp')}</small>
         </span>
       </label>
 

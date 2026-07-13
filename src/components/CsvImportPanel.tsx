@@ -26,7 +26,7 @@ import {
   type CsvImportRow,
   type CsvImportRowStatus,
 } from '../lib/csvImport'
-import type { Account, Category } from '../lib/schema'
+import type { Account, Category, PayeeSuggestion } from '../lib/schema'
 import { BankCsvMappingForm } from './BankCsvMappingForm'
 
 type CsvImportPanelProps = {
@@ -53,6 +53,7 @@ export function CsvImportPanel({
   const [rows, setRows] = useState<CsvImportRow[]>([])
   const [preview, setPreview] = useState<CsvImportPreviewResult | null>(null)
   const [issues, setIssues] = useState<CsvImportIssue[]>([])
+  const [payeeSuggestions, setPayeeSuggestions] = useState<PayeeSuggestion[]>([])
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -75,6 +76,7 @@ export function CsvImportPanel({
     setBankDocument(null)
     setPreview(null)
     setIssues([])
+    setPayeeSuggestions([])
     setSelected(new Set())
     setBusy(false)
     setError('')
@@ -108,7 +110,12 @@ export function CsvImportPanel({
       if (parsed.issues.length === 1 && parsed.issues[0].code === 'invalid_header') {
         const delimiter = detectBankCsvDelimiter(text)
         const bank = parseBankCsvDocument(text, delimiter)
+        const suggestions = bank.document
+          ? await api<PayeeSuggestion[]>('/api/payee-suggestions', { signal: controller.signal }).catch(() => [])
+          : []
+        if (sequence !== requestSequence.current) return
         setBankDocument(bank.document)
+        setPayeeSuggestions(suggestions)
         setIssues(bank.issues)
         return
       }
@@ -310,6 +317,7 @@ export function CsvImportPanel({
           document={bankDocument}
           accounts={accounts}
           categories={categories}
+          payeeSuggestions={payeeSuggestions}
           busy={busy || preview !== null}
           onDelimiterChange={changeBankDelimiter}
           onMapped={previewMappedRows}
