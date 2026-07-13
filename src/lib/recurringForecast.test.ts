@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { recurringForecastForMonth, type RecurringForecastRule } from './recurringForecast'
+import {
+  recurringForecastForMonth,
+  summarizeRecurringForecast,
+  type RecurringForecastRule,
+} from './recurringForecast'
 
 function rule(patch: Partial<RecurringForecastRule>): RecurringForecastRule {
   return {
@@ -68,5 +72,49 @@ describe('monthly recurring forecast', () => {
     })), [
       { name: 'Daily commute', firstOccurrenceOn: '2026-07-30', occurrenceCount: 2 },
     ])
+  })
+
+  it('totals every remaining occurrence without mixing the forecast into recorded money', () => {
+    const forecast = recurringForecastForMonth([
+      rule({
+        id: '10000000-0000-4000-8000-000000000002',
+        name: 'Weekly class',
+        amountMinor: 2500,
+        frequency: 'weekly',
+        nextOccurrenceOn: '2026-02-02',
+        anchorDay: 2,
+      }),
+      rule({
+        id: '10000000-0000-4000-8000-000000000003',
+        name: 'Payday',
+        type: 'income',
+        amountMinor: 500000,
+        nextOccurrenceOn: '2026-02-15',
+        anchorDay: 15,
+      }),
+    ], '2026-02')
+
+    assert.deepEqual(summarizeRecurringForecast(forecast), {
+      incomeMinor: 500000,
+      expenseMinor: 10000,
+      netMinor: 490000,
+    })
+    assert.deepEqual(summarizeRecurringForecast([]), {
+      incomeMinor: 0,
+      expenseMinor: 0,
+      netMinor: 0,
+    })
+  })
+
+  it('withholds totals that cannot be represented as exact JavaScript integers', () => {
+    assert.equal(summarizeRecurringForecast([{
+      recurringRuleId: '10000000-0000-4000-8000-000000000004',
+      name: 'Unsafe total',
+      type: 'expense',
+      amountMinor: Number.MAX_SAFE_INTEGER,
+      frequency: 'daily',
+      firstOccurrenceOn: '2026-02-01',
+      occurrenceCount: 2,
+    }]), null)
   })
 })

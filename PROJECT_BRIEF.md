@@ -39,7 +39,8 @@ not operate an independent database server or a multi-user identity system.
   exact remaining-or-over amount; treat plans as recurring guardrails, not cash
   allocation, rollover, or envelope balances.
 - Review active recurring entries that remain ungenerated in the selected month,
-  including each rule's next date and exact occurrence count.
+  including each rule's next date and exact occurrence count, plus exact income,
+  expense, and net forecast totals that remain separate from recorded balance.
 - Browse the latest 200 transactions for a selected month; the UI explicitly
   discloses the cap when it is reached.
 - Search payee, note, account, or category.
@@ -102,7 +103,9 @@ not operate an independent database server or a multi-user identity system.
   action.
 - Preserve generated history when a rule changes or is deleted.
 - Use the overview forecast to see only future, ungenerated occurrences in the
-  selected month; generated ledger entries remain part of actual totals instead.
+  selected month, including their exact forecast income, expense, and net totals;
+  generated ledger entries remain part of actual totals instead, and forecast
+  money never becomes recorded or available balance by presentation alone.
 
 ## Data contract
 

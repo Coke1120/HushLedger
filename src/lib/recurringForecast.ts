@@ -16,6 +16,34 @@ export type RecurringForecastRule = {
   anchorDay: number
 }
 
+export type RecurringForecastTotals = {
+  incomeMinor: number
+  expenseMinor: number
+  netMinor: number
+}
+
+export function summarizeRecurringForecast(
+  forecast: readonly ScheduledRecurringSummary[],
+): RecurringForecastTotals | null {
+  let incomeMinor = 0n
+  let expenseMinor = 0n
+
+  for (const rule of forecast) {
+    const total = BigInt(rule.amountMinor) * BigInt(rule.occurrenceCount)
+    if (rule.type === 'income') incomeMinor += total
+    else expenseMinor += total
+  }
+
+  const safeIntegerLimit = BigInt(Number.MAX_SAFE_INTEGER)
+  if (incomeMinor > safeIntegerLimit || expenseMinor > safeIntegerLimit) return null
+
+  return {
+    incomeMinor: Number(incomeMinor),
+    expenseMinor: Number(expenseMinor),
+    netMinor: Number(incomeMinor - expenseMinor),
+  }
+}
+
 export function recurringForecastForMonth(
   rules: readonly RecurringForecastRule[],
   month: string,

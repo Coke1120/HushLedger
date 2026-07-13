@@ -39,7 +39,9 @@ knowledge and explains every command and dashboard click.
   remaining-or-over amounts shown together. Plans are recurring comparison
   guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
-  generated, including the next date and exact occurrence count for each rule.
+  generated, including the next date and exact occurrence count for each rule,
+  plus exact scheduled income, expense, and net totals. Forecast values never
+  change the recorded monthly balance before their entries are generated.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact cents,

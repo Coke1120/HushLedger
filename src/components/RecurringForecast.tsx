@@ -1,5 +1,6 @@
 import { CalendarClock, Repeat2 } from 'lucide-react'
 import { useI18n } from '../i18n'
+import { summarizeRecurringForecast } from '../lib/recurringForecast'
 import type { Summary } from '../lib/schema'
 
 type RecurringForecastProps = {
@@ -14,6 +15,7 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
   const { formatDate, formatMoney, t } = useI18n()
   const visibleRules = summary.recurringForecast.slice(0, visibleRuleLimit)
   const remainingRules = summary.recurringForecast.length - visibleRules.length
+  const totals = summarizeRecurringForecast(summary.recurringForecast)
 
   return (
     <section
@@ -40,6 +42,22 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
         </div>
       ) : (
         <>
+          {totals ? (
+            <dl className="recurring-forecast-totals">
+              <div className="recurring-forecast-total income">
+                <dt>{t('scheduledIncome')}</dt>
+                <dd>{formatMoney(totals.incomeMinor)}</dd>
+              </div>
+              <div className="recurring-forecast-total expense">
+                <dt>{t('scheduledExpense')}</dt>
+                <dd>{formatMoney(totals.expenseMinor)}</dd>
+              </div>
+              <div className="recurring-forecast-total net">
+                <dt>{t('scheduledNet')}</dt>
+                <dd>{formatMoney(totals.netMinor)}</dd>
+              </div>
+            </dl>
+          ) : null}
           <ol className="category-spending-list">
             {visibleRules.map((rule) => {
               const date = formatDate(rule.firstOccurrenceOn)
