@@ -88,7 +88,9 @@ knowledge and explains every command and dashboard click.
   fallback categories in the browser. Bank imports can reuse the latest active
   category for an exact payee and income/expense match. New rows are selected
   automatically, exact matches are flagged, and import tombstones stop the same
-  source row from returning after deletion.
+  source row from returning after deletion. Repeated imports can explicitly
+  remember column, date, amount, and sign choices for the exact same headers in
+  this browser without storing file contents, accounts, or categories.
 - Download a versioned full-ledger JSON backup from Settings. Restore first shows
   a checksum-verified replacement report, then requires an explicit destructive
   confirmation before one transactional D1 replacement.
@@ -285,7 +287,8 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 Settings can download one versioned JSON file containing every account, category,
 recurring rule (including soft-deleted rule history), transaction, account transfer, and import
 tombstone. AI provider credentials, pasted bank text, language preferences, update
-preferences, and screen privacy state are intentionally excluded.
+preferences, saved transaction views, remembered bank CSV layouts, and screen
+privacy state are intentionally excluded.
 
 The JSON file is plaintext financial data. Store it only in encrypted storage and
 do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
@@ -579,6 +582,10 @@ five numeric date formats, one signed amount or separate debit/credit columns,
 optional sign reversal, an optional source ID, explicit account/category defaults,
 and optional exact payee-category reuse. The server receives normalized rows only,
 previews duplicate/reference checks, and writes only explicitly selected rows.
+Users can explicitly remember up to eight exact-header CSV layouts in browser
+storage. A layout contains only column indexes, date format, amount mode, sign,
+and the payee-category reuse preference; it excludes filenames, transaction rows,
+accounts, and categories. Unchecking the option before preview forgets that layout.
 This convenience round trip is not a complete database backup. Use the Settings
 JSON backup for app-level full-ledger portability, and the encrypted D1 export
 and restore process in the [advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery)

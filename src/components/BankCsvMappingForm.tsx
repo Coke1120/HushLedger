@@ -11,6 +11,15 @@ import {
   type BankCsvDocument,
   type BankCsvMapping,
 } from '../lib/bankCsvImport'
+import {
+  BANK_CSV_LAYOUTS_STORAGE_KEY,
+  canRememberBankCsvLayout,
+  findBankCsvLayout,
+  forgetBankCsvLayout,
+  parseBankCsvLayouts,
+  rememberBankCsvLayout,
+  serializeBankCsvLayouts,
+} from '../lib/bankCsvLayouts'
 import type { CsvImportParseResult } from '../lib/csvImport'
 import type { Account, Category, PayeeSuggestion } from '../lib/schema'
 
@@ -35,22 +44,36 @@ export function BankCsvMappingForm({
 }: BankCsvMappingFormProps) {
   const { localizeEntityName, privacyMode, t } = useI18n()
   const suggestion = useMemo(() => suggestBankCsvMapping(document), [document])
+  const [savedLayout] = useState(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      return findBankCsvLayout(
+        parseBankCsvLayouts(window.localStorage.getItem(BANK_CSV_LAYOUTS_STORAGE_KEY)),
+        document,
+      )
+    } catch {
+      return null
+    }
+  })
+  const initialMapping = savedLayout ?? suggestion
   const activeAccounts = accounts.filter((account) => account.isActive && account.currency === 'HKD')
   const expenseCategories = categories.filter((category) => category.isActive && category.type === 'expense')
   const incomeCategories = categories.filter((category) => category.isActive && category.type === 'income')
-  const [dateColumn, setDateColumn] = useState(suggestion.dateColumn ?? -1)
-  const [dateFormat, setDateFormat] = useState<BankCsvDateFormat>(suggestion.dateFormat ?? 'yyyy-mm-dd')
-  const [payeeColumn, setPayeeColumn] = useState(suggestion.payeeColumn ?? -1)
-  const [noteColumn, setNoteColumn] = useState(suggestion.noteColumn ?? -1)
-  const [idColumn, setIdColumn] = useState(suggestion.idColumn ?? -1)
-  const [amountMode, setAmountMode] = useState<BankCsvAmountMode>(suggestion.amountMode)
-  const [amountColumn, setAmountColumn] = useState(suggestion.amountColumn ?? -1)
-  const [debitColumn, setDebitColumn] = useState(suggestion.debitColumn ?? -1)
-  const [creditColumn, setCreditColumn] = useState(suggestion.creditColumn ?? -1)
-  const [flipSign, setFlipSign] = useState(false)
+  const [dateColumn, setDateColumn] = useState(initialMapping.dateColumn ?? -1)
+  const [dateFormat, setDateFormat] = useState<BankCsvDateFormat>(initialMapping.dateFormat ?? 'yyyy-mm-dd')
+  const [payeeColumn, setPayeeColumn] = useState(initialMapping.payeeColumn ?? -1)
+  const [noteColumn, setNoteColumn] = useState(initialMapping.noteColumn ?? -1)
+  const [idColumn, setIdColumn] = useState(initialMapping.idColumn ?? -1)
+  const [amountMode, setAmountMode] = useState<BankCsvAmountMode>(initialMapping.amountMode)
+  const [amountColumn, setAmountColumn] = useState(initialMapping.amountColumn ?? -1)
+  const [debitColumn, setDebitColumn] = useState(initialMapping.debitColumn ?? -1)
+  const [creditColumn, setCreditColumn] = useState(initialMapping.creditColumn ?? -1)
+  const [flipSign, setFlipSign] = useState(initialMapping.flipSign ?? false)
   const [rememberPayeeCategories, setRememberPayeeCategories] = useState(
-    suggestion.rememberPayeeCategories ?? true,
+    initialMapping.rememberPayeeCategories ?? true,
   )
+  const [rememberLayout, setRememberLayout] = useState(savedLayout !== null)
+  const layoutCanBeRemembered = canRememberBankCsvLayout(document)
   const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
   const [expenseCategoryId, setExpenseCategoryId] = useState(
     expenseCategories.find((category) => category.localizationKey === 'category.other_expense')?.id ??
@@ -87,11 +110,28 @@ export function BankCsvMappingForm({
     const mapping: BankCsvMapping = amountMode === 'signed'
       ? { ...base, amountMode, amountColumn, debitColumn: null, creditColumn: null }
       : { ...base, amountMode, amountColumn: null, debitColumn, creditColumn }
-    await onMapped(await mapBankCsvDocument(document, mapping, {
+    const result = await mapBankCsvDocument(document, mapping, {
       accounts,
       categories,
       payeeSuggestions,
-    }))
+    })
+    try {
+      const stored = parseBankCsvLayouts(
+        window.localStorage.getItem(BANK_CSV_LAYOUTS_STORAGE_KEY),
+      )
+      const next = rememberLayout && result.issues.length === 0
+        ? rememberBankCsvLayout(stored, document, mapping)
+        : rememberLayout
+          ? stored
+          : forgetBankCsvLayout(stored, document)
+      window.localStorage.setItem(
+        BANK_CSV_LAYOUTS_STORAGE_KEY,
+        serializeBankCsvLayouts(next),
+      )
+    } catch {
+      // Mapping and preview remain available when browser storage is unavailable.
+    }
+    await onMapped(result)
   }
 
   return (
@@ -269,6 +309,21 @@ export function BankCsvMappingForm({
         <span>
           <strong>{t('bankCsvRememberCategories')}</strong>
           <small>{t('bankCsvRememberCategoriesHelp')}</small>
+        </span>
+      </label>
+
+      <label className="bank-csv-flip-sign">
+        <input
+          type="checkbox"
+          checked={rememberLayout && layoutCanBeRemembered}
+          disabled={busy || !layoutCanBeRemembered}
+          onChange={(event) => setRememberLayout(event.target.checked)}
+        />
+        <span>
+          <strong>{t('bankCsvRememberLayout')}</strong>
+          <small>
+            {t(savedLayout ? 'bankCsvRememberLayoutApplied' : 'bankCsvRememberLayoutHelp')}
+          </small>
         </span>
       </label>
 
