@@ -457,6 +457,11 @@ textarea:focus-visible {
   background: var(--warning-bg);
 }
 
+.spending-trend-heading-icon {
+  color: #4b6f87;
+  background: #eaf1f5;
+}
+
 .category-spending-heading h2,
 .category-spending-heading p,
 .category-spending-more {
@@ -474,6 +479,72 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
+}
+
+.spending-trend-chart {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  height: 190px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.spending-trend-chart li {
+  min-width: 0;
+  height: 100%;
+}
+
+.spending-trend-chart button {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  min-width: 44px;
+  height: 100%;
+  padding: 8px 3px 4px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+}
+
+.spending-trend-chart button:hover,
+.spending-trend-chart button:focus-visible {
+  background: var(--surface-soft);
+}
+
+.spending-trend-plot {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.spending-trend-bar {
+  display: block;
+  width: min(36px, 66%);
+  background: #afc8d5;
+  border-radius: 8px 8px 2px 2px;
+}
+
+.spending-trend-chart button.is-selected .spending-trend-bar {
+  background: var(--brand);
+}
+
+.spending-trend-chart time {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spending-trend-chart button.is-selected time {
+  color: var(--brand-strong);
 }
 
 .category-spending-list {
@@ -3621,6 +3692,20 @@ textarea:focus-visible {
     font-size: 18px;
   }
 
+  .spending-trend-chart {
+    gap: 4px;
+    height: 150px;
+  }
+
+  .spending-trend-chart button {
+    gap: 6px;
+    padding-inline: 1px;
+  }
+
+  .spending-trend-bar {
+    width: min(32px, 72%);
+  }
+
   .category-spending-row {
     gap: 9px 12px;
     min-height: 82px;
@@ -3992,6 +4077,15 @@ textarea:focus-visible {
 
   .summary-card {
     padding: 13px;
+  }
+
+  .spending-trend-panel {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .spending-trend-chart {
+    gap: 0;
   }
 
   .summary-card strong {

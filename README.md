@@ -31,6 +31,8 @@ knowledge and explains every command and dashboard click.
 ## Features
 
 - Monthly income, expenses, balance, and recent transactions.
+- A zero-filled six-month expense trend for the selected month and previous five,
+  with private-screen masking and one-tap navigation to any month in the chart.
 - A ranked top-five monthly expense breakdown by category, with exact totals,
   transaction counts, and one-tap drilldown into the matching ledger records.
 - A selected-month forecast of active recurring entries that have not yet been
@@ -405,7 +407,7 @@ DELETE /api/transactions/:id
 GET    /api/exports/transactions?month=YYYY-MM&type=expense|income&accountId=1&categoryId=3&search=...&tag=Trip
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, ranked expense categories, and remaining recurring entries)
+GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories, and remaining recurring entries)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

@@ -31,6 +31,8 @@ not operate an independent database server or a multi-user identity system.
 ### Review a month
 
 - View HKD income, expense, and balance for a selected month.
+- Compare a zero-filled six-month expense trend and select any bar to review that
+  calendar month; hide relative bar heights when privacy mode is enabled.
 - Review the top five expense categories by exact total and transaction count;
   select one to open the existing expense/category transaction filters.
 - Review active recurring entries that remain ungenerated in the selected month,

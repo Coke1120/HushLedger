@@ -23,6 +23,12 @@ function hktCalendarDate() {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+function shiftCalendarMonth(month, amount) {
+  const [year, monthNumber] = month.split('-').map(Number)
+  const shifted = new Date(Date.UTC(year, monthNumber - 1 + amount, 1))
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 async function availablePort() {
   const server = createNetServer()
   await new Promise((resolveReady, reject) => {
@@ -227,6 +233,7 @@ async function verifyUpgradeMigration() {
 
 async function seedCsvExportRows() {
   const today = hktCalendarDate()
+  const previousMonth = shiftCalendarMonth(today.slice(0, 7), -1)
   await runWrangler([
     'd1',
     'execute',
@@ -243,6 +250,8 @@ async function seedCsvExportRows() {
      INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
      SELECT printf('30000000-0000-4000-8000-%012d', value),'expense',100 + value,'HKD',1,3,'${today}','export bulk',''
      FROM sequence;
+     INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
+     VALUES('30000000-0000-4000-8000-000000999999','expense',12345,'HKD',1,3,'${previousMonth}-15','export bulk','historical trend');
      UPDATE transactions SET note = 'Trip planning #Summer2026' WHERE id = '30000000-0000-4000-8000-000000000001';
      UPDATE transactions SET note = 'Near miss #Summer20260' WHERE id = '30000000-0000-4000-8000-000000000002';
      UPDATE transactions SET note = 'Escaped ##Summer2026' WHERE id = '30000000-0000-4000-8000-000000000003';`,
@@ -452,6 +461,7 @@ async function verifyWorkerApi() {
 
   const today = hktCalendarDate()
   const month = today.slice(0, 7)
+  const previousMonth = shiftCalendarMonth(month, -1)
   const accountsResult = await api(baseUrl, '/api/accounts')
   const categoriesResult = await api(baseUrl, '/api/categories')
   assert.equal(accountsResult.response.status, 200)
@@ -469,7 +479,7 @@ async function verifyWorkerApi() {
     accountId: 1,
     categoryId: 3,
     lastUsedOn: today,
-    useCount: 205,
+    useCount: 206,
   }])
 
   const categorySummary = await api(baseUrl, `/api/summary?month=${month}`)
@@ -486,6 +496,11 @@ async function verifyWorkerApi() {
     amountMinor: 41_615,
     transactionCount: 205,
   }])
+  assert.equal(categorySummary.payload.data.spendingTrend.length, 6)
+  assert.deepEqual(categorySummary.payload.data.spendingTrend.slice(-2), [
+    { month: previousMonth, amountMinor: 12_345, transactionCount: 1 },
+    { month, amountMinor: 41_615, transactionCount: 205 },
+  ])
   assert.deepEqual(categorySummary.payload.data.recurringForecast, [])
 
   const duplicateMonth = await api(baseUrl, `/api/transactions?month=${month}&month=${month}`)
@@ -1514,6 +1529,7 @@ async function verifyWorkerApi() {
     transactionFilterQueries: 3,
     transactionTagQueries: 4,
     categorySummaries: 1,
+    spendingTrendQueries: 1,
     recurringForecasts: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,

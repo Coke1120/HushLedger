@@ -52,6 +52,14 @@ describe('localized demo data', () => {
         { categoryId: 4, amountMinor: 4_210, transactionCount: 1 },
       ],
     )
+    assert.deepEqual(summary.spendingTrend, [
+      { month: '2026-02', amountMinor: 0, transactionCount: 0 },
+      { month: '2026-03', amountMinor: 0, transactionCount: 0 },
+      { month: '2026-04', amountMinor: 0, transactionCount: 0 },
+      { month: '2026-05', amountMinor: 0, transactionCount: 0 },
+      { month: '2026-06', amountMinor: 0, transactionCount: 0 },
+      { month: '2026-07', amountMinor: 1_717_950, transactionCount: 6 },
+    ])
   })
 
   it('keeps edits and deletions local to the current demo session', () => {

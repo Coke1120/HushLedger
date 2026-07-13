@@ -1,16 +1,18 @@
 import 'server-only'
 
-import { monthRangeDates } from '../lib/date'
+import { monthRangeDates, shiftMonth } from '../lib/date'
 import {
   recurringForecastForMonth,
   type RecurringForecastRule,
 } from '../lib/recurringForecast'
+import { buildMonthlySpendingTrend } from '../lib/spendingTrend'
 import type {
   Account,
   AccountLocalizationKey,
   Category,
   CategoryLocalizationKey,
   ExpenseCategorySummary,
+  MonthlySpendingSummary,
   PayeeSuggestion,
   Summary,
   Transaction,
@@ -418,7 +420,8 @@ export async function deleteTransaction(
 
 export async function getSummary(database: D1Database, month: string): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
-  const [row, expenseByCategoryResult, recurringRulesResult] = await Promise.all([
+  const trendStart = `${shiftMonth(month, -5)}-01`
+  const [row, spendingTrendResult, expenseByCategoryResult, recurringRulesResult] = await Promise.all([
     database.prepare(`
       SELECT
         COALESCE(SUM(CASE WHEN type = 'income' THEN amount_minor ELSE 0 END), 0) AS income,
@@ -428,6 +431,18 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     `)
       .bind(start, end)
       .first<SummaryRow>(),
+    database.prepare(`
+      SELECT
+        substr(occurred_on, 1, 7) AS month,
+        SUM(amount_minor) AS amountMinor,
+        COUNT(*) AS transactionCount
+      FROM transactions
+      WHERE type = 'expense' AND occurred_on >= ? AND occurred_on < ?
+      GROUP BY month
+      ORDER BY month ASC
+    `)
+      .bind(trendStart, end)
+      .all<MonthlySpendingSummary>(),
     database.prepare(`
       SELECT
         category.id AS categoryId,
@@ -477,6 +492,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     income,
     expense,
     balance: income - expense,
+    spendingTrend: buildMonthlySpendingTrend(month, spendingTrendResult.results),
     expenseByCategory: expenseByCategoryResult.results,
     recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
   }

@@ -13,6 +13,7 @@ import { RecurringRulesPage } from './components/RecurringRulesPage'
 import { RecurringForecast } from './components/RecurringForecast'
 import { SettingsPage } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
+import { SpendingTrend } from './components/SpendingTrend'
 import { TransactionDialog } from './components/TransactionDialog'
 import { TransactionList } from './components/TransactionList'
 import { TransactionToolbar, type TransactionFilter } from './components/TransactionToolbar'
@@ -231,6 +232,11 @@ function App({ initialMonth }: { initialMonth: string }) {
             <SummaryCards summary={data.summary} loading={loading} />
             {view === 'overview' ? (
               <>
+                <SpendingTrend
+                  summary={data.summary}
+                  loading={loading}
+                  onSelectMonth={setMonth}
+                />
                 <CategorySpending
                   summary={data.summary}
                   loading={loading}

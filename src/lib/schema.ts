@@ -210,8 +210,15 @@ export type Summary = {
   income: number
   expense: number
   balance: number
+  spendingTrend: MonthlySpendingSummary[]
   expenseByCategory: ExpenseCategorySummary[]
   recurringForecast: ScheduledRecurringSummary[]
+}
+
+export type MonthlySpendingSummary = {
+  month: string
+  amountMinor: number
+  transactionCount: number
 }
 
 export type ExpenseCategorySummary = {

@@ -1,10 +1,12 @@
 import { monthRangeDates } from './date'
+import { buildMonthlySpendingTrend } from './spendingTrend'
 import { noteHasTransactionTag } from './transactionTags'
 import type { MessageKey, Translator } from '../i18n'
 import type {
   Account,
   Category,
   ExpenseCategorySummary,
+  MonthlySpendingSummary,
   Summary,
   Transaction,
   TransactionInput,
@@ -305,11 +307,28 @@ export function demoSummary(month: string): Summary {
     return categories
   }, new Map<number, ExpenseCategorySummary>()).values()]
     .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
+  const spendingTrendRows = [...demoTransactions.reduce((months, transaction) => {
+    if (transaction.type !== 'expense') return months
+    const transactionMonth = transaction.occurredOn.slice(0, 7)
+    const existing = months.get(transactionMonth)
+    if (existing) {
+      existing.amountMinor += transaction.amountMinor
+      existing.transactionCount += 1
+      return months
+    }
+    months.set(transactionMonth, {
+      month: transactionMonth,
+      amountMinor: transaction.amountMinor,
+      transactionCount: 1,
+    })
+    return months
+  }, new Map<string, MonthlySpendingSummary>()).values()]
   return {
     month,
     income,
     expense,
     balance: income - expense,
+    spendingTrend: buildMonthlySpendingTrend(month, spendingTrendRows),
     expenseByCategory,
     recurringForecast: [],
   }
