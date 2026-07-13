@@ -222,6 +222,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const changeView = useCallback((nextView: AppView) => {
     if (ledgerInteractionLocked) return
     if (nextView !== 'transactions') setRegisterAccountId(null)
+    if (nextView !== 'recurring') setRecurringRuleFocusId(null)
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [ledgerInteractionLocked])
