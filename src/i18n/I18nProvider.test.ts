@@ -55,7 +55,7 @@ describe('message catalogs', () => {
     assert.equal(translate('fr', 'recurringRuleCount', { count: 0 }), '0 règles')
     assert.equal(
       translate('en', 'reconciliationReviewHelp', { count: 1, visible: 1 }),
-      '1 uncleared entry is in the loaded activity. Currently visible loaded entries: 1. Every running balance still includes all activity in the month.',
+      '1 uncleared entry remains through the statement close; 1 is visible in the selected period. Every running and cutoff balance includes complete ledger activity through the close date.',
     )
     assert.equal(
       translate('en', 'reconciliationReviewHelpLimited', {
@@ -64,7 +64,7 @@ describe('message catalogs', () => {
         total: 201,
         visible: 1,
       }),
-      '1 uncleared entry was found in the newest 200 of 201 entries. Currently visible loaded entries: 1. Older uncleared entries may not be loaded; every running balance still uses the complete month.',
+      '1 uncleared entry remains through the statement close. The newest 200 of 201 period entries are loaded and 1 is visible. An older or out-of-period uncleared entry may not be loaded; every running and cutoff balance still uses the complete ledger.',
     )
     assert.equal(
       translate('en', 'csvImportSummaryMatchable', { count: 1 }),

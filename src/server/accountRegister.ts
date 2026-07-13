@@ -1,13 +1,14 @@
 import 'server-only'
 
 import { calculateAccountRegisterBalances } from '../lib/accountRegister'
-import { monthRangeDates } from '../lib/date'
+import { inclusiveMonthRangeDates } from '../lib/date'
 import type {
   AccountLocalizationKey,
   AccountRegister,
   AccountRegisterEntry,
   CategoryLocalizationKey,
 } from '../lib/schema'
+import type { AccountRegisterQuery } from './validation'
 
 type RegisterAccountRow = {
   id: number
@@ -18,6 +19,12 @@ type RegisterAccountRow = {
 }
 
 type RegisterTotalRow = { amountMinor: number }
+
+type RegisterBalanceRow = {
+  recordedMovement: number
+  clearedMovement: number
+  unclearedCount: number
+}
 
 type RegisterEntryRow = {
   entryId: string
@@ -42,28 +49,43 @@ const movementUnion = `
   SELECT
     account_id AS accountId,
     occurred_on AS occurredOn,
-    CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END AS amountMinor
+    CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END AS recordedAmount,
+    CASE
+      WHEN cleared = 1 THEN CASE WHEN type = 'income' THEN amount_minor ELSE -amount_minor END
+      ELSE 0
+    END AS clearedAmount,
+    CASE WHEN cleared = 0 THEN 1 ELSE 0 END AS unclearedCount
   FROM transactions
 
   UNION ALL
 
-  SELECT from_account_id, occurred_on, -amount_minor
+  SELECT
+    from_account_id,
+    occurred_on,
+    -amount_minor,
+    CASE WHEN from_cleared = 1 THEN -amount_minor ELSE 0 END,
+    CASE WHEN from_cleared = 0 THEN 1 ELSE 0 END
   FROM account_transfers
 
   UNION ALL
 
-  SELECT to_account_id, occurred_on, amount_minor
+  SELECT
+    to_account_id,
+    occurred_on,
+    amount_minor,
+    CASE WHEN to_cleared = 1 THEN amount_minor ELSE 0 END,
+    CASE WHEN to_cleared = 0 THEN 1 ELSE 0 END
   FROM account_transfers
 `
 
-async function balanceBeforeMonth(
+async function balanceBeforeRange(
   database: D1Database,
   account: RegisterAccountRow,
   start: string,
 ) {
   const movement = await database.prepare(`
     WITH movements AS (${movementUnion})
-    SELECT COALESCE(SUM(amountMinor), 0) AS amountMinor
+    SELECT COALESCE(SUM(recordedAmount), 0) AS amountMinor
     FROM movements
     WHERE accountId = ?
       AND occurredOn < ?
@@ -82,6 +104,45 @@ async function balanceBeforeMonth(
     throw new Error('Account register starting balance exceeds the safe integer range')
   }
   return balance
+}
+
+async function balancesThroughCutoff(
+  database: D1Database,
+  account: RegisterAccountRow,
+  dateTo: string,
+) {
+  const movement = await database.prepare(`
+    WITH movements AS (${movementUnion})
+    SELECT
+      COALESCE(SUM(recordedAmount), 0) AS recordedMovement,
+      COALESCE(SUM(clearedAmount), 0) AS clearedMovement,
+      COALESCE(SUM(unclearedCount), 0) AS unclearedCount
+    FROM movements
+    WHERE accountId = ?
+      AND occurredOn <= ?
+      AND (? IS NULL OR occurredOn >= ?)
+  `).bind(
+    account.id,
+    dateTo,
+    account.openingBalanceOn,
+    account.openingBalanceOn,
+  ).first<RegisterBalanceRow>()
+
+  const opening = account.openingBalanceMinor ?? 0
+  const recordedMovement = movement?.recordedMovement ?? 0
+  const clearedMovement = movement?.clearedMovement ?? 0
+  const unclearedCount = movement?.unclearedCount ?? 0
+  const recordedBalance = opening + recordedMovement
+  const clearedBalance = opening + clearedMovement
+  const unclearedBalance = recordedBalance - clearedBalance
+  if (![opening, recordedMovement, clearedMovement, recordedBalance, clearedBalance, unclearedBalance]
+    .every(Number.isSafeInteger)) {
+    throw new Error('Account register cutoff balance exceeds the safe integer range')
+  }
+  if (!Number.isSafeInteger(unclearedCount) || unclearedCount < 0) {
+    throw new Error('Account register uncleared count is invalid')
+  }
+  return { recordedBalance, clearedBalance, unclearedBalance, unclearedCount }
 }
 
 async function listRegisterEntries(
@@ -113,7 +174,7 @@ async function listRegisterEntries(
       FROM accounts AS account
       WHERE account.id = ?
         AND account.opening_balance_on > ?
-        AND account.opening_balance_on < ?
+        AND account.opening_balance_on <= ?
 
       UNION ALL
 
@@ -136,7 +197,7 @@ async function listRegisterEntries(
       INNER JOIN categories AS category ON category.id = item.category_id
       WHERE item.account_id = ?
         AND item.occurred_on >= ?
-        AND item.occurred_on < ?
+        AND item.occurred_on <= ?
 
       UNION ALL
 
@@ -163,7 +224,7 @@ async function listRegisterEntries(
         END
       WHERE (transfer.from_account_id = ? OR transfer.to_account_id = ?)
         AND transfer.occurred_on >= ?
-        AND transfer.occurred_on < ?
+        AND transfer.occurred_on <= ?
     ), annotated AS (
       SELECT
         entries.*,
@@ -197,9 +258,9 @@ async function listRegisterEntries(
 
 export async function getAccountRegister(
   database: D1Database,
-  accountId: number,
-  month: string,
+  query: AccountRegisterQuery,
 ): Promise<AccountRegister | null> {
+  const accountId = query.accountId
   const account = await database.prepare(`
     SELECT
       id,
@@ -213,26 +274,41 @@ export async function getAccountRegister(
   `).bind(accountId).first<RegisterAccountRow>()
   if (!account) return null
 
-  const { start, end } = monthRangeDates(month)
-  if (account.openingBalanceOn && account.openingBalanceOn >= end) {
+  const range = 'month' in query
+    ? inclusiveMonthRangeDates(query.month)
+    : { start: query.dateFrom, end: query.dateTo }
+  const month = 'month' in query ? query.month : query.dateTo.slice(0, 7)
+  if (account.openingBalanceOn && account.openingBalanceOn > range.end) {
     return {
       accountId: account.id,
       accountName: account.name,
       accountLocalizationKey: account.localizationKey,
       month,
+      dateFrom: range.start,
+      dateTo: range.end,
       availableFrom: account.openingBalanceOn,
       startingBalanceMinor: null,
       endingBalanceMinor: null,
+      clearedEndingBalanceMinor: null,
+      unclearedEndingBalanceMinor: null,
+      unclearedCount: null,
       entryCount: 0,
       entries: [],
     }
   }
 
-  const opensInsideMonth = Boolean(account.openingBalanceOn && account.openingBalanceOn > start)
-  const startingBalanceMinor = opensInsideMonth
+  const opensInsideRange = Boolean(
+    account.openingBalanceOn
+      && account.openingBalanceOn > range.start
+      && account.openingBalanceOn <= range.end,
+  )
+  const startingBalanceMinor = opensInsideRange
     ? null
-    : await balanceBeforeMonth(database, account, start)
-  const rows = await listRegisterEntries(database, account, start, end)
+    : await balanceBeforeRange(database, account, range.start)
+  const [rows, cutoff] = await Promise.all([
+    listRegisterEntries(database, account, range.start, range.end),
+    balancesThroughCutoff(database, account, range.end),
+  ])
   const entryCount = rows[0]?.totalCount ?? 0
   const totalAmountMinor = rows[0]?.totalAmountMinor ?? 0
   if (!Number.isSafeInteger(entryCount) || entryCount < 0) {
@@ -244,6 +320,9 @@ export async function getAccountRegister(
     totalAmountMinor,
     rows.map(({ amountMinor }) => amountMinor),
   )
+  if (endingBalanceMinor !== cutoff.recordedBalance) {
+    throw new Error('Account register range and cutoff balances disagree')
+  }
   const entries = rows.map<AccountRegisterEntry>((row, index) => {
     const runningBalanceMinor = runningNewestFirst[index]
     if (runningBalanceMinor === undefined) {
@@ -272,9 +351,14 @@ export async function getAccountRegister(
     accountName: account.name,
     accountLocalizationKey: account.localizationKey,
     month,
-    availableFrom: opensInsideMonth ? account.openingBalanceOn : null,
+    dateFrom: range.start,
+    dateTo: range.end,
+    availableFrom: opensInsideRange ? account.openingBalanceOn : null,
     startingBalanceMinor,
     endingBalanceMinor,
+    clearedEndingBalanceMinor: cutoff.clearedBalance,
+    unclearedEndingBalanceMinor: cutoff.unclearedBalance,
+    unclearedCount: cutoff.unclearedCount,
     entryCount,
     entries,
   }

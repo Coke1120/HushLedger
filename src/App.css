@@ -2289,6 +2289,57 @@ textarea:focus-visible {
   font-weight: 750;
 }
 
+.account-reconciliation-range {
+  display: grid;
+  margin-top: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.account-reconciliation-range label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-reconciliation-range input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.account-reconciliation-range input:focus-visible {
+  border-color: var(--focus);
+}
+
+.account-reconciliation-range .button {
+  min-height: 44px;
+}
+
+.account-reconciliation-range-help,
+.account-reconciliation-status {
+  margin-top: 8px !important;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.account-reconciliation-status {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .account-reconciliation-balances {
   display: grid;
   padding: 12px 0;
@@ -6064,6 +6115,14 @@ button.account-register-row:focus-visible {
 
   .account-reconciliation > header > span {
     width: fit-content;
+  }
+
+  .account-reconciliation-range {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-reconciliation-range .button {
+    width: 100%;
   }
 
   .account-reconciliation-balances {

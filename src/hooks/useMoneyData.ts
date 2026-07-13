@@ -103,8 +103,12 @@ export function useMoneyData(
       duplicatesOnly,
       sort,
     })
-    const transferQuery = new URLSearchParams({ month })
+    const transferQuery = registerAccountId === null
+      ? new URLSearchParams({ month })
+      : new URLSearchParams({ dateFrom, dateTo })
     if (effectiveAccountId !== null) transferQuery.set('accountId', String(effectiveAccountId))
+    const registerQuery = new URLSearchParams({ dateFrom, dateTo })
+    if (registerAccountId !== null) registerQuery.set('accountId', String(registerAccountId))
 
     const [
       transactionResult,
@@ -127,7 +131,7 @@ export function useMoneyData(
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
       registerAccountId === null
         ? Promise.resolve(null)
-        : api<AccountRegister>(`/api/accounts/register?month=${encodeURIComponent(month)}&accountId=${registerAccountId}`),
+        : api<AccountRegister>(`/api/accounts/register?${registerQuery}`),
       api<NetWorthTrendPoint[]>(`/api/reports/net-worth?month=${encodeURIComponent(month)}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),

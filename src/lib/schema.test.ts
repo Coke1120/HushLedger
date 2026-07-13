@@ -431,15 +431,34 @@ describe('account transfer validation', () => {
     assert.equal(accountTransferUpdateSchema.safeParse({ ...missingPostingState, updatedAt }).success, false)
   })
 
-  it('requires one strict calendar month query', () => {
+  it('accepts either a strict calendar month or an inclusive statement range', () => {
     assert.deepEqual(accountTransferQuerySchema.parse({ month: '2026-07' }), { month: '2026-07' })
     assert.deepEqual(accountTransferQuerySchema.parse({ month: '2026-07', accountId: '2' }), {
       month: '2026-07',
       accountId: 2,
     })
-    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-13' }).success, false)
-    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', accountId: '0' }).success, false)
-    assert.equal(accountTransferQuerySchema.safeParse({ month: '2026-07', other: '1' }).success, false)
+    assert.deepEqual(accountTransferQuerySchema.parse({
+      dateFrom: '2026-06-13',
+      dateTo: '2026-07-12',
+      accountId: '2',
+    }), {
+      dateFrom: '2026-06-13',
+      dateTo: '2026-07-12',
+      accountId: 2,
+    })
+
+    for (const query of [
+      { month: '2026-13' },
+      { month: '2026-07', accountId: '0' },
+      { dateFrom: '2026-06-13' },
+      { dateTo: '2026-07-12' },
+      { dateFrom: '2026-07-13', dateTo: '2026-07-12' },
+      { dateFrom: '2026-02-29', dateTo: '2026-03-01' },
+      { month: '2026-07', dateFrom: '2026-06-13', dateTo: '2026-07-12' },
+      { month: '2026-07', other: '1' },
+    ] as const) {
+      assert.equal(accountTransferQuerySchema.safeParse(query).success, false)
+    }
   })
 })
 

@@ -75,6 +75,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
   const [registerAccountId, setRegisterAccountId] = useState<number | null>(null)
   const [registerMode, setRegisterMode] = useState<'review' | 'reconcile'>('review')
+  const [registerDateRange, setRegisterDateRange] = useState<{
+    month: string
+    from: string
+    to: string
+  } | null>(null)
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [payeeFilter, setPayeeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -113,9 +118,15 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     from: selectedMonthDateRange.start,
     to: selectedMonthDateRange.end,
   }
-  const effectiveTransactionDateScope = view === 'transactions' && registerAccountId === null
-    ? transactionDateScope
-    : 'month'
+  const effectiveRegisterDateRange = registerDateRange?.month === month
+    ? registerDateRange
+    : { month, from: selectedMonthDateRange.start, to: selectedMonthDateRange.end }
+  const effectiveTransactionDateScope = registerAccountId !== null
+    ? 'range'
+    : view === 'transactions' ? transactionDateScope : 'month'
+  const effectiveTransactionDateRange = registerAccountId === null
+    ? transactionDateRange
+    : effectiveRegisterDateRange
   const data = useMoneyData(
     month,
     filter,
@@ -128,8 +139,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     view === 'transactions' ? transactionSort : 'date_desc',
     duplicatesOnly,
     effectiveTransactionDateScope,
-    transactionDateRange.from,
-    transactionDateRange.to,
+    effectiveTransactionDateRange.from,
+    effectiveTransactionDateRange.to,
     registerAccountId,
   )
   const {
@@ -337,6 +348,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setClearingFilter('all')
     setDuplicatesOnly(false)
     setPayeeFilter(null)
+    setRegisterDateRange(null)
     if (data.source === 'live' && data.online) {
       setAccountFilterId(null)
       setRegisterAccountId(accountId)
@@ -364,7 +376,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setAccountFilterId(registerAccountId)
     setRegisterAccountId(null)
     setRegisterMode('review')
+    setRegisterDateRange(null)
   }, [ledgerInteractionLocked, registerAccountId])
+
+  const changeRegisterDateRange = useCallback((from: string, to: string) => {
+    setRegisterDateRange({ month, from, to })
+  }, [month])
 
   const changeTagFilter = useCallback((tag: string | null) => {
     setTagFilter(tag)
@@ -756,14 +773,17 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             {view === 'transactions' && registerAccountId !== null ? (
               <AccountRegister
                 key={`${registerAccountId}:${month}`}
+                accountId={registerAccountId}
                 register={data.accountRegister}
-                balance={data.accountBalances.find(({ accountId }) => accountId === registerAccountId) ?? null}
+                dateFrom={effectiveRegisterDateRange.from}
+                dateTo={effectiveRegisterDateRange.to}
                 transactions={data.transactions}
                 transfers={data.accountTransfers}
                 loading={loading}
                 saving={ledgerInteractionLocked}
                 reconcileInitially={registerMode === 'reconcile'}
                 onClose={closeAccountRegister}
+                onDateRangeChange={changeRegisterDateRange}
                 onEditTransaction={openTransaction}
                 onEditTransfer={openTransferDialog}
                 onSetTransactionCleared={setRegisterTransactionCleared}

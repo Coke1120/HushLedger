@@ -12,24 +12,27 @@ import {
 import { useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { visibleAccountRegisterEntries } from '../lib/accountRegister'
+import { isValidCalendarDate } from '../lib/date'
 import { parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
 import type {
-  AccountBalance,
   AccountRegister as AccountRegisterData,
   AccountTransfer,
   Transaction,
 } from '../lib/schema'
 
 type AccountRegisterProps = {
+  accountId: number
   register: AccountRegisterData | null
-  balance: AccountBalance | null
+  dateFrom: string
+  dateTo: string
   transactions: Transaction[]
   transfers: AccountTransfer[]
   loading: boolean
   saving: boolean
   reconcileInitially: boolean
   onClose: () => void
+  onDateRangeChange: (dateFrom: string, dateTo: string) => void
   onEditTransaction: (transaction: Transaction) => void
   onEditTransfer: (transfer: AccountTransfer) => void
   onSetTransactionCleared: (transaction: Transaction, cleared: boolean) => Promise<boolean>
@@ -41,23 +44,27 @@ type AccountRegisterProps = {
 }
 
 export function AccountRegister({
+  accountId,
   register,
-  balance,
+  dateFrom,
+  dateTo,
   transactions,
   transfers,
   loading,
   saving,
   reconcileInitially,
   onClose,
+  onDateRangeChange,
   onEditTransaction,
   onEditTransfer,
   onSetTransactionCleared,
   onSetTransferCleared,
 }: AccountRegisterProps) {
-  const { formatDate, formatMoney, formatMonth, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [reconciling, setReconciling] = useState(reconcileInitially)
   const [showUnclearedOnly, setShowUnclearedOnly] = useState(reconcileInitially)
   const [statementValue, setStatementValue] = useState('')
+  const [rangeDraft, setRangeDraft] = useState({ dateFrom, dateTo })
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
   const unclearedFilterRef = useRef<HTMLInputElement>(null)
   const transactionsById = useMemo(
@@ -68,7 +75,15 @@ export function AccountRegister({
     () => new Map(transfers.map((transfer) => [transfer.id, transfer])),
     [transfers],
   )
-  const clearedBalance = balance?.clearedBalance
+  const rangeReady = register?.accountId === accountId
+    && register.dateFrom === dateFrom
+    && register.dateTo === dateTo
+  const rangeRegister = rangeReady ? register : null
+  const clearedBalance = rangeRegister?.clearedEndingBalanceMinor
+  const validRange = isValidCalendarDate(rangeDraft.dateFrom)
+    && isValidCalendarDate(rangeDraft.dateTo)
+    && rangeDraft.dateFrom <= rangeDraft.dateTo
+  const rangeChanged = rangeDraft.dateFrom !== dateFrom || rangeDraft.dateTo !== dateTo
   const statementResult = useMemo(() => {
     if (!statementValue.trim()) return null
     if (clearedBalance === null || clearedBalance === undefined) return null
@@ -86,8 +101,14 @@ export function AccountRegister({
     setReconciling(next)
     setShowUnclearedOnly(next)
   }
+  const applyDateRange = () => {
+    if (!validRange || !rangeChanged || saving) return
+    if (rangeDraft.dateTo !== dateTo) setStatementValue('')
+    onDateRangeChange(rangeDraft.dateFrom, rangeDraft.dateTo)
+  }
 
-  if (loading || !register) {
+  const accountSnapshotLoading = Boolean(register && register.accountId !== accountId)
+  if (loading || !register || accountSnapshotLoading) {
     return (
       <section className="account-register" aria-busy="true">
         <button className="button button-secondary account-register-back" type="button" onClick={onClose} disabled={saving}>
@@ -95,7 +116,7 @@ export function AccountRegister({
           {t('backToTransactions')}
         </button>
         <p className="account-register-empty" role="status">
-          {t(loading ? 'accountRegisterLoading' : 'demoMoneyData')}
+          {t(loading || accountSnapshotLoading ? 'accountRegisterLoading' : 'demoMoneyData')}
         </p>
       </section>
     )
@@ -103,12 +124,12 @@ export function AccountRegister({
 
   const accountName = localizeEntityName(register.accountName, register.accountLocalizationKey)
   const reconciliationAvailable = clearedBalance !== null && clearedBalance !== undefined
-  const reconciliationOpen = reconciling && reconciliationAvailable
-  const reconciliationBalance = reconciliationOpen && balance ? balance : null
+  const reconciliationOpen = reconciling
   const filterUncleared = reconciliationOpen && showUnclearedOnly
-  const unclearedEntries = visibleAccountRegisterEntries(register.entries, true)
-  const visibleEntries = visibleAccountRegisterEntries(register.entries, filterUncleared)
-  const filteredEmpty = filterUncleared && register.entries.length > 0 && visibleEntries.length === 0
+  const entries = rangeRegister?.entries ?? []
+  const unclearedEntries = visibleAccountRegisterEntries(entries, true)
+  const visibleEntries = visibleAccountRegisterEntries(entries, filterUncleared)
+  const filteredEmpty = filterUncleared && entries.length > 0 && visibleEntries.length === 0
   const setEntryCleared = async (
     entryId: string,
     cleared: boolean,
@@ -145,13 +166,16 @@ export function AccountRegister({
         <span aria-hidden="true"><Landmark /></span>
         <div>
           <h2 id="account-register-title">{t('accountRegisterTitle', { account: accountName })}</h2>
-          <p>{t('accountRegisterHelp', { month: formatMonth(register.month) })}</p>
+          <p>{t('accountRegisterHelp', {
+            from: formatDate(dateFrom),
+            to: formatDate(dateTo),
+          })}</p>
         </div>
         <button
           className="button button-secondary account-register-reconcile-toggle"
           type="button"
           onClick={toggleReconciliation}
-          disabled={balance?.clearedBalance === null || balance?.clearedBalance === undefined}
+          disabled={saving}
           aria-expanded={reconciliationOpen}
           aria-controls="account-reconciliation"
         >
@@ -163,25 +187,29 @@ export function AccountRegister({
       <dl className="account-register-summary">
         <div>
           <dt>{t('accountRegisterStartingBalance')}</dt>
-          <dd>{register.startingBalanceMinor === null
-            ? t('accountRegisterUnavailable')
-            : formatMoney(register.startingBalanceMinor)}
+          <dd>{!rangeRegister
+            ? t('accountRegisterLoading')
+            : rangeRegister.startingBalanceMinor === null
+              ? t('accountRegisterUnavailable')
+              : formatMoney(rangeRegister.startingBalanceMinor)}
           </dd>
         </div>
         <div>
           <dt>{t('accountRegisterEndingBalance')}</dt>
-          <dd>{register.endingBalanceMinor === null
-            ? t('accountRegisterUnavailable')
-            : formatMoney(register.endingBalanceMinor)}
+          <dd>{!rangeRegister
+            ? t('accountRegisterLoading')
+            : rangeRegister.endingBalanceMinor === null
+              ? t('accountRegisterUnavailable')
+              : formatMoney(rangeRegister.endingBalanceMinor)}
           </dd>
         </div>
         <div>
           <dt>{t('accountRegisterEntries')}</dt>
-          <dd>{register.entryCount}</dd>
+          <dd>{rangeRegister?.entryCount ?? t('accountRegisterLoading')}</dd>
         </div>
       </dl>
 
-      {reconciliationBalance ? (
+      {reconciliationOpen ? (
         <section className="account-reconciliation" id="account-reconciliation" aria-labelledby="account-reconciliation-title">
           <header>
             <div>
@@ -190,81 +218,135 @@ export function AccountRegister({
             </div>
             <span>{t('reconciliationLocalOnly')}</span>
           </header>
-          <dl className="account-reconciliation-balances">
-            <div>
-              <dt>{t('recordedBalance')}</dt>
-              <dd>{formatMoney(reconciliationBalance.recordedBalance ?? 0)}</dd>
-            </div>
-            <div>
-              <dt>{t('clearedBalance')}</dt>
-              <dd>{formatMoney(reconciliationBalance.clearedBalance ?? 0)}</dd>
-            </div>
-            <div>
-              <dt>{t('unclearedBalance')}</dt>
-              <dd>{formatMoney(reconciliationBalance.unclearedBalance ?? 0)}</dd>
-            </div>
-          </dl>
-          <div className="statement-comparison">
+          <form
+            className="account-reconciliation-range"
+            onSubmit={(event) => {
+              event.preventDefault()
+              applyDateRange()
+            }}
+          >
             <label>
-              <span>{t('statementEndingBalance')}</span>
+              <span>{t('statementPeriodStartsOn')}</span>
               <input
-                type={privacyMode ? 'password' : 'text'}
-                inputMode="decimal"
-                value={statementValue}
-                onChange={(event) => setStatementValue(event.target.value)}
-                placeholder={t('statementBalancePlaceholder')}
-                autoComplete="off"
-                autoFocus
+                type="date"
+                value={rangeDraft.dateFrom}
+                onChange={(event) => setRangeDraft((current) => ({
+                  ...current,
+                  dateFrom: event.target.value,
+                }))}
               />
             </label>
-            <div className="statement-comparison-result" aria-live="polite">
-              {statementResult === undefined ? (
-                <span className="is-error">{t('invalidStatementBalance')}</span>
-              ) : statementResult === null ? (
-                <span>{t('statementComparisonHelp')}</span>
-              ) : statementResult === 0 ? (
-                <strong className="is-match">{t('statementBalancesMatch')}</strong>
-              ) : (
-                <strong>{t('statementDifference', { amount: formatMoney(statementResult) })}</strong>
-              )}
-            </div>
-          </div>
-          <div className="account-reconciliation-review">
-            <p id="account-reconciliation-review" aria-live="polite">
-              {t(
-                register.entryCount > register.entries.length
-                  ? 'reconciliationReviewHelpLimited'
-                  : 'reconciliationReviewHelp',
-                {
-                  count: unclearedEntries.length,
-                  loaded: register.entries.length,
-                  total: register.entryCount,
-                  visible: visibleEntries.length,
-                },
-              )}
+            <label>
+              <span>{t('statementClosesOn')}</span>
+              <input
+                type="date"
+                value={rangeDraft.dateTo}
+                onChange={(event) => {
+                  const nextDateTo = event.target.value
+                  setRangeDraft((current) => ({ ...current, dateTo: nextDateTo }))
+                  if (nextDateTo !== dateTo) setStatementValue('')
+                }}
+              />
+            </label>
+            <button
+              className="button button-secondary"
+              type="submit"
+              disabled={!validRange || !rangeChanged || saving}
+            >
+              {t('applyStatementPeriod')}
+            </button>
+          </form>
+          <p className="account-reconciliation-range-help">{t('statementPeriodHelp')}</p>
+          {!rangeReady ? (
+            <p className="account-reconciliation-status" role="status">{t('accountRegisterLoading')}</p>
+          ) : reconciliationAvailable && rangeRegister ? (
+            <>
+              <dl className="account-reconciliation-balances">
+                <div>
+                  <dt>{t('recordedBalance')}</dt>
+                  <dd>{formatMoney(rangeRegister.endingBalanceMinor ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>{t('clearedBalance')}</dt>
+                  <dd>{formatMoney(rangeRegister.clearedEndingBalanceMinor ?? 0)}</dd>
+                </div>
+                <div>
+                  <dt>{t('unclearedBalance')}</dt>
+                  <dd>{formatMoney(rangeRegister.unclearedEndingBalanceMinor ?? 0)}</dd>
+                </div>
+              </dl>
+              <div className="statement-comparison">
+                <label>
+                  <span>{t('statementEndingBalance')}</span>
+                  <input
+                    type={privacyMode ? 'password' : 'text'}
+                    inputMode="decimal"
+                    value={statementValue}
+                    onChange={(event) => setStatementValue(event.target.value)}
+                    placeholder={t('statementBalancePlaceholder')}
+                    autoComplete="off"
+                    autoFocus
+                  />
+                </label>
+                <div className="statement-comparison-result" aria-live="polite">
+                  {statementResult === undefined ? (
+                    <span className="is-error">{t('invalidStatementBalance')}</span>
+                  ) : statementResult === null ? (
+                    <span>{t('statementComparisonHelp')}</span>
+                  ) : statementResult === 0 ? (
+                    <strong className="is-match">{t('statementBalancesMatch')}</strong>
+                  ) : (
+                    <strong>{t('statementDifference', { amount: formatMoney(statementResult) })}</strong>
+                  )}
+                </div>
+              </div>
+              <div className="account-reconciliation-review">
+                <p id="account-reconciliation-review" aria-live="polite">
+                  {t(
+                    rangeRegister.entryCount > rangeRegister.entries.length
+                      || (rangeRegister.unclearedCount ?? 0) > unclearedEntries.length
+                      ? 'reconciliationReviewHelpLimited'
+                      : 'reconciliationReviewHelp',
+                    {
+                      count: rangeRegister.unclearedCount ?? 0,
+                      loaded: rangeRegister.entries.length,
+                      total: rangeRegister.entryCount,
+                      visible: visibleEntries.length,
+                    },
+                  )}
+                </p>
+                <label className="account-reconciliation-filter">
+                  <input
+                    ref={unclearedFilterRef}
+                    type="checkbox"
+                    checked={filterUncleared}
+                    aria-controls="account-register-results"
+                    aria-describedby="account-reconciliation-review"
+                    onChange={(event) => setShowUnclearedOnly(event.target.checked)}
+                  />
+                  <span>{t('showUnclearedRegisterEntriesOnly')}</span>
+                </label>
+              </div>
+            </>
+          ) : (
+            <p className="account-reconciliation-status" role="status">
+              {t('accountRegisterUnavailable')}
             </p>
-            <label className="account-reconciliation-filter">
-              <input
-                ref={unclearedFilterRef}
-                type="checkbox"
-                checked={filterUncleared}
-                aria-controls="account-register-results"
-                aria-describedby="account-reconciliation-review"
-                onChange={(event) => setShowUnclearedOnly(event.target.checked)}
-              />
-              <span>{t('showUnclearedRegisterEntriesOnly')}</span>
-            </label>
-          </div>
+          )}
         </section>
       ) : null}
 
-      {register.availableFrom ? (
+      {rangeRegister?.availableFrom ? (
         <p className="account-register-boundary">
-          {t('accountRegisterAvailableFrom', { date: formatDate(register.availableFrom) })}
+          {t('accountRegisterAvailableFrom', { date: formatDate(rangeRegister.availableFrom) })}
         </p>
       ) : null}
 
-      {visibleEntries.length === 0 ? (
+      {!rangeReady ? (
+        <p className="account-register-empty" id="account-register-results" role="status">
+          {t('accountRegisterLoading')}
+        </p>
+      ) : visibleEntries.length === 0 ? (
         <div className="account-register-empty" id="account-register-results">
           <strong>{t(filteredEmpty ? 'noUnclearedRegisterEntries' : 'accountRegisterEmpty')}</strong>
           <span>{t(filteredEmpty ? 'noUnclearedRegisterEntriesHelp' : 'accountRegisterEmptyHelp')}</span>
@@ -376,11 +458,11 @@ export function AccountRegister({
         </ul>
       )}
 
-      {register.entryCount > register.entries.length ? (
+      {rangeRegister && rangeRegister.entryCount > rangeRegister.entries.length ? (
         <p className="account-register-limit">
           {t('accountRegisterLimit', {
-            shown: register.entries.length,
-            total: register.entryCount,
+            shown: rangeRegister.entries.length,
+            total: rangeRegister.entryCount,
           })}
         </p>
       ) : null}

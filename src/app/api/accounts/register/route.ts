@@ -25,8 +25,7 @@ export const GET = apiRoute(async (request) => {
 
   const register = await getAccountRegister(
     await getDatabase(),
-    parsed.data.accountId,
-    parsed.data.month,
+    parsed.data,
   )
   return register
     ? jsonSuccess(register)

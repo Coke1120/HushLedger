@@ -4,10 +4,23 @@ import { transactionQueryFieldsSchema } from '../lib/schema'
 
 export const summaryQuerySchema = transactionQueryFieldsSchema.pick({ month: true }).strict()
 export const accountBalanceQuerySchema = summaryQuerySchema
-export const accountRegisterQuerySchema = transactionQueryFieldsSchema
+const accountRegisterMonthQuerySchema = transactionQueryFieldsSchema
   .pick({ month: true, accountId: true })
   .required({ accountId: true })
   .strict()
+const accountRegisterRangeQuerySchema = transactionQueryFieldsSchema
+  .pick({ dateFrom: true, dateTo: true, accountId: true })
+  .required({ dateFrom: true, dateTo: true, accountId: true })
+  .strict()
+  .refine(({ dateFrom, dateTo }) => dateFrom <= dateTo, {
+    path: ['dateTo'],
+    message: '結束日期不得早於開始日期',
+  })
+export const accountRegisterQuerySchema = z.union([
+  accountRegisterMonthQuerySchema,
+  accountRegisterRangeQuerySchema,
+])
+export type AccountRegisterQuery = z.infer<typeof accountRegisterQuerySchema>
 export const recurringRuleIdSchema = z.string().uuid('週期交易 ID 必須是 UUID')
 export const recurringRunDueSchema = z
   .object({

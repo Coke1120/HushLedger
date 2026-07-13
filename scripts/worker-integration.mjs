@@ -1947,7 +1947,21 @@ async function verifyWorkerApi() {
   assert.equal(cappedRegister.response.status, 200, JSON.stringify(cappedRegister.payload))
   assert.equal(cappedRegister.payload.data.entryCount, 205)
   assert.equal(cappedRegister.payload.data.entries.length, 200)
+  assert.equal(cappedRegister.payload.data.dateFrom, `${month}-01`)
+  assert.equal(
+    cappedRegister.payload.data.dateTo,
+    shiftCalendarDay(`${shiftCalendarMonth(month, 1)}-01`, -1),
+  )
   assert.equal(cappedRegister.payload.data.endingBalanceMinor, bulkAccountBalance.recordedBalance)
+  assert.equal(
+    cappedRegister.payload.data.clearedEndingBalanceMinor,
+    bulkAccountBalance.clearedBalance,
+  )
+  assert.equal(
+    cappedRegister.payload.data.unclearedEndingBalanceMinor,
+    bulkAccountBalance.unclearedBalance,
+  )
+  assert.equal(cappedRegister.payload.data.unclearedCount, bulkAccountBalance.unclearedCount)
   assert.equal(
     cappedRegister.payload.data.entries[0].runningBalanceMinor,
     bulkAccountBalance.recordedBalance,
@@ -2315,6 +2329,286 @@ async function verifyWorkerApi() {
 
   const summaryAfterTransfer = await api(baseUrl, `/api/transactions/summary?month=${month}`)
   assert.deepEqual(summaryAfterTransfer.payload.data, summaryBeforeTransfer.payload.data)
+
+  const statementDateFrom = `${shiftCalendarMonth(month, -1)}-13`
+  const statementCutoff = `${month}-12`
+  const statementBeforeOpening = `${shiftCalendarMonth(month, -1)}-12`
+  const statementAfterCutoff = `${month}-13`
+  const statementAccountResult = await api(baseUrl, '/api/accounts', {
+    method: 'POST',
+    body: {
+      name: 'Statement cycle checking',
+      type: 'bank',
+      openingBalanceMinor: 200_000,
+      openingBalanceOn: statementDateFrom,
+    },
+  })
+  assert.equal(statementAccountResult.response.status, 201, JSON.stringify(statementAccountResult.payload))
+  const statementAccount = statementAccountResult.payload.data
+  const statementTransactionBodies = [
+    {
+      id: '59000000-0000-4000-8000-000000000001',
+      type: 'expense',
+      amountMinor: 9_999,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: expenseCategory.id,
+      occurredOn: statementBeforeOpening,
+      cleared: true,
+      payee: 'Before trustworthy history',
+      note: '',
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000002',
+      type: 'income',
+      amountMinor: 10_000,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: incomeCategory.id,
+      occurredOn: statementDateFrom,
+      cleared: true,
+      payee: 'Statement period opening day',
+      note: '',
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000003',
+      type: 'expense',
+      amountMinor: 3_000,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: expenseCategory.id,
+      occurredOn: shiftCalendarDay(statementDateFrom, 10),
+      cleared: false,
+      payee: 'Prior-month outstanding expense',
+      note: '',
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000004',
+      type: 'expense',
+      amountMinor: 20_000,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: expenseCategory.id,
+      occurredOn: statementCutoff,
+      cleared: true,
+      payee: 'Cutoff-day posted expense',
+      note: '',
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000005',
+      type: 'income',
+      amountMinor: 5_000,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: incomeCategory.id,
+      occurredOn: statementCutoff,
+      cleared: false,
+      payee: 'Cutoff-day pending income',
+      note: '',
+    },
+    {
+      id: '59000000-0000-4000-8000-000000000006',
+      type: 'expense',
+      amountMinor: 7_000,
+      currency: statementAccount.currency,
+      accountId: statementAccount.id,
+      categoryId: expenseCategory.id,
+      occurredOn: statementAfterCutoff,
+      cleared: true,
+      payee: 'After cutoff',
+      note: '',
+    },
+  ]
+  const statementTransactions = await Promise.all(statementTransactionBodies.map((body) => (
+    api(baseUrl, '/api/transactions', { method: 'POST', body })
+  )))
+  assert(statementTransactions.every(({ response }) => response.status === 201))
+
+  const statementTransferBody = {
+    id: '59000000-0000-4000-8000-000000000007',
+    amountMinor: 4_000,
+    currency: statementAccount.currency,
+    fromAccountId: statementAccount.id,
+    toAccountId: transferDestination.id,
+    occurredOn: statementCutoff,
+    fromCleared: false,
+    toCleared: true,
+    note: 'Cutoff-day mixed-clearing transfer',
+  }
+  const statementTransfer = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: statementTransferBody,
+  })
+  assert.equal(statementTransfer.response.status, 201, JSON.stringify(statementTransfer.payload))
+
+  const statementQuery = `dateFrom=${statementDateFrom}&dateTo=${statementCutoff}&accountId=${statementAccount.id}`
+  const statementRegister = await api(baseUrl, `/api/accounts/register?${statementQuery}`)
+  assert.equal(statementRegister.response.status, 200, JSON.stringify(statementRegister.payload))
+  assert.match(statementRegister.response.headers.get('cache-control') ?? '', /private, no-store/)
+  assert.equal(statementRegister.payload.data.dateFrom, statementDateFrom)
+  assert.equal(statementRegister.payload.data.dateTo, statementCutoff)
+  assert.equal(statementRegister.payload.data.startingBalanceMinor, 200_000)
+  assert.equal(statementRegister.payload.data.endingBalanceMinor, 188_000)
+  assert.equal(statementRegister.payload.data.clearedEndingBalanceMinor, 190_000)
+  assert.equal(statementRegister.payload.data.unclearedEndingBalanceMinor, -2_000)
+  assert.equal(statementRegister.payload.data.unclearedCount, 3)
+  assert.equal(statementRegister.payload.data.entryCount, 5)
+  assert.equal(statementRegister.payload.data.entries.length, 5)
+  assert.equal(statementRegister.payload.data.entries[0].occurredOn, statementCutoff)
+  assert.equal(statementRegister.payload.data.entries[0].runningBalanceMinor, 188_000)
+  assert.equal(
+    statementRegister.payload.data.entries.some(({ sourceId }) => (
+      sourceId === statementTransactionBodies[0].id || sourceId === statementTransactionBodies[5].id
+    )),
+    false,
+  )
+  const statementRegisterTransfer = statementRegister.payload.data.entries.find(
+    ({ sourceId }) => sourceId === statementTransferBody.id,
+  )
+  assert(statementRegisterTransfer)
+  assert.equal(statementRegisterTransfer.amountMinor, -4_000)
+  assert.equal(statementRegisterTransfer.cleared, false)
+  assert.equal(statementRegisterTransfer.transferDirection, 'out')
+  assert.equal(statementRegisterTransfer.counterpartyAccountName, transferDestination.name)
+
+  const statementTransactionsQuery = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: {
+      month,
+      scope: 'range',
+      dateFrom: statementDateFrom,
+      dateTo: statementCutoff,
+      accountId: statementAccount.id,
+      sort: 'date_desc',
+    },
+  })
+  assert.equal(statementTransactionsQuery.response.status, 200)
+  assert.deepEqual(
+    new Set(statementTransactionsQuery.payload.data.transactions.map(({ id }) => id)),
+    new Set(statementTransactionBodies.slice(1, 5).map(({ id }) => id)),
+  )
+  const statementTransfersQuery = await api(baseUrl, `/api/transfers?${statementQuery}`)
+  assert.equal(statementTransfersQuery.response.status, 200)
+  assert.deepEqual(statementTransfersQuery.payload.data.map(({ id }) => id), [statementTransferBody.id])
+
+  const rangeIncludingOpening = await api(
+    baseUrl,
+    `/api/accounts/register?dateFrom=${statementBeforeOpening}&dateTo=${statementCutoff}&accountId=${statementAccount.id}`,
+  )
+  assert.equal(rangeIncludingOpening.response.status, 200)
+  assert.equal(rangeIncludingOpening.payload.data.startingBalanceMinor, null)
+  assert.equal(rangeIncludingOpening.payload.data.availableFrom, statementDateFrom)
+  assert.equal(rangeIncludingOpening.payload.data.entryCount, 6)
+  assert.equal(
+    rangeIncludingOpening.payload.data.entries.at(-1).kind,
+    'opening',
+  )
+  assert.equal(rangeIncludingOpening.payload.data.entries.at(-1).amountMinor, 200_000)
+  const rangeBeforeOpening = await api(
+    baseUrl,
+    `/api/accounts/register?dateFrom=${shiftCalendarMonth(month, -1)}-01&dateTo=${statementBeforeOpening}&accountId=${statementAccount.id}`,
+  )
+  assert.equal(rangeBeforeOpening.response.status, 200)
+  assert.equal(rangeBeforeOpening.payload.data.endingBalanceMinor, null)
+  assert.equal(rangeBeforeOpening.payload.data.clearedEndingBalanceMinor, null)
+  assert.equal(rangeBeforeOpening.payload.data.unclearedEndingBalanceMinor, null)
+  assert.equal(rangeBeforeOpening.payload.data.unclearedCount, null)
+  assert.equal(rangeBeforeOpening.payload.data.entryCount, 0)
+
+  for (const path of [
+    `/api/accounts/register?dateFrom=${statementDateFrom}&accountId=${statementAccount.id}`,
+    `/api/accounts/register?dateFrom=${statementCutoff}&dateTo=${statementDateFrom}&accountId=${statementAccount.id}`,
+    `/api/accounts/register?month=${month}&dateFrom=${statementDateFrom}&dateTo=${statementCutoff}&accountId=${statementAccount.id}`,
+    `/api/accounts/register?dateFrom=${statementDateFrom}&dateFrom=${statementDateFrom}&dateTo=${statementCutoff}&accountId=${statementAccount.id}`,
+  ]) {
+    const invalidStatementRegister = await api(baseUrl, path)
+    assert.equal(invalidStatementRegister.response.status, 400, path)
+    assert.equal(invalidStatementRegister.payload.error.code, 'INVALID_QUERY')
+  }
+  const missingStatementAccount = await api(
+    baseUrl,
+    `/api/accounts/register?dateFrom=${statementDateFrom}&dateTo=${statementCutoff}&accountId=999999`,
+  )
+  assert.equal(missingStatementAccount.response.status, 404)
+
+  const clearedStatementTransfer = await api(baseUrl, `/api/transfers/${statementTransferBody.id}`, {
+    method: 'PUT',
+    body: {
+      amountMinor: statementTransferBody.amountMinor,
+      currency: statementTransferBody.currency,
+      fromAccountId: statementTransferBody.fromAccountId,
+      toAccountId: statementTransferBody.toAccountId,
+      occurredOn: statementTransferBody.occurredOn,
+      fromCleared: true,
+      toCleared: true,
+      note: statementTransferBody.note,
+      updatedAt: statementTransfer.payload.data.updatedAt,
+    },
+  })
+  assert.equal(clearedStatementTransfer.response.status, 200)
+  const reconciledTransferRegister = await api(baseUrl, `/api/accounts/register?${statementQuery}`)
+  assert.equal(reconciledTransferRegister.payload.data.endingBalanceMinor, 188_000)
+  assert.equal(reconciledTransferRegister.payload.data.clearedEndingBalanceMinor, 186_000)
+  assert.equal(reconciledTransferRegister.payload.data.unclearedEndingBalanceMinor, 2_000)
+  assert.equal(reconciledTransferRegister.payload.data.unclearedCount, 2)
+
+  const outstandingTransaction = statementTransactions[2].payload.data
+  const clearedOutstandingTransaction = await api(
+    baseUrl,
+    `/api/transactions/${outstandingTransaction.id}`,
+    {
+      method: 'PUT',
+      body: {
+        type: outstandingTransaction.type,
+        amountMinor: outstandingTransaction.amountMinor,
+        currency: outstandingTransaction.currency,
+        accountId: outstandingTransaction.accountId,
+        categoryId: outstandingTransaction.categoryId,
+        occurredOn: outstandingTransaction.occurredOn,
+        cleared: true,
+        payee: outstandingTransaction.payee,
+        note: outstandingTransaction.note,
+        updatedAt: outstandingTransaction.updatedAt,
+      },
+    },
+  )
+  assert.equal(clearedOutstandingTransaction.response.status, 200)
+  const reconciledTransactionRegister = await api(baseUrl, `/api/accounts/register?${statementQuery}`)
+  assert.equal(reconciledTransactionRegister.payload.data.endingBalanceMinor, 188_000)
+  assert.equal(reconciledTransactionRegister.payload.data.clearedEndingBalanceMinor, 183_000)
+  assert.equal(reconciledTransactionRegister.payload.data.unclearedEndingBalanceMinor, 5_000)
+  assert.equal(reconciledTransactionRegister.payload.data.unclearedCount, 1)
+
+  const statementTransactionsForCleanup = statementTransactions.map(({ payload }) => payload.data)
+  statementTransactionsForCleanup[2] = clearedOutstandingTransaction.payload.data
+  const deletedStatementTransactions = await Promise.all(statementTransactionsForCleanup.map(
+    ({ id, updatedAt }) => api(baseUrl, `/api/transactions/${id}`, {
+      method: 'DELETE',
+      body: { updatedAt },
+    }),
+  ))
+  assert(deletedStatementTransactions.every(({ response }) => response.status === 200))
+  const deletedStatementTransfer = await api(baseUrl, `/api/transfers/${statementTransferBody.id}`, {
+    method: 'DELETE',
+    body: { updatedAt: clearedStatementTransfer.payload.data.updatedAt },
+  })
+  assert.equal(deletedStatementTransfer.response.status, 200)
+  const zeroedStatementAccount = await api(baseUrl, `/api/accounts/${statementAccount.id}`, {
+    method: 'PUT',
+    body: {
+      name: statementAccount.name,
+      type: statementAccount.type,
+      openingBalanceMinor: 0,
+      openingBalanceOn: statementAccount.openingBalanceOn,
+      updatedAt: statementAccount.updatedAt,
+    },
+  })
+  assert.equal(zeroedStatementAccount.response.status, 200)
+  const disabledStatementAccount = await api(baseUrl, `/api/accounts/${statementAccount.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: zeroedStatementAccount.payload.data.updatedAt },
+  })
+  assert.equal(disabledStatementAccount.response.status, 200)
 
   const temporaryTransferBody = {
     ...transferBody,
@@ -4187,8 +4481,8 @@ async function verifyWorkerApi() {
     accountTransferFilterQueries: 3,
     accountBalanceQueries: 3,
     accountBalanceGuards: 3,
-    accountRegisterQueries: 4,
-    accountRegisterGuards: 4,
+    accountRegisterQueries: 9,
+    accountRegisterGuards: 9,
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
     ledgerBackupTables: 7,

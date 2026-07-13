@@ -1,11 +1,12 @@
 import 'server-only'
 
 import type { SupportedCurrency } from '../lib/currency'
-import { monthRangeDates } from '../lib/date'
+import { inclusiveMonthRangeDates } from '../lib/date'
 import type {
   AccountLocalizationKey,
   AccountTransfer,
   AccountTransferInput,
+  AccountTransferQuery,
   AccountTransferUpdateInput,
 } from '../lib/schema'
 
@@ -73,13 +74,15 @@ const accountTransferSelect = `
 
 export async function listAccountTransfers(
   database: D1Database,
-  query: { month: string; accountId?: number },
+  query: AccountTransferQuery,
 ): Promise<AccountTransfer[]> {
-  const { start, end } = monthRangeDates(query.month)
+  const { start, end } = 'month' in query
+    ? inclusiveMonthRangeDates(query.month)
+    : { start: query.dateFrom, end: query.dateTo }
   const accountId = query.accountId ?? null
   const result = await database.prepare(`
     ${accountTransferSelect}
-    WHERE transfer.occurred_on >= ? AND transfer.occurred_on < ?
+    WHERE transfer.occurred_on >= ? AND transfer.occurred_on <= ?
       AND (? IS NULL OR transfer.from_account_id = ? OR transfer.to_account_id = ?)
     ORDER BY transfer.occurred_on DESC, transfer.created_at DESC, transfer.id DESC
     LIMIT 200

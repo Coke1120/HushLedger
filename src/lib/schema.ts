@@ -141,19 +141,31 @@ export const accountTransferUpdateSchema = z
 
 export const accountTransferDeleteSchema = transactionDeleteSchema
 
-export const accountTransferQuerySchema = z
-  .object({
-    month: z.string().refine((value) => {
-      try {
-        monthRangeDates(value)
-        return true
-      } catch {
-        return false
-      }
-    }, '月份格式必須為有效的 YYYY-MM'),
-    accountId: z.coerce.number().int().positive().optional(),
-  })
-  .strict()
+const accountTransferMonthQuerySchema = z.object({
+  month: z.string().refine((value) => {
+    try {
+      monthRangeDates(value)
+      return true
+    } catch {
+      return false
+    }
+  }, '月份格式必須為有效的 YYYY-MM'),
+  accountId: z.coerce.number().int().positive().optional(),
+}).strict()
+
+const accountTransferRangeQuerySchema = z.object({
+  dateFrom: calendarDateSchema,
+  dateTo: calendarDateSchema,
+  accountId: z.coerce.number().int().positive().optional(),
+}).strict().refine(({ dateFrom, dateTo }) => dateFrom <= dateTo, {
+  path: ['dateTo'],
+  message: '結束日期不得早於開始日期',
+})
+
+export const accountTransferQuerySchema = z.union([
+  accountTransferMonthQuerySchema,
+  accountTransferRangeQuerySchema,
+])
 
 export const transactionQueryFieldsSchema = z
   .object({
@@ -211,6 +223,7 @@ export type TransactionClearingBatchInput = z.infer<typeof transactionClearingBa
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
 export type AccountTransferUpdateInput = z.infer<typeof accountTransferUpdateSchema>
+export type AccountTransferQuery = z.infer<typeof accountTransferQuerySchema>
 
 const referenceNameSchema = z.string().trim().min(1).max(80)
 const expectedLedgerCurrencySchema = supportedCurrencySchema.default(DEFAULT_LEDGER_CURRENCY)
@@ -598,9 +611,14 @@ export type AccountRegister = {
   accountName: string
   accountLocalizationKey: AccountLocalizationKey | null
   month: string
+  dateFrom: string
+  dateTo: string
   availableFrom: string | null
   startingBalanceMinor: number | null
   endingBalanceMinor: number | null
+  clearedEndingBalanceMinor: number | null
+  unclearedEndingBalanceMinor: number | null
+  unclearedCount: number | null
   entryCount: number
   entries: AccountRegisterEntry[]
 }
