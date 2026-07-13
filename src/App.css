@@ -1363,6 +1363,11 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.recurring-forecast-row .category-spending-name .recurring-forecast-reference {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .recurring-forecast-row .category-spending-amount strong.expense {
   color: var(--expense);
 }

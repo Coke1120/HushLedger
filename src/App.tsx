@@ -564,6 +564,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 <RecurringForecast
                   key={month}
                   summary={data.summary}
+                  accounts={data.accounts}
+                  categories={data.categories}
                   loading={loading}
                   onManage={openRecurringRules}
                 />

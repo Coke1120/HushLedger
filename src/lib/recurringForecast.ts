@@ -12,6 +12,8 @@ export type RecurringForecastRule = {
   type: TransactionType
   amountMinor: number
   payee: string
+  accountId?: number
+  categoryId?: number
   frequency: RecurrenceFrequency
   nextOccurrenceOn: string
   anchorDay: number
@@ -36,6 +38,8 @@ export type RecurringForecastOccurrence = {
   type: TransactionType
   amountMinor: number
   payee: string
+  accountId?: number
+  categoryId?: number
   frequency: RecurrenceFrequency
   occurrenceOn: string
 }
@@ -70,6 +74,8 @@ export function recurringForecastOccurrences(
     type: rule.type,
     amountMinor: rule.amountMinor,
     payee: rule.payee,
+    ...(rule.accountId === undefined ? {} : { accountId: rule.accountId }),
+    ...(rule.categoryId === undefined ? {} : { categoryId: rule.categoryId }),
     frequency: rule.frequency,
     occurrenceOn,
   }))).sort((left, right) => (
@@ -164,6 +170,8 @@ export function recurringForecastForMonth(
       type: rule.type,
       amountMinor: rule.amountMinor,
       payee: rule.payee,
+      ...(rule.accountId === undefined ? {} : { accountId: rule.accountId }),
+      ...(rule.categoryId === undefined ? {} : { categoryId: rule.categoryId }),
       frequency: rule.frequency,
       firstOccurrenceOn,
       occurrenceCount,

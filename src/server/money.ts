@@ -923,6 +923,8 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         type,
         amount_minor AS amountMinor,
         payee,
+        account_id AS accountId,
+        category_id AS categoryId,
         frequency,
         next_occurrence_on AS nextOccurrenceOn,
         anchor_day AS anchorDay

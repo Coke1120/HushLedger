@@ -522,6 +522,10 @@ export type ScheduledRecurringSummary = {
   type: TransactionType
   amountMinor: number
   payee: string
+  /** Missing only when a cached newer app shell reads an older API response. */
+  accountId?: number
+  /** Missing only when a cached newer app shell reads an older API response. */
+  categoryId?: number
   frequency: RecurrenceFrequency
   firstOccurrenceOn: string
   occurrenceCount: number

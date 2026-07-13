@@ -49,7 +49,8 @@ knowledge and explains every command and dashboard click.
   guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
   generated, expanded into an exact chronological list of every scheduled date
-  with rule name, optional payee, amount, and income/expense label. A fixed
+  with rule name, optional payee, account, category, amount, and
+  income/expense label. A fixed
   day-1-anchored weekly view groups those exact dates into seven-day scheduled
   income, expense, and net periods, including zero periods and a final period
   that may be shorter. Longer lists can be expanded without changing the exact totals.

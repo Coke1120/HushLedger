@@ -1,5 +1,5 @@
 import { CalendarClock, Repeat2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import {
   recurringForecastOccurrences,
@@ -10,8 +10,16 @@ import type { Summary } from '../lib/schema'
 
 type RecurringForecastProps = {
   summary: Summary
+  accounts: readonly ForecastReference[]
+  categories: readonly ForecastReference[]
   loading: boolean
   onManage: () => void
+}
+
+type ForecastReference = {
+  id: number
+  name: string
+  localizationKey: string | null
 }
 
 const visibleOccurrenceLimit = 6
@@ -27,9 +35,23 @@ function previousCalendarDate(date: string) {
   return previous.toISOString().slice(0, 10)
 }
 
-export function RecurringForecast({ summary, loading, onManage }: RecurringForecastProps) {
-  const { formatDate, formatMoney, privacyMode, t } = useI18n()
+export function RecurringForecast({
+  summary,
+  accounts,
+  categories,
+  loading,
+  onManage,
+}: RecurringForecastProps) {
+  const { formatDate, formatMoney, localizeEntityName, privacyMode, t } = useI18n()
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  const accountsById = useMemo(
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts],
+  )
+  const categoriesById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  )
   const showAll = expandedMonth === summary.month
   const occurrences = recurringForecastOccurrences(summary.recurringForecast)
   const hiddenOccurrenceCount = Math.max(0, occurrences.length - visibleOccurrenceLimit)
@@ -148,6 +170,29 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
             {visibleOccurrences.map((occurrence) => {
               const date = formatDate(occurrence.occurrenceOn)
               const amount = formatMoney(occurrence.amountMinor)
+              const hasReferenceContext = occurrence.accountId !== undefined
+                && occurrence.categoryId !== undefined
+              const account = occurrence.accountId === undefined
+                ? undefined
+                : accountsById.get(occurrence.accountId)
+              const category = occurrence.categoryId === undefined
+                ? undefined
+                : categoriesById.get(occurrence.categoryId)
+              const accountName = account
+                ? localizeEntityName(account.name, account.localizationKey)
+                : t('unknownAccount')
+              const categoryName = category
+                ? localizeEntityName(category.name, category.localizationKey)
+                : t('unknownCategory')
+              const referenceContext = hasReferenceContext
+                ? `${accountName} · ${categoryName}`
+                : null
+              const manageLabel = t('manageScheduledRule', {
+                name: occurrence.name,
+                date,
+                amount,
+                type: t(occurrence.type),
+              })
 
               return (
                 <li key={`${occurrence.recurringRuleId}:${occurrence.occurrenceOn}`}>
@@ -155,12 +200,9 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
                     className="category-spending-row recurring-forecast-row"
                     type="button"
                     onClick={onManage}
-                    aria-label={t('manageScheduledRule', {
-                      name: occurrence.name,
-                      date,
-                      amount,
-                      type: t(occurrence.type),
-                    })}
+                    aria-label={referenceContext
+                      ? `${manageLabel} ${t('accountAndCategory')}: ${referenceContext}.`
+                      : manageLabel}
                   >
                     <span className="category-spending-name">
                       <span
@@ -176,6 +218,9 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
                           {occurrence.payee ? ` · ${occurrence.payee}` : ''}
                           {' · '}{t(occurrence.frequency)}
                         </small>
+                        {referenceContext ? (
+                          <small className="recurring-forecast-reference">{referenceContext}</small>
+                        ) : null}
                       </span>
                     </span>
                     <span className="category-spending-amount">

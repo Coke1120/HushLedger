@@ -44,7 +44,12 @@ const unsafeSummary: Summary = {
   ],
 }
 
-function renderForecast(privacyMode: boolean) {
+function renderForecast(
+  privacyMode: boolean,
+  summary: Summary = unsafeSummary,
+  accounts: ReadonlyArray<{ id: number; name: string; localizationKey: string | null }> = [],
+  categories: ReadonlyArray<{ id: number; name: string; localizationKey: string | null }> = [],
+) {
   const context: I18nContextValue = {
     locale: 'en',
     setLocale: () => undefined,
@@ -69,7 +74,9 @@ function renderForecast(privacyMode: boolean) {
     I18nContext.Provider,
     { value: context },
     createElement(RecurringForecast, {
-      summary: unsafeSummary,
+      summary,
+      accounts,
+      categories,
       loading: false,
       onManage: () => undefined,
     }),
@@ -98,5 +105,51 @@ describe('recurring forecast privacy rendering', () => {
     assert.equal(periodTotalsCount(markup), 4)
     assert.doesNotMatch(markup, /class="recurring-forecast-totals"/)
     assert.match(markup, /Scheduled totals for this period are outside/)
+  })
+
+  it('adds existing account and category context without breaking older API responses', () => {
+    const contextualSummary: Summary = {
+      ...unsafeSummary,
+      recurringForecast: [{
+        ...unsafeSummary.recurringForecast[0],
+        amountMinor: 8_000,
+        payee: 'Provider Ltd',
+        accountId: 2,
+        categoryId: 7,
+      }],
+    }
+    const accounts = [{
+      id: 2,
+      name: 'Renamed everyday account',
+      localizationKey: null,
+      isActive: false,
+    }]
+    const categories = [{
+      id: 7,
+      name: 'Renamed utilities',
+      localizationKey: null,
+      isActive: false,
+    }]
+    const markup = renderForecast(false, contextualSummary, accounts, categories)
+    const privateMarkup = renderForecast(true, contextualSummary, accounts, categories)
+    const missingReferencesMarkup = renderForecast(false, contextualSummary)
+    const partialContextMarkup = renderForecast(false, {
+      ...contextualSummary,
+      recurringForecast: [{
+        ...contextualSummary.recurringForecast[0],
+        categoryId: undefined,
+      }],
+    }, accounts, categories)
+    const olderApiMarkup = renderForecast(false)
+
+    assert.match(markup, /dateTime="2026-07-01">2026-07-01<\/time> · Provider Ltd · Monthly/)
+    assert.match(markup, /Renamed everyday account · Renamed utilities/)
+    assert.match(markup, /aria-label="Manage First large entry:[^"]*Account \/ category: Renamed everyday account · Renamed utilities\."/)
+    assert.match(privateMarkup, /aria-label="Manage First large entry:[^"]*HK\$••••[^"]*Renamed everyday account · Renamed utilities/)
+    assert.match(privateMarkup, /HK\$••••/)
+    assert.doesNotMatch(privateMarkup, /HK\$80\.00/)
+    assert.match(missingReferencesMarkup, /Unknown account · Unknown category/)
+    assert.doesNotMatch(partialContextMarkup, /recurring-forecast-reference/)
+    assert.doesNotMatch(olderApiMarkup, /Unknown account|Unknown category|recurring-forecast-reference/)
   })
 })

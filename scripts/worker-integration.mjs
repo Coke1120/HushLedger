@@ -3172,6 +3172,8 @@ async function verifyWorkerApi() {
     type: 'income',
     amountMinor: 456,
     payee: 'integration employer',
+    accountId: account.id,
+    categoryId: incomeCategory.id,
     frequency: 'monthly',
     firstOccurrenceOn: today,
     occurrenceCount: 1,
