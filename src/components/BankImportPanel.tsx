@@ -415,6 +415,8 @@ export function BankImportPanel({
               maxLength={MAX_AI_STATEMENT_BYTES}
               autoComplete="off"
               spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="none"
               aria-describedby="ai-statement-help"
               required
             />
@@ -548,6 +550,7 @@ export function BankImportPanel({
                         onChange={(event) => updateDraftAmount(draft, event.target.value)}
                         inputMode="decimal"
                         maxLength={32}
+                        autoComplete="off"
                         aria-invalid={!validAmount}
                         aria-describedby={!validAmount ? `${draft.id}-amount-error` : undefined}
                       />

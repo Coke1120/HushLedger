@@ -236,7 +236,17 @@ export function AccountTransferDialog({
             </div>
             <label>
               <span>{t('noteOptional')}</span>
-              <textarea name="note" maxLength={200} rows={2} defaultValue={transfer?.note} placeholder={t('transferNotePlaceholder')} />
+              <textarea
+                name="note"
+                maxLength={200}
+                rows={2}
+                autoComplete="off"
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="none"
+                defaultValue={transfer?.note}
+                placeholder={t('transferNotePlaceholder')}
+              />
             </label>
             {error ? <p className="form-error" id="transfer-form-error" role="alert">{error}</p> : null}
             {!available ? <p className="offline-form-note">{t('transferUnavailable')}</p> : null}

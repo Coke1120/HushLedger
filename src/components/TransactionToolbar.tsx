@@ -132,6 +132,10 @@ export function TransactionToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t('searchTransactions')}
           maxLength={80}
+          autoComplete="off"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="none"
         />
       </label>
       {payeeFilter || tagFilter ? (

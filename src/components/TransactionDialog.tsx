@@ -494,6 +494,10 @@ export function TransactionDialog({
             <input
               name="payee"
               maxLength={80}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="none"
               value={payee}
               onChange={(event) => {
                 const nextPayee = event.target.value
@@ -527,6 +531,10 @@ export function TransactionDialog({
               name="note"
               maxLength={200}
               rows={2}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="none"
               defaultValue={initialTransaction?.note}
               placeholder={t('notePlaceholder')}
               aria-describedby="transaction-note-help"

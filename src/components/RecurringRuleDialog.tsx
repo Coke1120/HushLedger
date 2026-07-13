@@ -351,7 +351,17 @@ export function RecurringRuleDialog({
           </label>
           <label>
             <span>{t('noteOptional')}</span>
-            <textarea name="note" maxLength={200} rows={2} defaultValue={initialRule?.note ?? ''} placeholder={t('notePlaceholder')} />
+            <textarea
+              name="note"
+              maxLength={200}
+              rows={2}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="none"
+              defaultValue={initialRule?.note ?? ''}
+              placeholder={t('notePlaceholder')}
+            />
           </label>
 
           <label className="active-toggle">

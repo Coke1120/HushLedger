@@ -189,6 +189,7 @@ export function AccountRegister({
                 value={statementValue}
                 onChange={(event) => setStatementValue(event.target.value)}
                 placeholder={t('statementBalancePlaceholder')}
+                autoComplete="off"
                 autoFocus
               />
             </label>
