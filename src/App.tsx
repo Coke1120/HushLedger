@@ -41,6 +41,8 @@ import {
 } from './lib/reconciliation'
 import {
   addSavedTransactionView,
+  applySavedTransactionViewsStorageChange,
+  forgetSavedTransactionViews,
   parseSavedTransactionViews,
   SAVED_TRANSACTION_VIEWS_STORAGE_KEY,
   serializeSavedTransactionViews,
@@ -336,9 +338,11 @@ function App({ initialMonth }: { initialMonth: string }) {
   }, [changeView])
 
   const handleLedgerRestored = useCallback(async () => {
+    setSavedTransactionViews([])
+    const savedViewsCleared = forgetSavedTransactionViews(() => window.localStorage)
     const refreshed = await refreshMoneyData(false)
     setLedgerGeneration((generation) => generation + 1)
-    return refreshed
+    return { refreshed, savedViewsCleared }
   }, [refreshMoneyData])
 
   const storeSavedTransactionViews = useCallback(
@@ -433,7 +437,25 @@ function App({ initialMonth }: { initialMonth: string }) {
         // Saved views are optional when browser storage is unavailable.
       }
     }, 0)
-    return () => window.clearTimeout(timeout)
+    const syncSavedTransactionViews = (event: StorageEvent) => {
+      let localStorage: Storage
+      try {
+        localStorage = window.localStorage
+      } catch {
+        return
+      }
+      if (event.storageArea !== localStorage) return
+      setSavedTransactionViews((current) => applySavedTransactionViewsStorageChange(
+        current,
+        event.key,
+        event.newValue,
+      ))
+    }
+    window.addEventListener('storage', syncSavedTransactionViews)
+    return () => {
+      window.clearTimeout(timeout)
+      window.removeEventListener('storage', syncSavedTransactionViews)
+    }
   }, [])
 
   useEffect(() => {

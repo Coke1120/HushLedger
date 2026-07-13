@@ -6,7 +6,10 @@ import type { LedgerCurrencySettings } from '../lib/currency'
 import type { Account, Category, EmergencyFundGoal } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
 import { EmergencyFundSettings } from './EmergencyFundSettings'
-import { LedgerBackupSettings } from './LedgerBackupSettings'
+import {
+  LedgerBackupSettings,
+  type LedgerRestoredResult,
+} from './LedgerBackupSettings'
 import { LedgerCurrencySettingsPanel } from './LedgerCurrencySettings'
 import { ReferenceDataSettings } from './ReferenceDataSettings'
 import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
@@ -33,7 +36,7 @@ type SettingsPageProps = {
   ledgerSettings: LedgerCurrencySettings
   canManageReferences: boolean
   onReferenceRefresh: () => Promise<boolean>
-  onLedgerRestored: () => Promise<boolean>
+  onLedgerRestored: () => Promise<LedgerRestoredResult>
 }
 
 export function SettingsPage({

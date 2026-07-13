@@ -387,6 +387,14 @@ Restore is preview-first:
    seven ledger collections in one D1 transaction. A stale preview or any
    constraint failure writes nothing.
 
+After a successful replacement, HushLedger removes saved transaction views from
+that browser and synchronizes the removal to other open tabs, so payee, search,
+tag, account, and category filters from the previous ledger cannot be applied to
+unrelated restored data. Other browser-only preferences remain unchanged. If the
+browser refuses the cleanup, the committed restore remains intact and HushLedger
+warns the user to clear the site's browser data before reloading or reusing saved
+views.
+
 The in-app format is for practical personal-ledger portability. The running build
 writes schema 14 and accepts schemas 8 through 14. Schema 8 through schema 13
 backups upgrade to HKD; schema 8 through schema 12 also upgrade without inventing

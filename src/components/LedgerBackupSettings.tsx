@@ -30,9 +30,14 @@ import {
 } from '../lib/ledgerBackupHealth'
 import { ApiError, api } from '../lib/api'
 
+export type LedgerRestoredResult = {
+  refreshed: boolean
+  savedViewsCleared: boolean
+}
+
 type LedgerBackupSettingsProps = {
   available: boolean
-  onRestored: () => Promise<boolean>
+  onRestored: () => Promise<LedgerRestoredResult>
 }
 
 type BusyAction = 'download' | 'preview' | 'restore' | null
@@ -236,9 +241,15 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
           confirmation: LEDGER_BACKUP_CONFIRMATION,
         }),
       })
-      const refreshed = await onRestored()
+      const { refreshed, savedViewsCleared } = await onRestored()
       resetRestore()
-      setStatusKey(refreshed ? 'ledgerRestoreSuccess' : 'ledgerRestoreRefreshFailed')
+      if (savedViewsCleared) {
+        setStatusKey(refreshed ? 'ledgerRestoreSuccess' : 'ledgerRestoreRefreshFailed')
+      } else {
+        setErrorKey(refreshed
+          ? 'ledgerRestoreSavedViewsRemain'
+          : 'ledgerRestoreRefreshAndSavedViewsRemain')
+      }
     } catch (error) {
       setErrorKey(restoreErrorKey(error))
       if (error instanceof ApiError && error.code === 'BACKUP_PREVIEW_STALE') {

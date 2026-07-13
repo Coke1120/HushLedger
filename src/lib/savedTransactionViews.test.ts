@@ -2,8 +2,11 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   addSavedTransactionView,
+  applySavedTransactionViewsStorageChange,
+  forgetSavedTransactionViews,
   MAX_SAVED_TRANSACTION_VIEWS,
   parseSavedTransactionViews,
+  SAVED_TRANSACTION_VIEWS_STORAGE_KEY,
   serializeSavedTransactionViews,
   type SavedTransactionView,
 } from './savedTransactionViews'
@@ -152,5 +155,34 @@ describe('saved transaction views', () => {
 
   it('serializes only the bounded validated shape', () => {
     assert.deepEqual(parseSavedTransactionViews(serializeSavedTransactionViews([validView])), [validView])
+  })
+
+  it('forgets ledger-scoped views without depending on browser storage availability', () => {
+    let removedKey = ''
+    assert.equal(forgetSavedTransactionViews(() => ({
+      removeItem(key) {
+        removedKey = key
+      },
+    })), true)
+    assert.equal(removedKey, SAVED_TRANSACTION_VIEWS_STORAGE_KEY)
+    assert.equal(forgetSavedTransactionViews(() => {
+      throw new Error('Storage unavailable')
+    }), false)
+  })
+
+  it('synchronizes saved-view removals and replacements from other tabs', () => {
+    assert.deepEqual(
+      applySavedTransactionViewsStorageChange([validView], SAVED_TRANSACTION_VIEWS_STORAGE_KEY, null),
+      [],
+    )
+    assert.deepEqual(
+      applySavedTransactionViewsStorageChange([], SAVED_TRANSACTION_VIEWS_STORAGE_KEY, JSON.stringify([validView])),
+      [validView],
+    )
+    assert.equal(
+      applySavedTransactionViewsStorageChange([validView], 'unrelated', null)[0],
+      validView,
+    )
+    assert.deepEqual(applySavedTransactionViewsStorageChange([validView], null, null), [])
   })
 })

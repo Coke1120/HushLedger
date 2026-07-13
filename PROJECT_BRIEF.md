@@ -389,7 +389,8 @@ reminder does not prove that a backup file was retained off-platform.
 - Preview-first HushLedger and mapped-bank CSV import that defaults possible
   duplicates to unselected and never sends the source file to an AI provider.
 - Preview-first full-ledger restore with visible replacement counts, typed
-  destructive confirmation, and no partial-write path.
+  destructive confirmation, no partial-write path, and removal of saved transaction
+  views that belonged to the replaced ledger.
 - Semantic HTML, visible focus, keyboard navigation, focus restore, disclosed
   context-local shortcuts, 44 px touch targets, sufficient contrast, and
   field-linked errors.

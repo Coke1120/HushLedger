@@ -11,6 +11,28 @@ import { isTransactionTagName } from './transactionTags'
 export const SAVED_TRANSACTION_VIEWS_STORAGE_KEY = 'hushledger:transaction-views:v1'
 export const MAX_SAVED_TRANSACTION_VIEWS = 8
 
+export function forgetSavedTransactionViews(
+  storageProvider: () => Pick<Storage, 'removeItem'>,
+) {
+  try {
+    storageProvider().removeItem(SAVED_TRANSACTION_VIEWS_STORAGE_KEY)
+    return true
+  } catch {
+    // The in-memory views can still be cleared when browser storage is unavailable.
+    return false
+  }
+}
+
+export function applySavedTransactionViewsStorageChange(
+  current: SavedTransactionView[],
+  key: string | null,
+  newValue: string | null,
+) {
+  if (key === null) return []
+  if (key !== SAVED_TRANSACTION_VIEWS_STORAGE_KEY) return current
+  return parseSavedTransactionViews(newValue)
+}
+
 const savedTransactionViewSchema = z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1).max(40),
