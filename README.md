@@ -47,6 +47,10 @@ knowledge and explains every command and dashboard click.
   month. An optional dated opening balance anchors incomplete history, and an
   in-app statement comparison shows the exact difference without locking or
   changing transactions.
+- A six-month recorded net-worth trend across every active and inactive account,
+  including negative debts. Months with unknown pre-opening history are marked
+  unavailable instead of silently omitting an account, and selecting a month
+  opens that month throughout the overview.
 - Record money moved between two accounts as one atomic transfer with independent
   source and destination posting states. Transfers stay outside income, expense,
   balance, category, plan, trend, and CSV transaction reports, so withdrawals and
@@ -164,6 +168,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   the selected month-end cutoff. Cleared balances include only posted movements;
   the statement comparison is read-only and does not claim an irreversible
   reconciliation lock.
+- Recorded net worth is the exact sum of all available signed account balances at
+  each month end. Transfers therefore have zero net effect. If any account balance
+  is unavailable for a month, the complete net-worth point is unavailable too.
 - CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
@@ -403,7 +410,9 @@ and upgraded migration paths and verifies the
 App Router shell, privacy-safe PWA assets, security headers, API contracts,
 configured Cron schedule, reference-data lifecycle and safety guards,
 recurring-rule CRUD, race-safe idempotency, and history preservation. It proves
-that a filtered CSV export is not truncated by the interactive 200-row limit. It
+that transfers leave total net worth unchanged, incomplete opening-balance
+history is exposed, and a filtered CSV export is not truncated by the interactive
+200-row limit. It
 also starts local Next.js with a fake
 OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
@@ -458,6 +467,7 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 GET    /api/health
 GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
+GET    /api/reports/net-worth?month=YYYY-MM  (six complete-or-unavailable month-end net-worth points)
 POST   /api/accounts
 PATCH  /api/accounts  (reorder one complete active/inactive group)
 GET    /api/accounts/:id

@@ -525,6 +525,152 @@ textarea:focus-visible {
   background: #e7f1f5;
 }
 
+.net-worth-heading-icon {
+  color: #426854;
+  background: #e7f2eb;
+}
+
+.net-worth-summary {
+  display: grid;
+  padding: 0;
+  margin: 0 0 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.net-worth-summary > div {
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.net-worth-summary > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.net-worth-summary dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.net-worth-summary dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.net-worth-summary dd.is-positive {
+  color: var(--income);
+}
+
+.net-worth-summary dd.is-negative {
+  color: var(--expense);
+}
+
+.net-worth-trend-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.net-worth-trend-list li {
+  border-bottom: 1px solid var(--line);
+}
+
+.net-worth-trend-list button {
+  display: grid;
+  width: 100%;
+  min-height: 47px;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  grid-template-columns: minmax(48px, auto) minmax(100px, 1fr) minmax(110px, auto);
+  gap: 14px;
+  align-items: center;
+  text-align: left;
+}
+
+.net-worth-trend-list button:hover,
+.net-worth-trend-list button:focus-visible,
+.net-worth-trend-list button.is-selected {
+  background: var(--surface-soft);
+}
+
+.net-worth-trend-list button.is-selected time {
+  color: var(--brand-strong);
+}
+
+.net-worth-trend-list time,
+.net-worth-trend-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.net-worth-trend-list time {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.net-worth-trend-list strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.net-worth-bar-track {
+  position: relative;
+  display: block;
+  height: 20px;
+  background: linear-gradient(
+    to right,
+    transparent calc(50% - 0.5px),
+    var(--line-strong) calc(50% - 0.5px),
+    var(--line-strong) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+}
+
+.net-worth-bar {
+  position: absolute;
+  top: 6px;
+  display: block;
+  height: 8px;
+  border-radius: 5px;
+}
+
+.net-worth-bar.is-positive {
+  background: #83b69b;
+}
+
+.net-worth-bar.is-negative {
+  background: #d49a94;
+}
+
+.net-worth-bar.is-private {
+  background: var(--line-strong);
+}
+
+.net-worth-history-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .account-balances-list {
   padding: 0;
   margin: 0;
@@ -4582,6 +4728,30 @@ textarea:focus-visible {
 
   .spending-trend-bar {
     width: min(32px, 72%);
+  }
+
+  .net-worth-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .net-worth-summary > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .net-worth-trend-list button {
+    grid-template-columns: minmax(48px, auto) minmax(0, 1fr);
+    gap: 5px 12px;
+  }
+
+  .net-worth-bar-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .net-worth-trend-list strong {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .category-spending-row {

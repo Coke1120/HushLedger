@@ -445,6 +445,13 @@ export type AccountBalance = {
   unclearedBalance: number | null
 }
 
+export type NetWorthTrendPoint = {
+  month: string
+  netWorthMinor: number | null
+  accountCount: number
+  unavailableAccountCount: number
+}
+
 export type Category = {
   id: number
   name: string

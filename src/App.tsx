@@ -13,6 +13,7 @@ import { CsvImportPanel } from './components/CsvImportPanel'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
+import { NetWorthTrend } from './components/NetWorthTrend'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
 import { RecurringForecast } from './components/RecurringForecast'
 import { SavedTransactionViews } from './components/SavedTransactionViews'
@@ -363,6 +364,12 @@ function App({ initialMonth }: { initialMonth: string }) {
                   balances={data.accountBalances}
                   month={month}
                   loading={loading}
+                />
+                <NetWorthTrend
+                  points={data.netWorthTrend}
+                  month={month}
+                  loading={loading}
+                  onSelectMonth={setMonth}
                 />
                 <SpendingTrend
                   summary={data.summary}

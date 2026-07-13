@@ -1000,6 +1000,36 @@ async function verifyWorkerApi() {
   assert.equal(sourceBalanceBefore.clearedBalance, 100_000)
   assert.equal(sourceBalanceBefore.unclearedBalance, 0)
 
+  const invalidNetWorthMonth = await api(baseUrl, '/api/reports/net-worth?month=2026-13')
+  assert.equal(invalidNetWorthMonth.response.status, 400)
+  assert.equal(invalidNetWorthMonth.payload.error.code, 'INVALID_QUERY')
+  const duplicateNetWorthMonth = await api(
+    baseUrl,
+    `/api/reports/net-worth?month=${month}&month=${month}`,
+  )
+  assert.equal(duplicateNetWorthMonth.response.status, 400)
+  const rejectedNetWorthWrite = await api(baseUrl, `/api/reports/net-worth?month=${month}`, {
+    method: 'POST',
+    body: {},
+  })
+  assert.equal(rejectedNetWorthWrite.response.status, 404)
+  const netWorthBeforeTransfer = await api(baseUrl, `/api/reports/net-worth?month=${month}`)
+  assert.equal(netWorthBeforeTransfer.response.status, 200, JSON.stringify(netWorthBeforeTransfer.payload))
+  assert.equal(netWorthBeforeTransfer.payload.data.length, 6)
+  const currentNetWorthBefore = netWorthBeforeTransfer.payload.data.at(-1)
+  assert.equal(currentNetWorthBefore.month, month)
+  assert.equal(currentNetWorthBefore.accountCount, balancesBeforeTransfer.payload.data.length)
+  assert.equal(currentNetWorthBefore.unavailableAccountCount, 0)
+  assert.equal(
+    currentNetWorthBefore.netWorthMinor,
+    balancesBeforeTransfer.payload.data.reduce(
+      (total, balance) => total + balance.recordedBalance,
+      0,
+    ),
+  )
+  assert.equal(netWorthBeforeTransfer.payload.data[0].netWorthMinor, null)
+  assert(netWorthBeforeTransfer.payload.data[0].unavailableAccountCount >= 1)
+
   const summaryBeforeTransfer = await api(baseUrl, `/api/transactions/summary?month=${month}`)
   assert.equal(summaryBeforeTransfer.response.status, 200)
   const transferBody = {
@@ -1057,6 +1087,12 @@ async function verifyWorkerApi() {
   assert.equal(
     destinationWithUnclearedTransfer.clearedBalance,
     destinationBalanceBefore.clearedBalance,
+  )
+  const netWorthWithTransfer = await api(baseUrl, `/api/reports/net-worth?month=${month}`)
+  assert.equal(netWorthWithTransfer.response.status, 200)
+  assert.equal(
+    netWorthWithTransfer.payload.data.at(-1).netWorthMinor,
+    currentNetWorthBefore.netWorthMinor,
   )
 
   const repeatedTransfer = await api(baseUrl, '/api/transfers', {
@@ -2107,6 +2143,8 @@ async function verifyWorkerApi() {
     accountTransferGuards: 5,
     accountBalanceQueries: 3,
     accountBalanceGuards: 3,
+    netWorthTrendQueries: 2,
+    netWorthTrendGuards: 3,
     ledgerBackupTables: 6,
     ledgerSchema11Restores: 1,
     ledgerSchema10Restores: 1,

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { monthRangeDates, shiftMonth } from '../lib/date'
+import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import {
   recurringForecastForMonth,
   type RecurringForecastRule,
@@ -15,6 +16,7 @@ import type {
   ExpenseCategorySummary,
   MonthlySpendingSummary,
   MonthlySpendingPlanSummary,
+  NetWorthTrendPoint,
   PayeeSuggestion,
   Summary,
   Transaction,
@@ -154,14 +156,26 @@ export async function listAccounts(database: D1Database): Promise<Account[]> {
 }
 
 type AccountBalanceRow = Omit<AccountBalance, 'isActive'> & { isActive: number }
+type MonthlyAccountBalanceRow = AccountBalanceRow & { month: string }
 
-export async function listAccountBalances(
+async function listAccountBalancesByMonth(
   database: D1Database,
-  month: string,
-): Promise<AccountBalance[]> {
-  const { end } = monthRangeDates(month)
+  months: string[],
+): Promise<Map<string, AccountBalance[]>> {
+  const balancesByMonth = new Map(months.map((month) => [month, [] as AccountBalance[]]))
+  if (months.length === 0) return balancesByMonth
+
+  const ranges = months.map((month) => ({ month, end: monthRangeDates(month).end }))
+  const maxEnd = ranges.reduce(
+    (latest, range) => range.end > latest ? range.end : latest,
+    ranges[0]?.end ?? '',
+  )
+  const monthValues = ranges.map(() => '(?, ?)').join(', ')
+  const monthBindings = ranges.flatMap(({ month, end }) => [month, end])
   const result = await database.prepare(`
-    WITH movements AS (
+    WITH months(month, endDate) AS (
+      VALUES ${monthValues}
+    ), movements AS (
       SELECT
         account_id AS accountId,
         occurred_on AS occurredOn,
@@ -171,6 +185,7 @@ export async function listAccountBalances(
           ELSE 0
         END AS clearedAmount
       FROM transactions
+      WHERE occurred_on < ?
 
       UNION ALL
 
@@ -180,6 +195,7 @@ export async function listAccountBalances(
         -amount_minor AS recordedAmount,
         CASE WHEN from_cleared = 1 THEN -amount_minor ELSE 0 END AS clearedAmount
       FROM account_transfers
+      WHERE occurred_on < ?
 
       UNION ALL
 
@@ -189,26 +205,31 @@ export async function listAccountBalances(
         amount_minor AS recordedAmount,
         CASE WHEN to_cleared = 1 THEN amount_minor ELSE 0 END AS clearedAmount
       FROM account_transfers
+      WHERE occurred_on < ?
     ), totals AS (
       SELECT
+        months.month,
+        months.endDate,
         account.id AS accountId,
         COALESCE(SUM(CASE
-          WHEN movement.occurredOn < ?
-            AND (account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on)
+          WHEN account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on
           THEN movement.recordedAmount
           ELSE 0
         END), 0) AS recordedMovement,
         COALESCE(SUM(CASE
-          WHEN movement.occurredOn < ?
-            AND (account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on)
+          WHEN account.opening_balance_on IS NULL OR movement.occurredOn >= account.opening_balance_on
           THEN movement.clearedAmount
           ELSE 0
         END), 0) AS clearedMovement
-      FROM accounts AS account
-      LEFT JOIN movements AS movement ON movement.accountId = account.id
-      GROUP BY account.id
+      FROM months
+      CROSS JOIN accounts AS account
+      LEFT JOIN movements AS movement
+        ON movement.accountId = account.id
+        AND movement.occurredOn < months.endDate
+      GROUP BY months.month, months.endDate, account.id
     )
     SELECT
+      totals.month,
       account.id AS accountId,
       account.name AS accountName,
       account.localization_key AS accountLocalizationKey,
@@ -217,30 +238,47 @@ export async function listAccountBalances(
       account.opening_balance_minor AS openingBalanceMinor,
       account.opening_balance_on AS openingBalanceOn,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
         ELSE COALESCE(account.opening_balance_minor, 0) + totals.recordedMovement
       END AS recordedBalance,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
         ELSE COALESCE(account.opening_balance_minor, 0) + totals.clearedMovement
       END AS clearedBalance,
       CASE
-        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > ? THEN NULL
+        WHEN account.opening_balance_on IS NOT NULL AND account.opening_balance_on > totals.endDate THEN NULL
         ELSE totals.recordedMovement - totals.clearedMovement
       END AS unclearedBalance
-    FROM accounts AS account
-    INNER JOIN totals ON totals.accountId = account.id
-    ORDER BY account.is_active DESC, account.sort_order ASC, account.id ASC
-  `).bind(end, end, end, end, end).all<AccountBalanceRow>()
+    FROM totals
+    INNER JOIN accounts AS account ON account.id = totals.accountId
+    ORDER BY totals.month ASC, account.is_active DESC, account.sort_order ASC, account.id ASC
+  `).bind(...monthBindings, maxEnd, maxEnd, maxEnd).all<MonthlyAccountBalanceRow>()
 
-  return result.results.map((row) => {
+  for (const { month, ...row } of result.results) {
     for (const value of [row.recordedBalance, row.clearedBalance, row.unclearedBalance]) {
       if (value !== null && !Number.isSafeInteger(value)) {
         throw new Error('Account balance exceeds the safe integer range')
       }
     }
-    return { ...row, isActive: row.isActive === 1 }
-  })
+    balancesByMonth.get(month)?.push({ ...row, isActive: row.isActive === 1 })
+  }
+
+  return balancesByMonth
+}
+
+export async function listAccountBalances(
+  database: D1Database,
+  month: string,
+): Promise<AccountBalance[]> {
+  return (await listAccountBalancesByMonth(database, [month])).get(month) ?? []
+}
+
+export async function listNetWorthTrend(
+  database: D1Database,
+  month: string,
+): Promise<NetWorthTrendPoint[]> {
+  const months = netWorthTrendMonths(month)
+  return buildNetWorthTrend(month, await listAccountBalancesByMonth(database, months))
 }
 
 export async function listCategories(database: D1Database): Promise<Category[]> {

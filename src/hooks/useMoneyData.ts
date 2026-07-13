@@ -15,6 +15,7 @@ import {
   demoAccounts,
   demoAccountBalances,
   demoCategories,
+  demoNetWorthTrend,
   demoSummary,
   getDemoTransactions,
   summarizeDemoTransactions,
@@ -26,6 +27,7 @@ import type {
   AccountTransfer,
   AccountTransferInput,
   Category,
+  NetWorthTrendPoint,
   Summary,
   Transaction,
   TransactionClearingStatus,
@@ -42,6 +44,7 @@ type Snapshot = {
   transactions: Transaction[]
   accountTransfers: AccountTransfer[]
   accountBalances: AccountBalance[]
+  netWorthTrend: NetWorthTrendPoint[]
   transactionFilterSummary: TransactionFilterSummary
   summary: Summary
   accounts: Account[]
@@ -62,6 +65,7 @@ function demoSnapshot(
     transactions: getDemoTransactions(month, type, search, undefined, accountId, categoryId, tag, status, sort),
     accountTransfers: [],
     accountBalances: demoAccountBalances(month),
+    netWorthTrend: demoNetWorthTrend(month),
     transactionFilterSummary: summarizeDemoTransactions(
       month,
       type,
@@ -111,16 +115,17 @@ export function useMoneyData(
     const transactionQuery = new URLSearchParams(query)
     if (sort !== 'date_desc') transactionQuery.set('sort', sort)
 
-    const [transactions, accountTransfers, accountBalances, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
+    const [transactions, accountTransfers, accountBalances, netWorthTrend, transactionFilterSummary, summary, accounts, categories] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
       api<AccountTransfer[]>(`/api/transfers?month=${encodeURIComponent(month)}`),
       api<AccountBalance[]>(`/api/accounts/balances?month=${encodeURIComponent(month)}`),
+      api<NetWorthTrendPoint[]>(`/api/reports/net-worth?month=${encodeURIComponent(month)}`),
       api<TransactionFilterSummary>(`/api/transactions/summary?${query}`),
       api<Summary>(`/api/summary?month=${encodeURIComponent(month)}`),
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
     ])
-    return { transactions, accountTransfers, accountBalances, transactionFilterSummary, summary, accounts, categories }
+    return { transactions, accountTransfers, accountBalances, netWorthTrend, transactionFilterSummary, summary, accounts, categories }
   }, [accountId, categoryId, month, search, sort, status, tag, type])
 
   const refresh = useCallback(

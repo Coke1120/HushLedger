@@ -1,10 +1,12 @@
 import { monthRangeDates } from './date'
 import { buildMonthlySpendingTrend } from './spendingTrend'
+import { buildNetWorthTrend, netWorthTrendMonths } from './netWorthTrend'
 import { noteHasTransactionTag } from './transactionTags'
 import type { MessageKey, Translator } from '../i18n'
 import type {
   Account,
   AccountBalance,
+  NetWorthTrendPoint,
   Category,
   ExpenseCategorySummary,
   MonthlySpendingSummary,
@@ -211,6 +213,15 @@ export function demoAccountBalances(month: string): AccountBalance[] {
       unclearedBalance: recordedBalance - clearedBalance,
     }
   })
+}
+
+export function demoNetWorthTrend(month: string): NetWorthTrendPoint[] {
+  return buildNetWorthTrend(
+    month,
+    new Map(netWorthTrendMonths(month).map((trendMonth) => (
+      [trendMonth, demoAccountBalances(trendMonth)]
+    ))),
+  )
 }
 
 const demoTransactionCopy: Readonly<
