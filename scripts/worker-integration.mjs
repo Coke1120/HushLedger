@@ -2242,8 +2242,10 @@ async function verifyWorkerApi() {
     monthly: '20000000-0000-4000-8000-000000000003',
     cron: '20000000-0000-4000-8000-000000000004',
     race: '20000000-0000-4000-8000-000000000007',
+    income: '20000000-0000-4000-8000-000000000010',
     skip: '20000000-0000-4000-8000-000000000009',
   }
+  const tomorrow = shiftCalendarDay(today, 1)
   const baseRule = {
     name: 'Integration rule',
     type: 'expense',
@@ -2292,7 +2294,7 @@ async function verifyWorkerApi() {
     body: { revision: 1, nextOccurrenceOn: today },
   })
   assert.equal(skipped.response.status, 200)
-  assert.equal(skipped.payload.data.nextOccurrenceOn, shiftCalendarDay(today, 1))
+  assert.equal(skipped.payload.data.nextOccurrenceOn, tomorrow)
   assert.equal(skipped.payload.data.lastOccurrenceOn, null)
   assert.equal(skipped.payload.data.generatedCount, 0)
   assert.equal(skipped.payload.data.revision, 2)
@@ -2367,6 +2369,60 @@ async function verifyWorkerApi() {
   assert.equal(resumed.response.status, 200)
   assert.equal(resumed.payload.data.isActive, true)
 
+  const forecastIncome = await api(baseUrl, '/api/recurring-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.income,
+      name: 'income integration',
+      type: 'income',
+      categoryId: incomeCategory.id,
+      frequency: 'monthly',
+      payee: 'integration employer',
+    },
+  })
+  assert.equal(forecastIncome.response.status, 201)
+
+  const forecastBeforeRun = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.equal(forecastBeforeRun.response.status, 200)
+  const forecastByRule = new Map(forecastBeforeRun.payload.data.recurringForecast.map(
+    (item) => [item.recurringRuleId, item],
+  ))
+  assert.deepEqual(forecastByRule.get(ruleIds.income), {
+    recurringRuleId: ruleIds.income,
+    name: 'income integration',
+    type: 'income',
+    amountMinor: 456,
+    payee: 'integration employer',
+    frequency: 'monthly',
+    firstOccurrenceOn: today,
+    occurrenceCount: 1,
+    occurrenceDates: [today],
+  })
+  assert.equal(forecastByRule.get(ruleIds.daily).occurrenceDates[0], today)
+  assert.equal(
+    forecastByRule.get(ruleIds.daily).occurrenceDates.length,
+    forecastByRule.get(ruleIds.daily).occurrenceCount,
+  )
+  assert.equal(forecastByRule.get(ruleIds.weekly).occurrenceDates[0], today)
+  const forecastBeforeRunTomorrow = await api(
+    baseUrl,
+    `/api/summary?month=${tomorrow.slice(0, 7)}`,
+  )
+  assert.equal(forecastBeforeRunTomorrow.response.status, 200)
+  assert.equal(
+    forecastBeforeRunTomorrow.payload.data.recurringForecast.find(
+      ({ recurringRuleId }) => recurringRuleId === ruleIds.skip,
+    ).occurrenceDates[0],
+    tomorrow,
+  )
+
+  const removedForecastIncome = await api(baseUrl, `/api/recurring-rules/${ruleIds.income}`, {
+    method: 'DELETE',
+    body: { revision: forecastIncome.payload.data.revision },
+  })
+  assert.equal(removedForecastIncome.response.status, 200)
+
   const firstRun = await api(baseUrl, '/api/recurring-rules/run-due', {
     method: 'POST',
     body: { asOf: today },
@@ -2380,6 +2436,26 @@ async function verifyWorkerApi() {
   })
   assert.equal(secondRun.response.status, 200)
   assert.equal(secondRun.payload.data.created, 0)
+
+  const forecastAfterRun = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.equal(forecastAfterRun.response.status, 200)
+  assert.equal(
+    forecastAfterRun.payload.data.recurringForecast.some(
+      ({ occurrenceDates }) => occurrenceDates.includes(today),
+    ),
+    false,
+  )
+  const forecastForNextOccurrence = await api(
+    baseUrl,
+    `/api/summary?month=${tomorrow.slice(0, 7)}`,
+  )
+  assert.equal(forecastForNextOccurrence.response.status, 200)
+  assert.equal(
+    forecastForNextOccurrence.payload.data.recurringForecast.find(
+      ({ recurringRuleId }) => recurringRuleId === ruleIds.daily,
+    ).occurrenceDates[0],
+    tomorrow,
+  )
 
   const beforeDelete = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(beforeDelete.response.status, 200)
@@ -2707,7 +2783,7 @@ async function verifyWorkerApi() {
     payeeSummaries: 2,
     payeeExports: 1,
     spendingTrendQueries: 1,
-    recurringForecasts: 1,
+    recurringForecasts: 5,
     recurringSkips: 1,
     payeeSuggestions: 1,
     referenceLifecycles: 2,

@@ -11,6 +11,7 @@ export type RecurringForecastRule = {
   name: string
   type: TransactionType
   amountMinor: number
+  payee: string
   frequency: RecurrenceFrequency
   nextOccurrenceOn: string
   anchorDay: number
@@ -20,6 +21,33 @@ export type RecurringForecastTotals = {
   incomeMinor: number
   expenseMinor: number
   netMinor: number
+}
+
+export type RecurringForecastOccurrence = {
+  recurringRuleId: string
+  name: string
+  type: TransactionType
+  amountMinor: number
+  payee: string
+  frequency: RecurrenceFrequency
+  occurrenceOn: string
+}
+
+export function recurringForecastOccurrences(
+  forecast: readonly ScheduledRecurringSummary[],
+): RecurringForecastOccurrence[] {
+  return forecast.flatMap((rule) => rule.occurrenceDates.map((occurrenceOn) => ({
+    recurringRuleId: rule.recurringRuleId,
+    name: rule.name,
+    type: rule.type,
+    amountMinor: rule.amountMinor,
+    payee: rule.payee,
+    frequency: rule.frequency,
+    occurrenceOn,
+  }))).sort((left, right) => (
+    left.occurrenceOn.localeCompare(right.occurrenceOn)
+    || left.recurringRuleId.localeCompare(right.recurringRuleId)
+  ))
 }
 
 export function summarizeRecurringForecast(
@@ -59,22 +87,25 @@ export function recurringForecastForMonth(
     )
     if (firstOccurrenceOn >= end) return []
 
-    const occurrenceCount = dueOccurrences(
+    const occurrenceDates = dueOccurrences(
       firstOccurrenceOn,
       end,
       rule.frequency,
       rule.anchorDay,
       32,
-    ).occurrences.filter((date) => date < end).length
+    ).occurrences.filter((date) => date < end)
+    const occurrenceCount = occurrenceDates.length
 
     return [{
       recurringRuleId: rule.id,
       name: rule.name,
       type: rule.type,
       amountMinor: rule.amountMinor,
+      payee: rule.payee,
       frequency: rule.frequency,
       firstOccurrenceOn,
       occurrenceCount,
+      occurrenceDates,
     }]
   }).sort((left, right) => (
     left.firstOccurrenceOn.localeCompare(right.firstOccurrenceOn)

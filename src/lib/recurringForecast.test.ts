@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  recurringForecastOccurrences,
   recurringForecastForMonth,
   summarizeRecurringForecast,
   type RecurringForecastRule,
@@ -12,6 +13,7 @@ function rule(patch: Partial<RecurringForecastRule>): RecurringForecastRule {
     name: 'Monthly bill',
     type: 'expense',
     amountMinor: 8000,
+    payee: 'Utility company',
     frequency: 'monthly',
     nextOccurrenceOn: '2026-01-31',
     anchorDay: 31,
@@ -37,18 +39,27 @@ describe('monthly recurring forecast', () => {
         name: 'Weekly class',
         type: 'expense',
         amountMinor: 2500,
+        payee: 'Utility company',
         frequency: 'weekly',
         firstOccurrenceOn: '2026-02-02',
         occurrenceCount: 4,
+        occurrenceDates: [
+          '2026-02-02',
+          '2026-02-09',
+          '2026-02-16',
+          '2026-02-23',
+        ],
       },
       {
         recurringRuleId: '10000000-0000-4000-8000-000000000001',
         name: 'Monthly bill',
         type: 'expense',
         amountMinor: 8000,
+        payee: 'Utility company',
         frequency: 'monthly',
         firstOccurrenceOn: '2026-02-28',
         occurrenceCount: 1,
+        occurrenceDates: ['2026-02-28'],
       },
     ])
   })
@@ -112,9 +123,58 @@ describe('monthly recurring forecast', () => {
       name: 'Unsafe total',
       type: 'expense',
       amountMinor: Number.MAX_SAFE_INTEGER,
+      payee: 'Unsafe payee',
       frequency: 'daily',
       firstOccurrenceOn: '2026-02-01',
       occurrenceCount: 2,
+      occurrenceDates: ['2026-02-01', '2026-02-02'],
     }]), null)
+  })
+
+  it('expands every rule into a stable chronological schedule', () => {
+    const occurrences = recurringForecastOccurrences(recurringForecastForMonth([
+      rule({
+        id: '10000000-0000-4000-8000-000000000002',
+        name: 'Weekly class',
+        payee: 'Studio',
+        amountMinor: 2500,
+        frequency: 'weekly',
+        nextOccurrenceOn: '2026-02-02',
+        anchorDay: 2,
+      }),
+      rule({
+        id: '10000000-0000-4000-8000-000000000003',
+        name: 'Payday',
+        payee: 'Employer',
+        type: 'income',
+        amountMinor: 500000,
+        nextOccurrenceOn: '2026-02-10',
+        anchorDay: 10,
+      }),
+      rule({
+        name: 'Rent',
+        payee: 'Landlord',
+        nextOccurrenceOn: '2026-02-10',
+        anchorDay: 10,
+      }),
+    ], '2026-02'))
+
+    assert.deepEqual(occurrences.map(({ name, occurrenceOn }) => ({ name, occurrenceOn })), [
+      { name: 'Weekly class', occurrenceOn: '2026-02-02' },
+      { name: 'Weekly class', occurrenceOn: '2026-02-09' },
+      { name: 'Rent', occurrenceOn: '2026-02-10' },
+      { name: 'Payday', occurrenceOn: '2026-02-10' },
+      { name: 'Weekly class', occurrenceOn: '2026-02-16' },
+      { name: 'Weekly class', occurrenceOn: '2026-02-23' },
+    ])
+    assert.deepEqual(occurrences.find(({ name }) => name === 'Payday'), {
+      recurringRuleId: '10000000-0000-4000-8000-000000000003',
+      name: 'Payday',
+      payee: 'Employer',
+      type: 'income',
+      amountMinor: 500000,
+      frequency: 'monthly',
+      occurrenceOn: '2026-02-10',
+    })
   })
 })

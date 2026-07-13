@@ -484,9 +484,11 @@ export type ScheduledRecurringSummary = {
   name: string
   type: TransactionType
   amountMinor: number
+  payee: string
   frequency: RecurrenceFrequency
   firstOccurrenceOn: string
   occurrenceCount: number
+  occurrenceDates: string[]
 }
 
 export type PayeeSuggestion = {

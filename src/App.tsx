@@ -527,6 +527,7 @@ function App({ initialMonth }: { initialMonth: string }) {
                   onSelect={openCategoryTransactions}
                 />
                 <RecurringForecast
+                  key={month}
                   summary={data.summary}
                   loading={loading}
                   onManage={openRecurringRules}

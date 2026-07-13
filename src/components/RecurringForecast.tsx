@@ -1,6 +1,10 @@
 import { CalendarClock, Repeat2 } from 'lucide-react'
+import { useState } from 'react'
 import { useI18n } from '../i18n'
-import { summarizeRecurringForecast } from '../lib/recurringForecast'
+import {
+  recurringForecastOccurrences,
+  summarizeRecurringForecast,
+} from '../lib/recurringForecast'
 import type { Summary } from '../lib/schema'
 
 type RecurringForecastProps = {
@@ -9,12 +13,17 @@ type RecurringForecastProps = {
   onManage: () => void
 }
 
-const visibleRuleLimit = 5
+const visibleOccurrenceLimit = 6
 
 export function RecurringForecast({ summary, loading, onManage }: RecurringForecastProps) {
   const { formatDate, formatMoney, t } = useI18n()
-  const visibleRules = summary.recurringForecast.slice(0, visibleRuleLimit)
-  const remainingRules = summary.recurringForecast.length - visibleRules.length
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  const showAll = expandedMonth === summary.month
+  const occurrences = recurringForecastOccurrences(summary.recurringForecast)
+  const hiddenOccurrenceCount = Math.max(0, occurrences.length - visibleOccurrenceLimit)
+  const visibleOccurrences = showAll
+    ? occurrences
+    : occurrences.slice(0, visibleOccurrenceLimit)
   const totals = summarizeRecurringForecast(summary.recurringForecast)
 
   return (
@@ -35,7 +44,7 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
 
       {loading ? (
         <p className="category-spending-empty" role="status">{t('scheduledForecastLoading')}</p>
-      ) : visibleRules.length === 0 ? (
+      ) : visibleOccurrences.length === 0 ? (
         <div className="category-spending-empty">
           <strong>{t('noScheduledThisMonth')}</strong>
           <span>{t('noScheduledThisMonthHelp')}</span>
@@ -58,52 +67,65 @@ export function RecurringForecast({ summary, loading, onManage }: RecurringForec
               </div>
             </dl>
           ) : null}
-          <ol className="category-spending-list">
-            {visibleRules.map((rule) => {
-              const date = formatDate(rule.firstOccurrenceOn)
-              const amount = formatMoney(rule.amountMinor)
-              const occurrences = t('scheduledOccurrenceCount', { count: rule.occurrenceCount })
+          <ol className="category-spending-list" id="recurring-forecast-list">
+            {visibleOccurrences.map((occurrence) => {
+              const date = formatDate(occurrence.occurrenceOn)
+              const amount = formatMoney(occurrence.amountMinor)
 
               return (
-                <li key={rule.recurringRuleId}>
+                <li key={`${occurrence.recurringRuleId}:${occurrence.occurrenceOn}`}>
                   <button
                     className="category-spending-row recurring-forecast-row"
                     type="button"
                     onClick={onManage}
                     aria-label={t('manageScheduledRule', {
-                      name: rule.name,
+                      name: occurrence.name,
                       date,
                       amount,
-                      occurrences,
+                      type: t(occurrence.type),
                     })}
                   >
                     <span className="category-spending-name">
                       <span
-                        className={`recurring-forecast-rule-icon ${rule.type}`}
+                        className={`recurring-forecast-rule-icon ${occurrence.type}`}
                         aria-hidden="true"
                       >
                         <Repeat2 />
                       </span>
                       <span>
-                        <strong>{rule.name}</strong>
-                        <small>{date} · {t(rule.frequency)}</small>
+                        <strong>{occurrence.name}</strong>
+                        <small>
+                          <time dateTime={occurrence.occurrenceOn}>{date}</time>
+                          {occurrence.payee ? ` · ${occurrence.payee}` : ''}
+                          {' · '}{t(occurrence.frequency)}
+                        </small>
                       </span>
                     </span>
                     <span className="category-spending-amount">
-                      <strong className={rule.type}>
-                        {rule.type === 'income' ? '+' : '−'}{amount}
+                      <strong className={occurrence.type}>
+                        {occurrence.type === 'income' ? '+' : '−'}{amount}
                       </strong>
-                      <small>{occurrences} · {t('eachTime')}</small>
+                      <small>{t(occurrence.type)}</small>
                     </span>
                   </button>
                 </li>
               )
             })}
           </ol>
-          {remainingRules > 0 ? (
-            <p className="category-spending-more">
-              {t('moreScheduledRules', { count: remainingRules })}
-            </p>
+          {hiddenOccurrenceCount > 0 ? (
+            <div className="recurring-forecast-actions">
+              <button
+                className="button button-secondary"
+                type="button"
+                aria-controls="recurring-forecast-list"
+                aria-expanded={showAll}
+                onClick={() => setExpandedMonth(showAll ? null : summary.month)}
+              >
+                {showAll
+                  ? t('showFewerScheduledEntries')
+                  : t('showMoreScheduledEntries', { count: hiddenOccurrenceCount })}
+              </button>
+            </div>
           ) : null}
         </>
       )}

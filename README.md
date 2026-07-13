@@ -41,9 +41,11 @@ knowledge and explains every command and dashboard click.
   remaining-or-over amounts shown together. Plans are recurring comparison
   guardrails only: they do not reserve cash, roll balances forward, or move money.
 - A selected-month forecast of active recurring entries that have not yet been
-  generated, including the next date and exact occurrence count for each rule,
-  plus exact scheduled income, expense, and net totals. Forecast values never
-  change the recorded monthly balance before their entries are generated.
+  generated, expanded into an exact chronological list of every scheduled date
+  with rule name, optional payee, amount, and income/expense label. Longer lists
+  can be expanded without changing the exact scheduled income, expense, and net
+  totals. Forecast values never change recorded or available balance, and a
+  provider statement remains authoritative for the actual date and amount.
 - HKD amounts stored as integer minor units to avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
   month. An optional dated opening balance anchors incomplete history, and an
@@ -564,7 +566,7 @@ DELETE /api/transfers/:id
 GET    /api/exports/transactions?month=YYYY-MM&scope=month|range|all&dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&type=expense|income&status=cleared|uncleared&accountId=1&categoryId=3&payee=Merchant&search=...&tag=Trip&duplicates=exact&sort=amount_desc
 GET    /api/backups/ledger  (versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories/payees, and remaining recurring entries)
+GET    /api/summary?month=YYYY-MM  (totals, six-month expense trend, ranked categories/payees, and exact remaining recurring dates)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

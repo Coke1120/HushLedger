@@ -39,9 +39,11 @@ not operate an independent database server or a multi-user identity system.
 - Compare optional monthly expense-category plans with recorded spending and the
   exact remaining-or-over amount; treat plans as recurring guardrails, not cash
   allocation, rollover, or envelope balances.
-- Review active recurring entries that remain ungenerated in the selected month,
-  including each rule's next date and exact occurrence count, plus exact income,
-  expense, and net forecast totals that remain separate from recorded balance.
+- Review active recurring entries that remain ungenerated in the selected month
+  as an expandable chronological list of every scheduled date, rule name,
+  optional payee, amount, and income/expense label. Keep exact income, expense,
+  and net forecast totals separate from recorded or available balance, and direct
+  the user to the provider statement for the actual date and amount.
 - Browse the latest 200 matching transactions for the selected month, an
   inclusive fixed date range, or all history; the UI explicitly discloses the
   cap when it is reached. Widening the transaction date scope does not change
@@ -121,10 +123,12 @@ not operate an independent database server or a multi-user identity system.
 - Generate due transactions from Cloudflare Cron or the authenticated manual
   action.
 - Preserve generated history when a rule changes or is deleted.
-- Use the overview forecast to see only future, ungenerated occurrences in the
-  selected month, including their exact forecast income, expense, and net totals;
-  generated ledger entries remain part of actual totals instead, and forecast
-  money never becomes recorded or available balance by presentation alone.
+- Use the overview forecast to see every ungenerated occurrence in the selected
+  month in stable date order, with an explicit expansion control and exact income,
+  expense, and net totals. Generated ledger entries remain part of actual totals
+  instead, and forecast money never becomes recorded or available balance by
+  presentation alone. Scheduled dates are ledger-generation dates, not verified
+  provider due dates or payment confirmations.
 
 ## Data contract
 

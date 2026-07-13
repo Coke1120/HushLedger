@@ -1017,12 +1017,28 @@ textarea:focus-visible {
   grid-template-rows: 1fr;
 }
 
+.recurring-forecast-row .category-spending-name > span:last-child {
+  min-width: 0;
+}
+
+.recurring-forecast-row .category-spending-name small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .recurring-forecast-row .category-spending-amount strong.expense {
   color: var(--expense);
 }
 
 .recurring-forecast-row .category-spending-amount strong.income {
   color: var(--income);
+}
+
+.recurring-forecast-actions {
+  display: flex;
+  margin-top: 14px;
+  justify-content: flex-end;
 }
 
 .category-spending-amount {
