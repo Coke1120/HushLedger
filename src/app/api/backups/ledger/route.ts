@@ -3,6 +3,7 @@ import {
   LEDGER_BACKUP_VERSION,
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
+  PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
@@ -103,6 +104,7 @@ function backupCompatibilityError(value: unknown) {
     candidate.version !== LEDGER_BACKUP_VERSION ||
     (
       candidate.schemaVersion !== LEDGER_SCHEMA_VERSION &&
+      candidate.schemaVersion !== PRE_CURRENCY_LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== PREVIOUS_LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION &&
       candidate.schemaVersion !== PRE_TRANSFERS_LEDGER_SCHEMA_VERSION &&

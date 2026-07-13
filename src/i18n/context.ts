@@ -1,15 +1,18 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { SupportedCurrency } from '../lib/currency'
 import type { Locale, Translator } from './core'
 
 export type I18nContextValue = {
   locale: Locale
   setLocale: (locale: Locale) => void
+  ledgerCurrency: SupportedCurrency
+  setLedgerCurrency: (currency: SupportedCurrency) => void
   privacyMode: boolean
   setPrivacyMode: (enabled: boolean) => void
   t: Translator
-  formatMoney: (minor: number, currency?: string) => string
+  formatMoney: (minor: number, currency?: SupportedCurrency) => string
   formatMonth: (month: string) => string
   formatDate: (date: string) => string
   formatNumber: (value: number) => string

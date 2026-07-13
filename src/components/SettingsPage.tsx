@@ -2,10 +2,12 @@ import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-
 import { useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
 import type { AiProviderSettings } from '../lib/ai'
+import type { LedgerCurrencySettings } from '../lib/currency'
 import type { Account, Category, EmergencyFundGoal } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
 import { EmergencyFundSettings } from './EmergencyFundSettings'
 import { LedgerBackupSettings } from './LedgerBackupSettings'
+import { LedgerCurrencySettingsPanel } from './LedgerCurrencySettings'
 import { ReferenceDataSettings } from './ReferenceDataSettings'
 import { useAppUpdate, type AppUpdateStatus } from './appUpdateContext'
 
@@ -28,6 +30,7 @@ type SettingsPageProps = {
   accounts: Account[]
   categories: Category[]
   emergencyFundGoal: EmergencyFundGoal | null
+  ledgerSettings: LedgerCurrencySettings
   canManageReferences: boolean
   onReferenceRefresh: () => Promise<boolean>
   onLedgerRestored: () => Promise<boolean>
@@ -39,6 +42,7 @@ export function SettingsPage({
   accounts,
   categories,
   emergencyFundGoal,
+  ledgerSettings,
   canManageReferences,
   onReferenceRefresh,
   onLedgerRestored,
@@ -67,16 +71,26 @@ export function SettingsPage({
         </div>
       </div>
 
+      <LedgerCurrencySettingsPanel
+        settings={ledgerSettings}
+        enabled={canManageReferences}
+        onRefresh={onReferenceRefresh}
+      />
+
       <EmergencyFundSettings
+        key={`emergency-fund-${ledgerSettings.updatedAt}`}
         goal={emergencyFundGoal}
         accounts={accounts}
+        expectedCurrency={ledgerSettings.currency}
         enabled={canManageReferences}
         onRefresh={onReferenceRefresh}
       />
 
       <ReferenceDataSettings
+        key={`reference-data-${ledgerSettings.updatedAt}`}
         accounts={accounts}
         categories={categories}
+        expectedCurrency={ledgerSettings.currency}
         enabled={canManageReferences}
         onRefresh={onReferenceRefresh}
       />

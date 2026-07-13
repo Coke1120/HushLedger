@@ -33,7 +33,7 @@ export function AccountTransferDialog({
   onSubmit,
   onDelete,
 }: AccountTransferDialogProps) {
-  const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => (
       account.isActive
@@ -118,7 +118,7 @@ export function AccountTransferDialog({
     const parsed = accountTransferInputSchema.safeParse({
       id: draftIdRef.current,
       amountMinor,
-      currency: 'HKD',
+      currency: ledgerCurrency,
       fromAccountId,
       toAccountId,
       occurredOn: date,
@@ -181,7 +181,7 @@ export function AccountTransferDialog({
               <label htmlFor="transfer-amount">
                 <span>{t('amount')}</span>
                 <span className="amount-input-wrap">
-                  <span>HK$</span>
+                  <span>{ledgerCurrency}</span>
                   <input
                     id="transfer-amount"
                     aria-label={t('amount')}

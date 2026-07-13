@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { supportedCurrencySchema } from './currency'
 import { isValidCalendarDate } from './date'
 import { transactionTypeSchema } from './schema'
 import {
@@ -42,7 +43,7 @@ export const aiParseRequestSchema = z
   .object({
     provider: aiProviderSettingsSchema,
     accountId: z.number().int().positive(),
-    currency: z.literal('HKD'),
+    currency: supportedCurrencySchema,
     dateOrder: aiDateOrderSchema,
     statementText: z.string().trim().min(1).max(MAX_AI_STATEMENT_BYTES),
   })
@@ -68,7 +69,7 @@ export const aiModelOutputSchema = z
             occurredOn: z.string().refine(isValidCalendarDate),
             direction: transactionTypeSchema,
             amountText: boundedText(32),
-            currency: z.literal('HKD'),
+            currency: supportedCurrencySchema,
             description: z.string().trim().max(80),
             suggestedCategoryName: z.string().trim().min(1).max(80).nullable(),
             confidence: z.number().min(0).max(1),
@@ -92,7 +93,7 @@ export const bankImportDraftSchema = z
     type: transactionTypeSchema,
     amountText: boundedText(32),
     amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    currency: z.literal('HKD'),
+    currency: supportedCurrencySchema,
     accountId: z.number().int().positive(),
     categoryId: z.number().int().positive().nullable(),
     payee: z.string().trim().max(80),

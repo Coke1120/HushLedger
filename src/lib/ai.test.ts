@@ -46,7 +46,7 @@ describe('AI import schemas', () => {
     ['unsupported currency', {
       provider,
       accountId: 1,
-      currency: 'USD',
+      currency: 'JPY',
       dateOrder: 'DMY',
       statementText: 'record',
     }],

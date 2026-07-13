@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { formatHongKongDate, formatMonthLabel } from '../lib/date'
+import { DEFAULT_LEDGER_CURRENCY, type SupportedCurrency } from '../lib/currency'
 import { formatMoneyForDisplay, shouldAutomaticallyMaskScreen } from '../lib/privacy'
 import { I18nContext, type I18nContextValue } from './context'
 import {
@@ -35,6 +36,7 @@ function setMetaContent(selector: string, value: string) {
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>('zh-Hant')
+  const [ledgerCurrency, setLedgerCurrency] = useState<SupportedCurrency>(DEFAULT_LEDGER_CURRENCY)
   const [requestedPrivacyMode, setPrivacyMode] = useState(false)
   // Conceal the initial render until browser visibility and focus are known.
   const [automaticPrivacyMode, setAutomaticPrivacyMode] = useState(true)
@@ -86,13 +88,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const t = useCallback<Translator>((key, values) => translate(locale, key, values), [locale])
   const formatMoney = useCallback(
-    (minor: number, currency = 'HKD') => formatMoneyForDisplay(
+    (minor: number, currency = ledgerCurrency) => formatMoneyForDisplay(
       minor,
       currency,
       locale,
       privacyMode,
     ),
-    [locale, privacyMode],
+    [ledgerCurrency, locale, privacyMode],
   )
   const formatMonth = useCallback((month: string) => formatMonthLabel(month, locale), [locale])
   const formatDate = useCallback((date: string) => formatHongKongDate(date, locale), [locale])
@@ -106,6 +108,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       setLocale,
+      ledgerCurrency,
+      setLedgerCurrency,
       privacyMode,
       setPrivacyMode,
       t,
@@ -120,6 +124,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       formatMoney,
       formatMonth,
       formatNumber,
+      ledgerCurrency,
       locale,
       localizeEntityName,
       privacyMode,

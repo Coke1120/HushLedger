@@ -248,11 +248,18 @@ async function verifyUpgradeMigration() {
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
      SELECT name FROM sqlite_master
-     WHERE type = 'table' AND name IN ('account_transfers', 'emergency_fund_goals')
+     WHERE type = 'table' AND name IN ('account_transfers', 'emergency_fund_goals', 'ledger_settings')
      ORDER BY name;
      SELECT COUNT(*) AS emergencyFundRevisionTriggers
      FROM sqlite_master
      WHERE type = 'trigger' AND name LIKE 'ledger_revision_emergency_fund_goals_%';
+     SELECT currency, updated_at AS updatedAt FROM ledger_settings WHERE id = 1;
+     SELECT
+       (SELECT COUNT(*) FROM accounts WHERE currency <> ledger_settings.currency) AS accountMismatches,
+       (SELECT COUNT(*) FROM transactions WHERE currency <> ledger_settings.currency) AS transactionMismatches,
+       (SELECT COUNT(*) FROM recurring_rules WHERE currency <> ledger_settings.currency) AS recurringRuleMismatches,
+       (SELECT COUNT(*) FROM account_transfers WHERE currency <> ledger_settings.currency) AS transferMismatches
+     FROM ledger_settings WHERE id = 1;
      PRAGMA foreign_key_check;`,
     '--json',
   ])
@@ -273,9 +280,33 @@ async function verifyUpgradeMigration() {
   assert.deepEqual(statements[5].results, [
     { name: 'account_transfers' },
     { name: 'emergency_fund_goals' },
+    { name: 'ledger_settings' },
   ])
   assert.equal(statements[6].results[0].emergencyFundRevisionTriggers, 3)
-  assert.deepEqual(statements[7].results, [])
+  assert.equal(statements[7].results[0].currency, 'HKD')
+  assert.match(statements[7].results[0].updatedAt, /Z$/)
+  assert.deepEqual(statements[8].results, [{
+    accountMismatches: 0,
+    transactionMismatches: 0,
+    recurringRuleMismatches: 0,
+    transferMismatches: 0,
+  }])
+  assert.deepEqual(statements[9].results, [])
+
+  await assert.rejects(
+    runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      upgradeState,
+      '--command',
+      "UPDATE ledger_settings SET currency = 'USD' WHERE id = 1;",
+      '--yes',
+    ]),
+    /ledger currency is locked by monetary history/,
+  )
 }
 
 async function seedCsvExportRows() {
@@ -499,6 +530,308 @@ async function verifyNextShell(baseUrl) {
   assert.equal(unknownApi.payload.error.code, 'NOT_FOUND')
 }
 
+async function verifyPristineCurrencyApi() {
+  const port = await availablePort()
+  const inspectorPort = await availablePort()
+  const baseUrl = `http://127.0.0.1:${port}`
+  const today = hktCalendarDate()
+  workerProcess = startWorker(port, inspectorPort)
+  await waitForHealth(baseUrl)
+
+  let evidence
+  let createdAccountId
+  try {
+    const initial = await api(baseUrl, '/api/ledger-settings')
+    assert.equal(initial.response.status, 200, JSON.stringify(initial.payload))
+    assert.match(initial.response.headers.get('cache-control') ?? '', /no-store/)
+    assert.equal(initial.payload.data.currency, 'HKD')
+    assert.equal(initial.payload.data.canChangeCurrency, true)
+    assert.match(initial.payload.data.updatedAt, /Z$/)
+
+    const crossOrigin = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      origin: 'https://attacker.invalid',
+      body: { currency: 'USD', expectedUpdatedAt: initial.payload.data.updatedAt },
+    })
+    assert.equal(crossOrigin.response.status, 403)
+    assert.equal(crossOrigin.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+    const unsupported = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      body: { currency: 'JPY', expectedUpdatedAt: initial.payload.data.updatedAt },
+    })
+    assert.equal(unsupported.response.status, 400)
+    assert.equal(unsupported.payload.error.code, 'LEDGER_CURRENCY_UNSUPPORTED')
+
+    const changed = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      body: { currency: 'USD', expectedUpdatedAt: initial.payload.data.updatedAt },
+    })
+    assert.equal(changed.response.status, 200, JSON.stringify(changed.payload))
+    assert.equal(changed.payload.data.currency, 'USD')
+    assert.equal(changed.payload.data.canChangeCurrency, true)
+    assert.notEqual(changed.payload.data.updatedAt, initial.payload.data.updatedAt)
+
+    const stale = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      body: { currency: 'EUR', expectedUpdatedAt: initial.payload.data.updatedAt },
+    })
+    assert.equal(stale.response.status, 409)
+    assert.equal(stale.payload.error.code, 'LEDGER_CURRENCY_VERSION_CONFLICT')
+
+    const cascadedAccounts = await api(baseUrl, '/api/accounts')
+    const pristineCategories = await api(baseUrl, '/api/categories')
+    assert.equal(cascadedAccounts.response.status, 200)
+    assert.equal(pristineCategories.response.status, 200)
+    assert(cascadedAccounts.payload.data.length > 0)
+    assert(cascadedAccounts.payload.data.every(({ currency }) => currency === 'USD'))
+    const existingAccount = cascadedAccounts.payload.data.find(({ type }) => type === 'bank')
+    const existingCategory = pristineCategories.payload.data.find(({ type }) => type === 'expense')
+    assert(existingAccount)
+    assert(existingCategory)
+
+    const staleMoneyRequests = await Promise.all([
+      api(baseUrl, '/api/accounts', {
+        method: 'POST',
+        body: {
+          name: 'Stale currency account',
+          type: 'bank',
+          expectedCurrency: 'HKD',
+          openingBalanceMinor: 50_000,
+          openingBalanceOn: today,
+        },
+      }),
+      api(baseUrl, `/api/accounts/${existingAccount.id}`, {
+        method: 'PUT',
+        body: {
+          name: existingAccount.name,
+          type: existingAccount.type,
+          expectedCurrency: 'HKD',
+          openingBalanceMinor: 50_000,
+          openingBalanceOn: today,
+          updatedAt: existingAccount.updatedAt,
+        },
+      }),
+      api(baseUrl, '/api/categories', {
+        method: 'POST',
+        body: {
+          name: 'Stale currency category',
+          type: 'expense',
+          expectedCurrency: 'HKD',
+          monthlyPlanMinor: 50_000,
+        },
+      }),
+      api(baseUrl, `/api/categories/${existingCategory.id}`, {
+        method: 'PUT',
+        body: {
+          name: existingCategory.name,
+          type: existingCategory.type,
+          expectedCurrency: 'HKD',
+          monthlyPlanMinor: 50_000,
+          updatedAt: existingCategory.updatedAt,
+        },
+      }),
+      api(baseUrl, '/api/emergency-fund-goal', {
+        method: 'PUT',
+        body: {
+          accountId: existingAccount.id,
+          targetMinor: 50_000,
+          expectedCurrency: 'HKD',
+          expectedUpdatedAt: null,
+        },
+      }),
+    ])
+    for (const result of staleMoneyRequests) {
+      assert.equal(result.response.status, 409, JSON.stringify(result.payload))
+      assert.equal(result.payload.error.code, 'LEDGER_CURRENCY_VERSION_CONFLICT')
+    }
+
+    const [accountsAfterStaleWrites, categoriesAfterStaleWrites, goalAfterStaleWrites, settingsAfterStaleWrites] = await Promise.all([
+      api(baseUrl, '/api/accounts'),
+      api(baseUrl, '/api/categories'),
+      api(baseUrl, '/api/emergency-fund-goal'),
+      api(baseUrl, '/api/ledger-settings'),
+    ])
+    assert.equal(accountsAfterStaleWrites.payload.data.length, cascadedAccounts.payload.data.length)
+    assert(!accountsAfterStaleWrites.payload.data.some(({ name }) => name === 'Stale currency account'))
+    assert(accountsAfterStaleWrites.payload.data.every(({
+      openingBalanceMinor,
+      openingBalanceOn,
+    }) => openingBalanceMinor === null && openingBalanceOn === null))
+    assert.equal(
+      accountsAfterStaleWrites.payload.data.find(({ id }) => id === existingAccount.id)?.updatedAt,
+      existingAccount.updatedAt,
+    )
+    assert.equal(categoriesAfterStaleWrites.payload.data.length, pristineCategories.payload.data.length)
+    assert(!categoriesAfterStaleWrites.payload.data.some(({ name }) => name === 'Stale currency category'))
+    assert(categoriesAfterStaleWrites.payload.data.every(({ monthlyPlanMinor }) => monthlyPlanMinor === null))
+    assert.equal(
+      categoriesAfterStaleWrites.payload.data.find(({ id }) => id === existingCategory.id)?.updatedAt,
+      existingCategory.updatedAt,
+    )
+    assert.equal(goalAfterStaleWrites.payload.data, null)
+    assert.equal(settingsAfterStaleWrites.payload.data.currency, 'USD')
+    assert.equal(settingsAfterStaleWrites.payload.data.canChangeCurrency, true)
+
+    const createdAccount = await api(baseUrl, '/api/accounts', {
+      method: 'POST',
+      body: {
+        name: 'Currency integration account',
+        type: 'bank',
+        expectedCurrency: 'USD',
+      },
+    })
+    assert.equal(createdAccount.response.status, 201, JSON.stringify(createdAccount.payload))
+    assert.equal(createdAccount.payload.data.currency, 'USD')
+    assert.equal(createdAccount.payload.data.openingBalanceMinor, null)
+    assert.equal(createdAccount.payload.data.openingBalanceOn, null)
+    createdAccountId = createdAccount.payload.data.id
+
+    const usdBackupDownload = await api(baseUrl, '/api/backups/ledger')
+    assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
+    const usdBackup = usdBackupDownload.payload
+    assert.equal(usdBackup.schemaVersion, 14)
+    assert.equal(usdBackup.data.currency, 'USD')
+    assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
+    assert(usdBackup.data.accounts.every(({
+      openingBalanceMinor,
+      openingBalanceOn,
+    }) => openingBalanceMinor === null && openingBalanceOn === null))
+    assert(usdBackup.data.categories.every(({ monthlyPlanMinor }) => monthlyPlanMinor === null))
+    assert.deepEqual(usdBackup.data.transactions, [])
+    assert.deepEqual(usdBackup.data.recurringRules, [])
+    assert.deepEqual(usdBackup.data.transactionImportKeys, [])
+    assert.deepEqual(usdBackup.data.accountTransfers, [])
+    assert.deepEqual(usdBackup.data.emergencyFundGoals, [])
+
+    const restored = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      body: { currency: 'HKD', expectedUpdatedAt: changed.payload.data.updatedAt },
+    })
+    assert.equal(restored.response.status, 200, JSON.stringify(restored.payload))
+    assert.equal(restored.payload.data.currency, 'HKD')
+    assert.equal(restored.payload.data.canChangeCurrency, true)
+
+    const restoredAccounts = await api(baseUrl, '/api/accounts')
+    assert.equal(restoredAccounts.response.status, 200)
+    assert(restoredAccounts.payload.data.every(({ currency }) => currency === 'HKD'))
+
+    const hkdBackupDownload = await api(baseUrl, '/api/backups/ledger')
+    assert.equal(hkdBackupDownload.response.status, 200, JSON.stringify(hkdBackupDownload.payload))
+    const hkdBackup = hkdBackupDownload.payload
+    assert.equal(hkdBackup.data.currency, 'HKD')
+
+    const usdPreview = await api(baseUrl, '/api/backups/ledger', {
+      method: 'POST',
+      body: { mode: 'preview', backup: usdBackup },
+    })
+    assert.equal(usdPreview.response.status, 200, JSON.stringify(usdPreview.payload))
+    assert.equal(usdPreview.payload.data.currentCurrency, 'HKD')
+    assert.equal(usdPreview.payload.data.backupCurrency, 'USD')
+    const usdRestore = await api(baseUrl, '/api/backups/ledger', {
+      method: 'POST',
+      body: {
+        mode: 'commit',
+        backup: usdBackup,
+        expectedCurrentDigest: usdPreview.payload.data.currentDigest,
+        expectedRevision: usdPreview.payload.data.currentRevision,
+        confirmation: 'RESTORE',
+      },
+    })
+    assert.equal(usdRestore.response.status, 200, JSON.stringify(usdRestore.payload))
+
+    const [restoredUsdSettings, restoredUsdAccounts] = await Promise.all([
+      api(baseUrl, '/api/ledger-settings'),
+      api(baseUrl, '/api/accounts'),
+    ])
+    assert.equal(restoredUsdSettings.payload.data.currency, 'USD')
+    assert.equal(restoredUsdSettings.payload.data.canChangeCurrency, true)
+    assert(restoredUsdAccounts.payload.data.every(({ currency }) => currency === 'USD'))
+
+    await stopWorker()
+    const usdDatabaseVerification = JSON.parse((await runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      freshState,
+      '--command',
+      `SELECT currency FROM ledger_settings WHERE id = 1;
+       SELECT COUNT(*) AS accountMismatches
+       FROM accounts
+       WHERE currency <> (SELECT currency FROM ledger_settings WHERE id = 1);
+       PRAGMA foreign_key_check;`,
+      '--json',
+    ])).stdout)
+    assert.deepEqual(usdDatabaseVerification[0].results, [{ currency: 'USD' }])
+    assert.deepEqual(usdDatabaseVerification[1].results, [{ accountMismatches: 0 }])
+    assert.deepEqual(usdDatabaseVerification[2].results, [])
+
+    const restorePort = await availablePort()
+    const restoreInspectorPort = await availablePort()
+    const restoreBaseUrl = `http://127.0.0.1:${restorePort}`
+    workerProcess = startWorker(restorePort, restoreInspectorPort)
+    await waitForHealth(restoreBaseUrl)
+    const hkdPreview = await api(restoreBaseUrl, '/api/backups/ledger', {
+      method: 'POST',
+      body: { mode: 'preview', backup: hkdBackup },
+    })
+    assert.equal(hkdPreview.response.status, 200, JSON.stringify(hkdPreview.payload))
+    assert.equal(hkdPreview.payload.data.currentCurrency, 'USD')
+    assert.equal(hkdPreview.payload.data.backupCurrency, 'HKD')
+    const hkdRestore = await api(restoreBaseUrl, '/api/backups/ledger', {
+      method: 'POST',
+      body: {
+        mode: 'commit',
+        backup: hkdBackup,
+        expectedCurrentDigest: hkdPreview.payload.data.currentDigest,
+        expectedRevision: hkdPreview.payload.data.currentRevision,
+        confirmation: 'RESTORE',
+      },
+    })
+    assert.equal(hkdRestore.response.status, 200, JSON.stringify(hkdRestore.payload))
+    const [finalSettings, finalAccounts] = await Promise.all([
+      api(restoreBaseUrl, '/api/ledger-settings'),
+      api(restoreBaseUrl, '/api/accounts'),
+    ])
+    assert.equal(finalSettings.payload.data.currency, 'HKD')
+    assert.equal(finalSettings.payload.data.canChangeCurrency, true)
+    assert(finalAccounts.payload.data.every(({ currency }) => currency === 'HKD'))
+
+    evidence = {
+      pristineCurrencyChanges: 2,
+      currencyRequestGuards: 8,
+      currencyAccountCascades: 4,
+      currencyBackupRestores: 2,
+    }
+  } finally {
+    await stopWorker()
+  }
+
+  assert(Number.isSafeInteger(createdAccountId))
+  const cleanupVerification = JSON.parse((await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    freshState,
+    '--command',
+    `DELETE FROM accounts WHERE id = ${createdAccountId};
+     SELECT currency FROM ledger_settings WHERE id = 1;
+     SELECT COUNT(*) AS accountMismatches
+     FROM accounts
+     WHERE currency <> (SELECT currency FROM ledger_settings WHERE id = 1);
+     PRAGMA foreign_key_check;`,
+    '--json',
+  ])).stdout)
+  assert.deepEqual(cleanupVerification[1].results, [{ currency: 'HKD' }])
+  assert.deepEqual(cleanupVerification[2].results, [{ accountMismatches: 0 }])
+  assert.deepEqual(cleanupVerification[3].results, [])
+  return evidence
+}
+
 async function verifyWorkerApi() {
   const port = await availablePort()
   const inspectorPort = await availablePort()
@@ -512,8 +845,18 @@ async function verifyWorkerApi() {
   const previousMonth = shiftCalendarMonth(month, -1)
   const accountsResult = await api(baseUrl, '/api/accounts')
   const categoriesResult = await api(baseUrl, '/api/categories')
+  const ledgerSettings = await api(baseUrl, '/api/ledger-settings')
   assert.equal(accountsResult.response.status, 200)
   assert.equal(categoriesResult.response.status, 200)
+  assert.equal(ledgerSettings.response.status, 200, JSON.stringify(ledgerSettings.payload))
+  assert.equal(ledgerSettings.payload.data.currency, 'HKD')
+  assert.equal(ledgerSettings.payload.data.canChangeCurrency, false)
+  const lockedCurrencyChange = await api(baseUrl, '/api/ledger-settings', {
+    method: 'PUT',
+    body: { currency: 'USD', expectedUpdatedAt: ledgerSettings.payload.data.updatedAt },
+  })
+  assert.equal(lockedCurrencyChange.response.status, 409)
+  assert.equal(lockedCurrencyChange.payload.error.code, 'LEDGER_CURRENCY_LOCKED')
   assert.match(accountsResult.response.headers.get('cache-control') ?? '', /no-store/)
   assert(accountsResult.payload.data.every(({ updatedAt }) => typeof updatedAt === 'string' && updatedAt.endsWith('Z')))
   assert(accountsResult.payload.data.every(({ openingBalanceMinor, openingBalanceOn }) => (
@@ -2728,7 +3071,8 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 13)
+  assert.equal(backup.schemaVersion, 14)
+  assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
@@ -2781,6 +3125,8 @@ async function verifyWorkerApi() {
     body: { mode: 'preview', backup },
   })
   assert.equal(originalPreview.response.status, 200, JSON.stringify(originalPreview.payload))
+  assert.equal(originalPreview.payload.data.currentCurrency, 'HKD')
+  assert.equal(originalPreview.payload.data.backupCurrency, 'HKD')
   assert.equal(originalPreview.payload.data.backupCounts.transactions, backup.data.transactions.length)
   assert.equal(originalPreview.payload.data.backupCounts.accountTransfers, 1)
   assert.equal(originalPreview.payload.data.backupCounts.emergencyFundGoals, 1)
@@ -2889,8 +3235,33 @@ async function verifyWorkerApi() {
   const restoredBackup = await api(baseUrl, '/api/backups/ledger')
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema13Backup = structuredClone(backup)
+  schema13Backup.schemaVersion = 13
+  delete schema13Backup.data.currency
+  schema13Backup.checksum.digest = backupChecksum(schema13Backup)
+  const schema13Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema13Backup },
+  })
+  assert.equal(schema13Preview.response.status, 200, JSON.stringify(schema13Preview.payload))
+  const schema13Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema13Backup,
+      expectedCurrentDigest: schema13Preview.payload.data.currentDigest,
+      expectedRevision: schema13Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
+  const upgradedSchema13Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 14)
+  assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
+
   const schema12Backup = structuredClone(backup)
   schema12Backup.schemaVersion = 12
+  delete schema12Backup.data.currency
   delete schema12Backup.data.emergencyFundGoals
   schema12Backup.checksum.digest = backupChecksum(schema12Backup)
   const schema12Preview = await api(baseUrl, '/api/backups/ledger', {
@@ -2911,10 +3282,12 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema12Restore.response.status, 200, JSON.stringify(schema12Restore.payload))
   const upgradedSchema12Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema12Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema12Backup.payload.data.emergencyFundGoals, [])
 
   const schema11Backup = structuredClone(backup)
   schema11Backup.schemaVersion = 11
+  delete schema11Backup.data.currency
   schema11Backup.data.accounts = withoutAccountOpeningBalances(schema11Backup.data.accounts)
   delete schema11Backup.data.emergencyFundGoals
   schema11Backup.checksum.digest = backupChecksum(schema11Backup)
@@ -2937,6 +3310,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema11Restore.response.status, 200, JSON.stringify(schema11Restore.payload))
   const upgradedSchema11Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema11Backup.payload.data.currency, 'HKD')
   assert.equal(upgradedSchema11Backup.payload.data.accountTransfers.length, 1)
   assert.deepEqual(upgradedSchema11Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema11Backup.payload.data.accounts.every(({
@@ -2946,6 +3320,7 @@ async function verifyWorkerApi() {
 
   const schema10Backup = structuredClone(backup)
   schema10Backup.schemaVersion = 10
+  delete schema10Backup.data.currency
   schema10Backup.data.accounts = withoutAccountOpeningBalances(schema10Backup.data.accounts)
   delete schema10Backup.data.accountTransfers
   delete schema10Backup.data.emergencyFundGoals
@@ -2969,6 +3344,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema10Restore.response.status, 200, JSON.stringify(schema10Restore.payload))
   const upgradedSchema10Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema10Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema10Backup.payload.data.accountTransfers, [])
   assert.deepEqual(upgradedSchema10Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema10Backup.payload.data.categories.some(
@@ -2977,6 +3353,7 @@ async function verifyWorkerApi() {
 
   const schema9Backup = structuredClone(backup)
   schema9Backup.schemaVersion = 9
+  delete schema9Backup.data.currency
   schema9Backup.data.accounts = withoutAccountOpeningBalances(schema9Backup.data.accounts)
   delete schema9Backup.data.accountTransfers
   delete schema9Backup.data.emergencyFundGoals
@@ -3006,6 +3383,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema9Restore.response.status, 200, JSON.stringify(schema9Restore.payload))
   const upgradedSchema9Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema9Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema9Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema9Backup.payload.data.categories.every(
     ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
@@ -3014,6 +3392,7 @@ async function verifyWorkerApi() {
 
   const schema8Backup = structuredClone(backup)
   schema8Backup.schemaVersion = 8
+  delete schema8Backup.data.currency
   schema8Backup.data.accounts = withoutAccountOpeningBalances(schema8Backup.data.accounts)
   delete schema8Backup.data.accountTransfers
   delete schema8Backup.data.emergencyFundGoals
@@ -3048,6 +3427,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema8Restore.response.status, 200, JSON.stringify(schema8Restore.payload))
   const upgradedSchema8Backup = await api(baseUrl, '/api/backups/ledger')
+  assert.equal(upgradedSchema8Backup.payload.data.currency, 'HKD')
   assert.deepEqual(upgradedSchema8Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema8Backup.payload.data.categories.every(
     ({ monthlyPlanMinor }) => monthlyPlanMinor === null,
@@ -3106,6 +3486,8 @@ async function verifyWorkerApi() {
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
     ledgerBackupTables: 7,
+    lockedCurrencyChanges: 1,
+    ledgerSchema13Restores: 1,
     ledgerSchema12Restores: 1,
     ledgerSchema11Restores: 1,
     ledgerSchema10Restores: 1,
@@ -3299,6 +3681,7 @@ async function stopProvider() {
 try {
   if (!skipBuild) await runCommand(openNext, ['build'], 'opennextjs-cloudflare')
   await runWrangler(['d1', 'migrations', 'apply', 'hushledger', '--local', '--persist-to', freshState])
+  const currencyEvidence = await verifyPristineCurrencyApi()
   await seedCsvExportRows()
   await verifyUpgradeMigration()
   const apiEvidence = await verifyWorkerApi()
@@ -3308,8 +3691,9 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0013',
-      upgradeMigration: '0004-to-0013-preserved-data-names-clearing-null-plans-transfers-openings-and-emergency-goal',
+      freshMigrations: '0001-0014',
+      upgradeMigration: '0004-to-0014-preserved-data-names-clearing-null-plans-transfers-openings-emergency-goal-and-ledger-currency',
+      ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,
     }),

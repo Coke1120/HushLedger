@@ -30,7 +30,8 @@ not operate an independent database server or a multi-user identity system.
 
 ### Review a month
 
-- View HKD income, expense, and balance for a selected month.
+- View income, expense, and balance in the ledger's selected currency for a
+  selected month.
 - Compare a zero-filled six-month expense trend and select any bar to review that
   calendar month; hide relative bar heights when privacy mode is enabled.
 - Review the top five expense categories or named payees by exact total and
@@ -40,10 +41,10 @@ not operate an independent database server or a multi-user identity system.
   exact remaining-or-over amount; treat plans as recurring guardrails, not cash
   allocation, rollover, or envelope balances.
 - Review one optional emergency-fund checkpoint against the recorded month-end
-  balance of one active HKD cash, bank, or wallet account. Treat it only as a
-  user-chosen progress comparison: it does not create or reserve money, recommend
-  an amount or deadline, forecast future funds, automate transfers, or verify a
-  provider balance.
+  balance of one active cash, bank, or wallet account in the ledger currency.
+  Treat it only as a user-chosen progress comparison: it does not create or
+  reserve money, recommend an amount or deadline, forecast future funds, automate
+  transfers, or verify a provider balance.
 - Review active recurring entries that remain ungenerated in the selected month
   as an expandable chronological list of every scheduled date, rule name,
   optional payee, amount, and income/expense label. Keep exact income, expense,
@@ -86,6 +87,9 @@ not operate an independent database server or a multi-user identity system.
   then restore the user's prior in-memory choice.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
+- Choose one ledger-wide currency in Settings before monetary history exists.
+  Keep it in private D1 data and full-ledger backups; do not fetch exchange rates,
+  convert amounts, or imply multi-currency accounting.
 
 ### Record money
 
@@ -137,13 +141,27 @@ not operate an independent database server or a multi-user identity system.
 
 ## Data contract
 
+### Ledger currency
+
+Migration `0014_ledger_currency.sql` adds one D1-backed currency for the complete
+ledger. Fresh and upgraded ledgers start as HKD. Settings can change a pristine
+ledger to AED, AUD, CAD, CHF, CNY, CZK, DKK, EUR, GBP, HKD, ILS, INR, MOP, MXN,
+MYR, NOK, NZD, PHP, PLN, QAR, SAR, SEK, SGD, THB, TRY, TWD, USD, or ZAR. Every
+supported currency uses two decimal minor units in HushLedger.
+
+The database rejects a currency change after any transaction, transfer, recurring
+rule, import tombstone, account opening balance, category plan, or emergency-fund
+checkpoint exists. A permitted change cascades through the otherwise-pristine
+accounts. It relabels the ledger and never fetches an exchange rate or converts an
+amount.
+
 ### Transactions
 
 ```text
 id                    client-generated UUID
 type                  income | expense
 amount_minor          positive integer minor units
-currency              HKD in the current release
+currency              the ledger-wide supported currency
 account_id            active compatible account
 category_id           active matching category
 occurred_on           YYYY-MM-DD calendar date
@@ -157,7 +175,8 @@ created_at            internal UTC audit timestamp
 updated_at            internal UTC audit timestamp
 ```
 
-HK$123.45 is stored as `12345`. Binary floating point is never authoritative.
+An amount of 123.45 is stored as `12345`. Binary floating point is never
+authoritative.
 `occurred_on` is intentionally date-only; audit timestamps must not be presented
 as transaction time. `cleared` is a reversible review marker, not an immutable
 reconciliation lock. `updated_at` is also the optimistic concurrency token for
@@ -190,11 +209,11 @@ account type in the current data model.
 ### Emergency-fund checkpoint
 
 Migration `0013_emergency_fund_goal.sql` adds at most one checkpoint row. It
-references one active HKD cash, bank, or wallet account, stores a positive target
-in integer minor units, and uses `updated_at` for conflict-safe updates and
-deletion. The overview compares that target with the selected month's recorded
-month-end balance. A negative recorded balance contributes zero to progress, and
-progress above the target is capped at the target.
+references one active cash, bank, or wallet account in the ledger currency,
+stores a positive target in integer minor units, and uses `updated_at` for
+conflict-safe updates and deletion. The overview compares that target with the
+selected month's recorded month-end balance. A negative recorded balance
+contributes zero to progress, and progress above the target is capped at the target.
 
 The checkpoint is not a separate balance, envelope, reserve, availability claim,
 recommendation, completion date, forecast, provider verification, or transfer
@@ -205,7 +224,7 @@ instruction. Removing it does not alter the backing account or any ledger entry.
 ```text
 id                 client-generated UUID
 amount_minor       positive integer minor units
-currency           HKD in the current release
+currency           the ledger-wide supported currency
 from_account_id    source account
 to_account_id      distinct destination account
 occurred_on        YYYY-MM-DD calendar date
@@ -240,6 +259,8 @@ its archived references while being reviewed or corrected.
 
 ```text
 GET    /api/health
+GET    /api/ledger-settings
+PUT    /api/ledger-settings  (conflict-safe pristine-ledger change; no conversion)
 GET    /api/accounts
 GET    /api/emergency-fund-goal
 PUT    /api/emergency-fund-goal  (create or conflict-safe update)
@@ -305,14 +326,17 @@ keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
-The schema-13 ledger JSON format covers seven tables: accounts, categories, the
-emergency-fund checkpoint, recurring rules, transactions, account transfers, and
-import tombstones. It excludes browser preferences and AI credentials. Its SHA-256
+The schema-14 ledger JSON format covers the ledger currency and seven collections:
+accounts, categories, the emergency-fund checkpoint, recurring rules,
+transactions, account transfers, and import tombstones. It excludes browser
+preferences and AI credentials. Its SHA-256
 checksum detects modification. Restore validates internal references, returns a
 no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-all seven tables. Schema-8 through schema-12 backups remain compatible and upgrade
-without inventing an emergency-fund checkpoint. The in-app file limit is 7 MiB;
+the currency and all seven collections. Schema-8 through schema-13 backups remain
+compatible and upgrade to HKD; schema-8 through schema-12 do not invent an
+emergency-fund checkpoint. Schema-14 restores preserve the selected currency and
+never convert amounts. The in-app file limit is 7 MiB;
 larger or database-level recovery uses Wrangler D1 export and restore. The browser
 stores only the most recent backup-preparation and integrity-check dates; this
 reminder does not prove that a backup file was retained off-platform.
@@ -344,6 +368,8 @@ reminder does not prove that a backup file was retained off-platform.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
 - A Settings page with immediate language switching and local-only preference
   persistence.
+- One D1-backed ledger currency selected before monetary history exists, with no
+  exchange-rate lookup, conversion, or per-account currency mode.
 - An optional emergency-fund checkpoint configured in Settings and reviewed on
   the monthly overview with explicit recorded-balance and non-reservation wording.
 - A persistent header indicator for temporary screen privacy, with no hover or
@@ -370,7 +396,8 @@ reminder does not prove that a backup file was retained off-platform.
 - D1 schema, seed, constraints, indexes, date-only migration, reversible
   transaction clearing status, optional expense-category monthly plans, and
   atomic account transfers with two-sided posting review, plus migration 0013's
-  optional single account-backed emergency-fund checkpoint.
+  optional single account-backed emergency-fund checkpoint and migration 0014's
+  singleton ledger currency with database-enforced change locks.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, recurring-rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
@@ -384,9 +411,10 @@ reminder does not prove that a backup file was retained off-platform.
   recorded-balance emergency-fund progress,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
-  recurring-rule management, and language settings.
-- Versioned schema-13 seven-table JSON backup with schema-8 through schema-12
-  compatibility, SHA-256 integrity checking, preview-only
+  recurring-rule management, language settings, and the pristine-ledger currency
+  setting.
+- Versioned schema-14 currency-plus-seven-collection JSON backup with schema-8
+  through schema-13 compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only

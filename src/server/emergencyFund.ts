@@ -8,7 +8,7 @@ import type {
 
 export type EmergencyFundGoalSaveResult =
   | { kind: 'created' | 'updated'; goal: EmergencyFundGoal }
-  | { kind: 'not_found' | 'version_conflict' | 'account_invalid' }
+  | { kind: 'not_found' | 'version_conflict' | 'account_invalid' | 'currency_conflict' }
 
 export type EmergencyFundGoalDeleteResult =
   | { kind: 'deleted' }
@@ -54,7 +54,10 @@ export async function saveEmergencyFundGoal(
       FROM accounts
       WHERE id = ?
         AND is_active = 1
-        AND currency = 'HKD'
+        AND currency = ?
+        AND EXISTS (
+          SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
+        )
         AND type IN ('cash', 'bank', 'wallet')
       ON CONFLICT(id) DO NOTHING
       RETURNING
@@ -62,10 +65,19 @@ export async function saveEmergencyFundGoal(
         target_minor AS targetMinor,
         created_at AS createdAt,
         updated_at AS updatedAt
-    `).bind(input.accountId, input.targetMinor, input.accountId).run()
+    `).bind(
+      input.accountId,
+      input.targetMinor,
+      input.accountId,
+      input.expectedCurrency,
+      input.expectedCurrency,
+    ).run()
 
     const goal = inserted.results[0] as EmergencyFundGoal | undefined
     if (!goal) {
+      if (!await ledgerCurrencyMatches(database, input.expectedCurrency)) {
+        return { kind: 'currency_conflict' }
+      }
       if (await getEmergencyFundGoal(database)) return { kind: 'version_conflict' }
       return await isEligibleAccount(database, input.accountId)
         ? { kind: 'version_conflict' }
@@ -90,7 +102,10 @@ export async function saveEmergencyFundGoal(
         FROM accounts
         WHERE id = ?
           AND is_active = 1
-          AND currency = 'HKD'
+          AND currency = ?
+          AND EXISTS (
+            SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
+          )
           AND type IN ('cash', 'bank', 'wallet')
       )
     RETURNING
@@ -103,6 +118,8 @@ export async function saveEmergencyFundGoal(
     input.targetMinor,
     input.expectedUpdatedAt,
     input.accountId,
+    input.expectedCurrency,
+    input.expectedCurrency,
   ).run()
 
   const goal = updated.results[0] as EmergencyFundGoal | undefined
@@ -110,6 +127,9 @@ export async function saveEmergencyFundGoal(
     const current = await getEmergencyFundGoal(database)
     if (!current) return { kind: 'not_found' }
     if (current.updatedAt !== input.expectedUpdatedAt) return { kind: 'version_conflict' }
+    if (!await ledgerCurrencyMatches(database, input.expectedCurrency)) {
+      return { kind: 'currency_conflict' }
+    }
     return await isEligibleAccount(database, input.accountId)
       ? { kind: 'version_conflict' }
       : { kind: 'account_invalid' }
@@ -141,9 +161,22 @@ async function isEligibleAccount(database: D1Database, accountId: number) {
     FROM accounts
     WHERE id = ?
       AND is_active = 1
-      AND currency = 'HKD'
+      AND currency = (SELECT currency FROM ledger_settings WHERE id = 1)
       AND type IN ('cash', 'bank', 'wallet')
     LIMIT 1
   `).bind(accountId).first<{ found: number }>()
   return account?.found === 1
+}
+
+async function ledgerCurrencyMatches(
+  database: D1Database,
+  expectedCurrency: EmergencyFundGoalSaveInput['expectedCurrency'],
+) {
+  const row = await database.prepare(`
+    SELECT 1 AS found
+    FROM ledger_settings
+    WHERE id = 1 AND currency = ?
+    LIMIT 1
+  `).bind(expectedCurrency).first<{ found: number }>()
+  return row?.found === 1
 }

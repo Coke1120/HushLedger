@@ -47,7 +47,7 @@ export function CsvImportPanel({
   onClose,
   onImported,
 }: CsvImportPanelProps) {
-  const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
+  const { formatDate, formatMoney, ledgerCurrency, localizeEntityName, t } = useI18n()
   const [fileName, setFileName] = useState('')
   const [fileText, setFileText] = useState('')
   const [bankDocument, setBankDocument] = useState<BankCsvDocument | null>(null)
@@ -106,7 +106,11 @@ export function CsvImportPanel({
       const bytes = await file.arrayBuffer()
       const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
       setFileText(text)
-      const parsed = await parseHushLedgerCsv(text, { accounts, categories })
+      const parsed = await parseHushLedgerCsv(text, {
+        accounts,
+        categories,
+        currency: ledgerCurrency,
+      })
       if (sequence !== requestSequence.current) return
       if (parsed.issues.length === 1 && parsed.issues[0].code === 'invalid_header') {
         const delimiter = detectBankCsvDelimiter(text)
@@ -421,7 +425,7 @@ export function CsvImportPanel({
                     <div>
                       <dt>{t('amount')}</dt>
                       <dd className={row.type === 'expense' ? 'expense' : 'income'}>
-                        {row.type === 'expense' ? '−' : '+'}{formatMoney(row.amountMinor)}
+                        {row.type === 'expense' ? '−' : '+'}{formatMoney(row.amountMinor, row.currency)}
                       </dd>
                     </div>
                     <div>

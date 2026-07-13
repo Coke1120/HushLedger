@@ -33,6 +33,7 @@ const categories: Category[] = [
     updatedAt,
   },
 ]
+const references = { accounts, categories, currency: 'HKD' as const }
 
 function transaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -63,7 +64,7 @@ function transaction(overrides: Partial<Transaction> = {}): Transaction {
 describe('HushLedger CSV import', () => {
   it('round-trips exported rows, quotes, newlines, and spreadsheet-safe text', async () => {
     const csv = transactionsToCsv([transaction()])
-    const result = await parseHushLedgerCsv(csv, { accounts, categories })
+    const result = await parseHushLedgerCsv(csv, references)
 
     assert.deepEqual(result.issues, [])
     assert.equal(result.rows.length, 1)
@@ -88,8 +89,8 @@ describe('HushLedger CSV import', () => {
     const header = 'Date,Type,Amount,Currency,Account,Category,Payee,Note'
     const row = '2026-07-13,expense,-12.34,HKD,"Daily, account",Food,Cafe,'
     const csv = `${header}\r\n${row}\r\n${row}\r\n`
-    const first = await parseHushLedgerCsv(csv, { accounts, categories })
-    const second = await parseHushLedgerCsv(csv, { accounts, categories })
+    const first = await parseHushLedgerCsv(csv, references)
+    const second = await parseHushLedgerCsv(csv, references)
 
     assert.deepEqual(first.issues, [])
     assert.equal(first.rows.length, 2)
@@ -108,7 +109,7 @@ describe('HushLedger CSV import', () => {
       '2026-07-13,expense,10.00,HKD,"Daily, account",Food,Cafe,',
       '2026-07-13,expense,-10.00,HKD,Missing,Food,Cafe,',
     ].join('\r\n')
-    const result = await parseHushLedgerCsv(csv, { accounts, categories })
+    const result = await parseHushLedgerCsv(csv, references)
 
     assert.equal(result.rows.length, 0)
     assert.deepEqual(result.issues.map(({ row, code }) => ({ row, code })), [
@@ -118,16 +119,36 @@ describe('HushLedger CSV import', () => {
     ])
   })
 
+  it('imports only rows that use the selected ledger currency', async () => {
+    const usdAccounts: Account[] = [{ ...accounts[0], currency: 'USD' }]
+    const csv = [
+      'Date,Type,Amount,Currency,Account,Category,Payee,Note',
+      '2026-07-13,expense,-12.34,USD,"Daily, account",Food,Cafe,',
+    ].join('\r\n')
+
+    const usd = await parseHushLedgerCsv(csv, {
+      accounts: usdAccounts,
+      categories,
+      currency: 'USD',
+    })
+    assert.deepEqual(usd.issues, [])
+    assert.equal(usd.rows[0]?.currency, 'USD')
+
+    const hkd = await parseHushLedgerCsv(csv, references)
+    assert.deepEqual(hkd.rows, [])
+    assert.deepEqual(hkd.issues, [{ row: 2, code: 'invalid_currency', value: 'USD' }])
+  })
+
   it('rejects unknown headers and malformed quoting', async () => {
     const unknown = await parseHushLedgerCsv(
       'Date,Type,Amount,Currency,Account,Category,Payee,Unknown\r\n',
-      { accounts, categories },
+      references,
     )
     assert.equal(unknown.issues[0].code, 'invalid_header')
 
     const malformed = await parseHushLedgerCsv(
       'Date,Type,Amount,Currency,Account,Category,Payee,Note\r\n"unclosed',
-      { accounts, categories },
+      references,
     )
     assert.equal(malformed.issues[0].code, 'invalid_csv')
   })
@@ -136,7 +157,7 @@ describe('HushLedger CSV import', () => {
     const result = await parseHushLedgerCsv([
       'Date,Type,Amount,Currency,Account,Category,Payee,Note,Cleared',
       '2026-07-13,expense,-10.00,HKD,"Daily, account",Food,Cafe,,Pending',
-    ].join('\r\n'), { accounts, categories })
+    ].join('\r\n'), references)
 
     assert.equal(result.rows.length, 0)
     assert.deepEqual(result.issues, [{ row: 2, code: 'invalid_clearing_status', value: 'Pending' }])

@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import {
+  DEFAULT_LEDGER_CURRENCY,
+  supportedCurrencySchema,
+  type SupportedCurrency,
+} from './currency'
 import { isValidCalendarDate, monthRangeDates } from './date'
 import { isTransactionTagName } from './transactionTags'
 
@@ -30,7 +35,7 @@ export const transactionIdSchema = z.string().uuid('交易 ID 必須是 UUID')
 const transactionFieldsSchema = z.object({
   type: transactionTypeSchema,
   amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  currency: z.literal('HKD').default('HKD'),
+  currency: supportedCurrencySchema,
   accountId: z.number().int().positive(),
   categoryId: z.number().int().positive(),
   occurredOn: calendarDateSchema,
@@ -95,7 +100,7 @@ export const transactionDuplicateCheckSchema = transactionFieldsSchema
 
 const accountTransferFields = {
   amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  currency: z.literal('HKD').default('HKD'),
+  currency: supportedCurrencySchema,
   fromAccountId: z.number().int().positive(),
   toAccountId: z.number().int().positive(),
   occurredOn: calendarDateSchema,
@@ -125,7 +130,7 @@ export const accountTransferInputSchema = z
 export const accountTransferUpdateSchema = z
   .object({
     ...accountTransferFields,
-    currency: z.literal('HKD'),
+    currency: supportedCurrencySchema,
     fromCleared: z.boolean(),
     toCleared: z.boolean(),
     note: z.string().trim().max(200),
@@ -207,6 +212,7 @@ export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
 export type AccountTransferUpdateInput = z.infer<typeof accountTransferUpdateSchema>
 
 const referenceNameSchema = z.string().trim().min(1).max(80)
+const expectedLedgerCurrencySchema = supportedCurrencySchema.default(DEFAULT_LEDGER_CURRENCY)
 const updatedReferenceSchema = z.object({
   updatedAt: z.string().datetime({ offset: true }),
 })
@@ -238,6 +244,7 @@ export const accountCreateSchema = z
   .object({
     name: referenceNameSchema,
     type: accountTypeSchema,
+    expectedCurrency: expectedLedgerCurrencySchema,
     openingBalanceMinor: signedMinorSchema.default(null),
     openingBalanceOn: calendarDateSchema.nullable().default(null),
   })
@@ -246,6 +253,7 @@ export const accountCreateSchema = z
 export const accountUpdateSchema = z.object({
   name: referenceNameSchema,
   type: accountTypeSchema,
+  expectedCurrency: expectedLedgerCurrencySchema,
   ...accountOpeningFields,
 })
   .extend(updatedReferenceSchema.shape)
@@ -261,6 +269,7 @@ const categoryMonthlyPlanSchema = z
 const categoryFieldsSchema = z.object({
   name: referenceNameSchema,
   type: transactionTypeSchema,
+  expectedCurrency: expectedLedgerCurrencySchema,
   monthlyPlanMinor: categoryMonthlyPlanSchema,
 })
 const validateCategoryMonthlyPlan = (
@@ -314,6 +323,7 @@ export const emergencyFundGoalSaveSchema = z
   .object({
     accountId: z.number().int().positive(),
     targetMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    expectedCurrency: expectedLedgerCurrencySchema,
     expectedUpdatedAt: emergencyFundGoalVersionSchema.nullable(),
   })
   .strict()
@@ -386,7 +396,7 @@ const recurringRuleFieldsSchema = z.object({
   name: z.string().trim().min(1).max(80),
   type: transactionTypeSchema,
   amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  currency: z.literal('HKD').default('HKD'),
+  currency: supportedCurrencySchema,
   accountId: z.number().int().positive(),
   categoryId: z.number().int().positive(),
   frequency: recurrenceFrequencySchema,
@@ -518,7 +528,7 @@ export type Account = {
   id: number
   name: string
   type: AccountType
-  currency: 'HKD'
+  currency: SupportedCurrency
   isActive: boolean
   sortOrder: number
   localizationKey: AccountLocalizationKey | null

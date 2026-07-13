@@ -297,7 +297,7 @@ export function TransactionList({
               <strong className={`transaction-amount ${transaction.type}`}>
                 <span className="sr-only">{transaction.type === 'income' ? t('income') : t('expense')}</span>
                 {transaction.type === 'income' ? '+' : '−'}
-                {formatMoney(transaction.amountMinor)}
+                {formatMoney(transaction.amountMinor, transaction.currency)}
               </strong>
             </button>
             {!selecting && tags.length > 0 ? (

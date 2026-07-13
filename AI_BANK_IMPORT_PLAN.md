@@ -67,7 +67,7 @@ UTF-8 會令 request 大於原文。Zod parse 後再獨立驗證 `statementText`
 Worker 回傳逐筆草稿；UI 以 table／mobile cards 顯示：
 
 - 原文行號及簡短原文摘錄
-- 日期、收支方向、HKD 金額、payee／description
+- 日期、收支方向、帳本幣別金額、payee／description
 - 建議分類、信心程度、警告
 - `可能重複`、`日期不明確`、`可能是轉帳／信用卡還款` 等狀態
 
@@ -201,7 +201,7 @@ CI 只使用 fake provider，不使用真實 API key。至少覆蓋：
 - 逗號、貨幣符號、括號負數、`CR`／`DR`、debit／credit 欄
 - statement headers、opening/closing balance、totals 及多行 description
 - income、expense、refund、fee、cash withdrawal、FPS 及可能 transfer
-- 中英混合 payee、emoji、超長行、空白、零金額及非 HKD
+- 中英混合 payee、emoji、超長行、空白、零金額及非帳本幣別
 - prompt injection、HTML／CSV-like payload、malformed／oversized model output
 - provider timeout、401、429、5xx、refusal、invalid JSON 及 schema mismatch
 - duplicate preview、stable re-analysis、部分排除、全部排除及 atomic commit failure

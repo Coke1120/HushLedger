@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { SupportedCurrency } from './currency'
 import { isValidCalendarDate } from './date'
 import { parseAmount } from './money'
 import {
@@ -114,6 +115,7 @@ export type CsvImportParseResult = {
 type ReferenceData = {
   accounts: readonly Account[]
   categories: readonly Category[]
+  currency: SupportedCurrency
 }
 
 export async function parseHushLedgerCsv(
@@ -187,7 +189,7 @@ export async function parseHushLedgerCsv(
     }
 
     const currency = value('Currency').trim().toUpperCase()
-    if (currency !== 'HKD') {
+    if (currency !== references.currency) {
       issues.push({ row: sourceRow, code: 'invalid_currency', value: currency })
       continue
     }
@@ -251,7 +253,7 @@ export async function parseHushLedgerCsv(
       id: sourceId || crypto.randomUUID(),
       type,
       amountMinor,
-      currency: 'HKD',
+      currency: references.currency,
       accountId: matchingAccounts[0].id,
       categoryId: matchingCategories[0].id,
       occurredOn,

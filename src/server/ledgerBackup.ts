@@ -23,6 +23,7 @@ import {
   type LedgerTableCounts,
   type LedgerValidationIssue,
 } from '../lib/ledgerBackup'
+import type { SupportedCurrency } from '../lib/currency'
 
 type RawAccount = Omit<LedgerBackupData['accounts'][number], 'isActive'> & { isActive: number }
 type RawCategory = Omit<LedgerBackupData['categories'][number], 'isActive'> & { isActive: number }
@@ -33,6 +34,7 @@ type RawAccountTransfer = Omit<
   'fromCleared' | 'toCleared'
 > & { fromCleared: number; toCleared: number }
 type LedgerRevisionRow = { revision: number }
+type LedgerSettingsRow = { currency: SupportedCurrency }
 
 type LedgerSnapshot = {
   data: LedgerBackupData
@@ -41,6 +43,7 @@ type LedgerSnapshot = {
 
 export type VerifiedLedgerBackup = {
   exportedAt: string
+  currency: SupportedCurrency
   checksum: string
   backupDigest: string
   backupCounts: LedgerTableCounts
@@ -191,6 +194,14 @@ const importKeyQuery = `
 `
 
 const revisionQuery = 'SELECT revision FROM ledger_state WHERE id = 1'
+const ledgerSettingsQuery = 'SELECT currency FROM ledger_settings WHERE id = 1'
+const nextLedgerSettingsUpdatedAt = `
+  CASE
+    WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+      THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+  END
+`
 
 const accountInsert = `
   INSERT INTO accounts(
@@ -421,6 +432,7 @@ export async function verifyLedgerBackup(
     ok: true,
     value: {
       exportedAt: backup.exportedAt,
+      currency: data.currency,
       checksum: backup.checksum.digest,
       backupDigest: await digestLedgerData(data),
       backupCounts: countLedgerData(data),
@@ -441,6 +453,8 @@ export async function previewLedgerRestore(
     backupDigest: verified.backupDigest,
     currentDigest: await digestLedgerData(current.data),
     currentRevision: current.revision,
+    currentCurrency: current.data.currency,
+    backupCurrency: verified.currency,
     currentCounts: countLedgerData(current.data),
     backupCounts: verified.backupCounts,
     restoreStatements: verified.restoreStatements,
@@ -464,6 +478,7 @@ export async function restoreLedgerBackup(
   const statements = buildRestoreStatements(
     database,
     verified.chunks,
+    verified.currency,
     expectedRevision,
     verified.backupCounts,
   )
@@ -500,7 +515,7 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
 }
 
 export function countRestoreStatements(chunks: LedgerRestoreChunks) {
-  return 10 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
+  return 11 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
 }
 
 async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot> {
@@ -512,6 +527,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
     accountTransfers,
     emergencyFundGoals,
     importKeys,
+    ledgerSettings,
     revision,
   ] =
     await database.batch([
@@ -522,13 +538,17 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       database.prepare(accountTransferQuery),
       database.prepare(emergencyFundGoalQuery),
       database.prepare(importKeyQuery),
+      database.prepare(ledgerSettingsQuery),
       database.prepare(revisionQuery),
     ])
 
   const revisionRow = revision.results[0] as LedgerRevisionRow | undefined
   if (!revisionRow) throw new Error('Ledger revision state is missing')
+  const ledgerSettingsRow = ledgerSettings.results[0] as LedgerSettingsRow | undefined
+  if (!ledgerSettingsRow) throw new Error('Ledger currency setting is missing')
 
   const data = ledgerBackupDataSchema.parse({
+    currency: ledgerSettingsRow.currency,
     accounts: (accounts.results as RawAccount[]).map((row) => ({
       ...row,
       isActive: row.isActive === 1,
@@ -600,6 +620,7 @@ function chunkRows<T>(rows: readonly T[]) {
 function buildRestoreStatements(
   database: D1Database,
   chunks: LedgerRestoreChunks,
+  currency: SupportedCurrency,
   expectedRevision: number,
   expectedCounts: LedgerTableCounts,
 ) {
@@ -616,6 +637,11 @@ function buildRestoreStatements(
     database.prepare('DELETE FROM emergency_fund_goals'),
     database.prepare('DELETE FROM categories'),
     database.prepare('DELETE FROM accounts'),
+    database.prepare(`
+      UPDATE ledger_settings
+      SET currency = ?, updated_at = ${nextLedgerSettingsUpdatedAt}
+      WHERE id = 1
+    `).bind(currency),
   ]
 
   appendChunkStatements(statements, database, accountInsert, chunks.accounts)

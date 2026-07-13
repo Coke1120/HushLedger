@@ -62,6 +62,7 @@ export const POST = apiRoute(async (request) => {
       {
         provider: parsed.data.provider,
         accountId: account.id,
+        currency: parsed.data.currency,
         dateOrder: parsed.data.dateOrder,
         statementText: parsed.data.statementText,
         categories,

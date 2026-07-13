@@ -14,7 +14,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
 import { useI18n } from '../i18n'
 import type {
@@ -31,6 +31,7 @@ type RecurringRulesPageProps = {
   accounts: Account[]
   categories: Category[]
   draft: RecurringRuleCreateInput | null
+  mutable: boolean
   onMoneyRefresh: () => Promise<boolean>
   onDraftClose: () => void
 }
@@ -39,14 +40,16 @@ export function RecurringRulesPage({
   accounts,
   categories,
   draft,
+  mutable,
   onMoneyRefresh,
   onDraftClose,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
-  const recurring = useRecurringRules(onMoneyRefresh)
+  const recurring = useRecurringRules(onMoneyRefresh, mutable)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
+  const mutationsEnabled = mutable && recurring.online && recurring.source === 'live'
 
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts])
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
@@ -62,6 +65,17 @@ export function RecurringRulesPage({
     onDraftClose()
   }, [onDraftClose])
   const closeDelete = useCallback(() => setDeletingRule(null), [])
+
+  useEffect(() => {
+    if (mutationsEnabled) return
+    const timeout = window.setTimeout(() => {
+      setEditorOpen(false)
+      setEditingRule(null)
+      setDeletingRule(null)
+      onDraftClose()
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [mutationsEnabled, onDraftClose])
 
   const openCreate = () => {
     recurring.clearActionMessage()
@@ -139,12 +153,12 @@ export function RecurringRulesPage({
             className="button button-secondary"
             type="button"
             onClick={() => void recurring.runDue()}
-            disabled={!recurring.online || recurring.running || loading}
+            disabled={!mutationsEnabled || recurring.running || loading}
           >
             {recurring.running ? <LoaderCircle className="spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
             {recurring.running ? t('checking') : t('generateDueTransactions')}
           </button>
-          <button className="button button-primary" type="button" onClick={openCreate} disabled={!recurring.online}>
+          <button className="button button-primary" type="button" onClick={openCreate} disabled={!mutationsEnabled}>
             <Plus aria-hidden="true" />
             {t('addRecurringRule')}
           </button>
@@ -188,7 +202,7 @@ export function RecurringRulesPage({
             </span>
             <strong>{t('noRecurringRules')}</strong>
             <span>{t('noRecurringRulesHelp')}</span>
-            <button className="button button-primary" type="button" onClick={openCreate} disabled={!recurring.online}>
+            <button className="button button-primary" type="button" onClick={openCreate} disabled={!mutationsEnabled}>
               <Plus aria-hidden="true" />
               {t('createFirstRule')}
             </button>
@@ -225,7 +239,7 @@ export function RecurringRulesPage({
                     <strong className={rule.type}>
                       <span className="sr-only">{rule.type === 'income' ? t('income') : t('expense')}</span>
                       {rule.type === 'income' ? '+' : '−'}
-                      {formatMoney(rule.amountMinor)}
+                      {formatMoney(rule.amountMinor, rule.currency)}
                     </strong>
                   </div>
 
@@ -262,7 +276,7 @@ export function RecurringRulesPage({
                       className="button button-secondary"
                       type="button"
                       onClick={() => openEdit(rule)}
-                      disabled={!recurring.online || busy}
+                      disabled={!mutationsEnabled || busy}
                     >
                       <Pencil aria-hidden="true" />
                       {t('edit')}
@@ -277,7 +291,7 @@ export function RecurringRulesPage({
                             void recurring.skipRuleOccurrence(rule)
                           }
                         }}
-                        disabled={!recurring.online || busy}
+                        disabled={!mutationsEnabled || busy}
                       >
                         <CalendarX2 aria-hidden="true" />
                         {t('skipNextOccurrence')}
@@ -287,7 +301,7 @@ export function RecurringRulesPage({
                       className="button button-secondary"
                       type="button"
                       onClick={() => void recurring.setRuleActive(rule, !rule.isActive)}
-                      disabled={!recurring.online || busy}
+                      disabled={!mutationsEnabled || busy}
                     >
                       {busy ? (
                         <LoaderCircle className="spin" aria-hidden="true" />
@@ -302,7 +316,7 @@ export function RecurringRulesPage({
                       className="button recurring-delete-button"
                       type="button"
                       onClick={() => setDeletingRule(rule)}
-                      disabled={!recurring.online || busy}
+                      disabled={!mutationsEnabled || busy}
                     >
                       <Trash2 aria-hidden="true" />
                       {t('delete')}
@@ -324,7 +338,7 @@ export function RecurringRulesPage({
           categories={categories}
           saving={recurring.mutatingId === (editingRule?.id ?? 'new')}
           serverError={recurring.error}
-          online={recurring.online}
+          mutable={mutationsEnabled}
           onClose={closeEditor}
           onCreate={createRule}
           onEdit={editRule}
@@ -335,6 +349,7 @@ export function RecurringRulesPage({
         <RecurringDeleteDialog
           rule={deletingRule}
           deleting={recurring.mutatingId === deletingRule.id}
+          mutable={mutationsEnabled}
           onClose={closeDelete}
           onConfirm={() => recurring.deleteRule(deletingRule)}
         />

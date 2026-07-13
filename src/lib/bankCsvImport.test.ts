@@ -139,8 +139,8 @@ describe('generic bank CSV import', () => {
     const parsed = parseBankCsvDocument(text, ',')
     assert(parsed.document)
     const mapping = baseMapping({ idColumn: 3 })
-    const first = await mapBankCsvDocument(parsed.document, mapping, { accounts, categories })
-    const second = await mapBankCsvDocument(parsed.document, mapping, { accounts, categories })
+    const first = await mapBankCsvDocument(parsed.document, mapping, { accounts, categories, currency: 'HKD' })
+    const second = await mapBankCsvDocument(parsed.document, mapping, { accounts, categories, currency: 'HKD' })
 
     assert.deepEqual(first.issues, [])
     assert(first.rows.every(({ cleared }) => cleared))
@@ -173,12 +173,12 @@ describe('generic bank CSV import', () => {
     const remembered = await mapBankCsvDocument(
       parsed.document,
       baseMapping({ rememberPayeeCategories: true }),
-      { accounts, categories, payeeSuggestions },
+      { accounts, categories, currency: 'HKD', payeeSuggestions },
     )
     const defaulted = await mapBankCsvDocument(
       parsed.document,
       baseMapping({ rememberPayeeCategories: false }),
-      { accounts, categories, payeeSuggestions },
+      { accounts, categories, currency: 'HKD', payeeSuggestions },
     )
 
     assert.deepEqual(remembered.rows.map(({ categoryId }) => categoryId), [12, 10])
@@ -200,13 +200,62 @@ describe('generic bank CSV import', () => {
       amountColumn: null,
       debitColumn: 2,
       creditColumn: 3,
-    }, { accounts, categories })
+    }, { accounts, categories, currency: 'HKD' })
 
     assert.deepEqual(result.issues, [])
     assert.deepEqual(result.rows.map((row) => [row.type, row.amountMinor, row.categoryId]), [
       ['income', 8_820, 11],
       ['expense', 1_230, 10],
     ])
+  })
+
+  it('parses only the selected ledger currency symbol or code', async () => {
+    const usdAccounts: Account[] = accounts.map((account) => ({ ...account, currency: 'USD' }))
+    const parsed = parseBankCsvDocument([
+      'Date,Description,Amount',
+      '13/07/2026,Coffee,USD 12.34 DR',
+      '14/07/2026,Refund,$5.67 CR',
+    ].join('\n'), ',')
+    assert(parsed.document)
+
+    const usd = await mapBankCsvDocument(
+      parsed.document,
+      baseMapping(),
+      { accounts: usdAccounts, categories, currency: 'USD' },
+    )
+    assert.deepEqual(usd.issues, [])
+    assert.deepEqual(
+      usd.rows.map(({ type, amountMinor, currency }) => ({ type, amountMinor, currency })),
+      [
+        { type: 'expense', amountMinor: 1_234, currency: 'USD' },
+        { type: 'income', amountMinor: 567, currency: 'USD' },
+      ],
+    )
+
+    const mismatched = await mapBankCsvDocument(
+      parseBankCsvDocument('Date,Description,Amount\n13/07/2026,Coffee,HKD 12.34 DR', ',').document!,
+      baseMapping(),
+      { accounts: usdAccounts, categories, currency: 'USD' },
+    )
+    assert.deepEqual(mismatched.rows, [])
+    assert.deepEqual(mismatched.issues, [{ row: 2, code: 'bank_invalid_amount' }])
+  })
+
+  it('keeps accepting the selected currency narrow symbol', async () => {
+    const parsed = parseBankCsvDocument(
+      'Date,Description,Amount\n13/07/2026,Coffee,$12.34 DR',
+      ',',
+    )
+    assert(parsed.document)
+
+    const result = await mapBankCsvDocument(
+      parsed.document,
+      baseMapping(),
+      { accounts, categories, currency: 'HKD' },
+    )
+    assert.deepEqual(result.issues, [])
+    assert.equal(result.rows[0]?.amountMinor, 1_234)
+    assert.equal(result.rows[0]?.currency, 'HKD')
   })
 
   it('rejects ambiguous amounts, duplicate IDs, invalid dates, and partial results', async () => {
@@ -225,7 +274,7 @@ describe('generic bank CSV import', () => {
       amountColumn: null,
       debitColumn: 2,
       creditColumn: 3,
-    }, { accounts, categories })
+    }, { accounts, categories, currency: 'HKD' })
 
     assert.equal(result.rows.length, 0)
     assert.deepEqual(result.issues.map(({ row, code }) => ({ row, code })), [

@@ -9,11 +9,12 @@ import {
   resolveAmountInputLocale,
 } from './money'
 
-describe('HKD money helpers', () => {
-  it('formats integer minor units as HKD with two decimal places', () => {
+describe('two-decimal money helpers', () => {
+  it('formats integer minor units with the selected ledger currency', () => {
     assert.match(formatMoney(12_345), /HK\$123\.45/)
     assert.match(formatMoney(5), /HK\$0\.05/)
     assert.match(formatMoney(12_345, 'HKD', 'fr'), /123,45\sHKD/)
+    assert.equal(formatMoney(12_345, 'USD', 'en'), '$123.45')
   })
 
   for (const [value, expected] of [

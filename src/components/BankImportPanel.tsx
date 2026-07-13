@@ -31,7 +31,7 @@ type BankImportPanelProps = {
   settings: AiProviderSettings
   accounts: Account[]
   categories: Category[]
-  online: boolean
+  available: boolean
   panelRef: RefObject<HTMLElement | null>
   onClose: () => void
   onConfigure: () => void
@@ -42,14 +42,16 @@ export function BankImportPanel({
   settings,
   accounts,
   categories,
-  online,
+  available,
   panelRef,
   onClose,
   onConfigure,
   onImported,
 }: BankImportPanelProps) {
-  const { locale, localizeEntityName, privacyMode, t } = useI18n()
-  const activeAccounts = accounts.filter((account) => account.isActive)
+  const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
+  const activeAccounts = accounts.filter(
+    (account) => account.isActive && account.currency === ledgerCurrency,
+  )
   const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
   const [dateOrder, setDateOrder] = useState<AiDateOrder>('DMY')
   const [statementText, setStatementText] = useState('')
@@ -74,6 +76,24 @@ export function BankImportPanel({
     requestIdRef.current += 1
     requestControllerRef.current?.abort()
   }, [])
+
+  useEffect(() => {
+    if (available) return
+    const timeout = window.setTimeout(() => {
+      requestIdRef.current += 1
+      requestControllerRef.current?.abort()
+      requestControllerRef.current = null
+      setDrafts([])
+      setPreview(null)
+      setSelectedKeys(new Set())
+      setAnalyzing(false)
+      setPreviewing(false)
+      setImporting(false)
+      setStatus('')
+      setError('')
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [available])
 
   const cancelPendingRequest = () => {
     requestIdRef.current += 1
@@ -111,7 +131,7 @@ export function BankImportPanel({
       setError(t('aiConfigureFirst'))
       return
     }
-    if (!online) {
+    if (!available) {
       setError(t('aiOffline'))
       return
     }
@@ -137,7 +157,7 @@ export function BankImportPanel({
         body: JSON.stringify({
           provider: provider.data,
           accountId,
-          currency: 'HKD',
+          currency: ledgerCurrency,
           dateOrder,
           statementText,
         }),
@@ -207,6 +227,11 @@ export function BankImportPanel({
     requestId = ++requestIdRef.current,
     existingSignal?: AbortSignal,
   ) => {
+    if (!available) {
+      cancelPendingRequest()
+      setError(t('aiOffline'))
+      return false
+    }
     const rows = importRows(nextDrafts)
     if (rows.length === 0) {
       setPreview(null)
@@ -255,6 +280,11 @@ export function BankImportPanel({
   }
 
   const commitDrafts = async () => {
+    if (!available) {
+      cancelPendingRequest()
+      setError(t('aiOffline'))
+      return
+    }
     if (!preview || selectedKeys.size === 0 || importing) return
     const rows = importRows(drafts).map((row) => ({
       ...row,
@@ -416,7 +446,7 @@ export function BankImportPanel({
             previewing ||
             importing ||
             !configured ||
-            !online ||
+            !available ||
             !statementText.trim() ||
             statementBytes > MAX_AI_STATEMENT_BYTES
           }
@@ -591,7 +621,7 @@ export function BankImportPanel({
                 className="button button-primary"
                 type="button"
                 onClick={() => void commitDrafts()}
-                disabled={importing || previewing || selectedKeys.size === 0}
+                disabled={!available || importing || previewing || selectedKeys.size === 0}
               >
                 {importing ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {importing ? t('aiImporting') : t('aiImportSelected')}
@@ -601,7 +631,7 @@ export function BankImportPanel({
                 className="button button-secondary"
                 type="button"
                 onClick={() => void previewDrafts()}
-                disabled={previewing || importing}
+                disabled={!available || previewing || importing}
               >
                 {previewing ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {previewing ? t('aiPreviewing') : t('aiPreviewDrafts')}

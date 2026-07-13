@@ -2,12 +2,14 @@ import { PiggyBank, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
+import type { SupportedCurrency } from '../lib/currency'
 import { formatAmountInput, parseAmount, resolveAmountInputLocale } from '../lib/money'
 import type { Account, EmergencyFundGoal } from '../lib/schema'
 
 type EmergencyFundSettingsProps = {
   goal: EmergencyFundGoal | null
   accounts: Account[]
+  expectedCurrency: SupportedCurrency
   enabled: boolean
   onRefresh: () => Promise<boolean>
 }
@@ -23,10 +25,11 @@ type EmergencyFundDraft = {
 export function EmergencyFundSettings({
   goal,
   accounts,
+  expectedCurrency,
   enabled,
   onRefresh,
 }: EmergencyFundSettingsProps) {
-  const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const eligibleAccounts = accounts.filter(
     (account) => account.isActive && account.type !== 'credit_card',
   )
@@ -76,7 +79,12 @@ export function EmergencyFundSettings({
       const saved = await api<EmergencyFundGoal>('/api/emergency-fund-goal', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, targetMinor, expectedUpdatedAt }),
+        body: JSON.stringify({
+          accountId,
+          targetMinor,
+          expectedCurrency,
+          expectedUpdatedAt,
+        }),
       })
       const refreshed = await onRefresh()
       setDraft(refreshed ? null : {
@@ -133,7 +141,7 @@ export function EmergencyFundSettings({
         <span className="settings-panel-icon" aria-hidden="true"><PiggyBank /></span>
         <div>
           <h3 id="emergency-fund-settings-title">{t('emergencyFundSettingsTitle')}</h3>
-          <p>{t('emergencyFundSettingsHelp')}</p>
+          <p>{t('emergencyFundSettingsHelp', { currency: ledgerCurrency })}</p>
         </div>
       </div>
 
@@ -158,7 +166,7 @@ export function EmergencyFundSettings({
           </label>
 
           <label>
-            <span>{t('emergencyFundTargetLabel')}</span>
+            <span>{t('emergencyFundTargetLabel', { currency: ledgerCurrency })}</span>
             <input
               type={privacyMode ? 'password' : 'text'}
               inputMode="decimal"

@@ -78,6 +78,9 @@ function saveResult(result: EmergencyFundGoalSaveResult) {
   if (result.kind === 'version_conflict') {
     return jsonError(409, 'EMERGENCY_FUND_GOAL_VERSION_CONFLICT', '緊急備用金目標已被修改，請重新載入後再試')
   }
+  if (result.kind === 'currency_conflict') {
+    return jsonError(409, 'LEDGER_CURRENCY_VERSION_CONFLICT', '帳本幣別已被修改，請重新載入後再試')
+  }
   return jsonError(400, 'EMERGENCY_FUND_ACCOUNT_INVALID', '請選擇有效且非信用卡的帳戶')
 }
 

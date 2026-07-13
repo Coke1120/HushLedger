@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { SupportedCurrency } from '../lib/currency'
 import {
   MAX_AI_COMPLETION_RESPONSE_BYTES,
   MAX_AI_DRAFT_ROWS,
@@ -28,6 +29,7 @@ type ProviderRequestOptions = EndpointPolicy & {
 type ParseBankStatementInput = {
   provider: AiProviderSettings
   accountId: number
+  currency: SupportedCurrency
   dateOrder: AiDateOrder
   statementText: string
   categories: Category[]
@@ -85,7 +87,7 @@ const chatCompletionSchema = z
   })
   .passthrough()
 
-const completionJsonSchema = {
+const completionJsonSchema = (currency: SupportedCurrency) => ({
   type: 'object',
   additionalProperties: false,
   required: ['rows'],
@@ -112,7 +114,7 @@ const completionJsonSchema = {
           occurredOn: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
           direction: { type: 'string', enum: ['expense', 'income'] },
           amountText: { type: 'string', minLength: 1, maxLength: 32 },
-          currency: { type: 'string', enum: ['HKD'] },
+          currency: { type: 'string', enum: [currency] },
           description: { type: 'string', maxLength: 80 },
           suggestedCategoryName: {
             anyOf: [
@@ -141,7 +143,7 @@ const completionJsonSchema = {
       },
     },
   },
-} as const
+} as const)
 
 export function aiProviderFailure(error: unknown): AiProviderFailure | null {
   if (!(error instanceof AiProviderError)) return null
@@ -277,7 +279,7 @@ export async function parseBankStatement(
         messages: [
           {
             role: 'system',
-            content: bankStatementSystemPrompt(input.dateOrder, categoryNames),
+            content: bankStatementSystemPrompt(input.dateOrder, input.currency, categoryNames),
           },
           {
             role: 'user',
@@ -289,7 +291,7 @@ export async function parseBankStatement(
           json_schema: {
             name: 'hushledger_bank_statement',
             strict: true,
-            schema: completionJsonSchema,
+            schema: completionJsonSchema(input.currency),
           },
         },
         max_completion_tokens: 4_096,
@@ -313,6 +315,9 @@ export async function parseBankStatement(
 
   const output = aiModelOutputSchema.safeParse(rawOutput)
   if (!output.success) throw new AiProviderError('RESPONSE_INVALID')
+  if (output.data.rows.some((row) => row.currency !== input.currency)) {
+    throw new AiProviderError('RESPONSE_INVALID')
+  }
   return normalizeDrafts(output.data, input)
 }
 
@@ -357,7 +362,7 @@ async function normalizeDrafts(
       type: row.direction,
       amountText: row.amountText,
       amountMinor,
-      currency: 'HKD',
+      currency: input.currency,
       accountId: input.accountId,
       categoryId: category?.id ?? null,
       payee: row.description,
@@ -383,6 +388,7 @@ async function statementImportKey(identity: string, occurrence: number) {
 
 function bankStatementSystemPrompt(
   dateOrder: AiDateOrder,
+  currency: SupportedCurrency,
   categories: Array<{ name: string; type: string }>,
 ) {
   return [
@@ -392,7 +398,7 @@ function bankStatementSystemPrompt(
     `Interpret ambiguous numeric dates using ${dateOrder} order and emit valid YYYY-MM-DD dates.`,
     'Use 1-based physical line numbers from the statement for sourceLine.',
     'Use expense for debits and income for credits or refunds.',
-    'Return positive HKD amountText with a period decimal separator, no symbol, sign, or grouping separator.',
+    `Return positive ${currency} amountText with a period decimal separator, no symbol, sign, or grouping separator.`,
     'Copy suggestedCategoryName exactly from the allowed JSON data or return null.',
     `Allowed category JSON data: ${JSON.stringify(categories)}`,
     'Set confidence from 0 to 1 and add warning flags whenever interpretation is uncertain.',

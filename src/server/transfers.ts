@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { SupportedCurrency } from '../lib/currency'
 import { monthRangeDates } from '../lib/date'
 import type {
   AccountLocalizationKey,
@@ -11,7 +12,7 @@ import type {
 type AccountTransferRow = {
   id: string
   amountMinor: number
-  currency: 'HKD'
+  currency: SupportedCurrency
   fromAccountId: number
   toAccountId: number
   occurredOn: string

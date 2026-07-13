@@ -25,6 +25,7 @@ export type ReferenceMutationResult<T> =
         | 'last_active'
         | 'active_rules'
         | 'emergency_fund_goal'
+        | 'currency_conflict'
     }
 
 export type ReferenceOrderResult<T> =
@@ -189,13 +190,16 @@ export async function createAccountReference(
     SELECT
       ?,
       ?,
-      'HKD',
+      settings.currency,
       1,
       COALESCE((SELECT MAX(sort_order) + 10 FROM accounts), 10),
       NULL,
       ?,
       ?
-    WHERE NOT EXISTS (
+    FROM ledger_settings AS settings
+    WHERE settings.id = 1
+      AND settings.currency = ?
+      AND NOT EXISTS (
       SELECT 1 FROM accounts WHERE name = ? COLLATE NOCASE
     )
   `).bind(
@@ -203,10 +207,15 @@ export async function createAccountReference(
     input.type,
     input.openingBalanceMinor,
     input.openingBalanceOn,
+    input.expectedCurrency,
     input.name,
   ).run()
 
-  if (Number(inserted.meta.changes) === 0) return { kind: 'name_conflict' }
+  if (Number(inserted.meta.changes) === 0) {
+    return await ledgerCurrencyMatches(database, input.expectedCurrency)
+      ? { kind: 'name_conflict' }
+      : { kind: 'currency_conflict' }
+  }
   const item = await getAccountByName(database, input.name)
   if (!item) throw new Error('Account insert did not produce a row')
   return { kind: 'created', item }
@@ -227,6 +236,9 @@ export async function updateAccountReference(
       localization_key = CASE WHEN name = ? THEN localization_key ELSE NULL END,
       updated_at = ${nextUpdatedAt}
     WHERE id = ? AND updated_at = ?
+      AND EXISTS (
+        SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM accounts AS other
@@ -243,6 +255,7 @@ export async function updateAccountReference(
     input.name,
     id,
     input.updatedAt,
+    input.expectedCurrency,
     input.name,
     id,
     input.type,
@@ -250,7 +263,14 @@ export async function updateAccountReference(
   ).run()
 
   if (Number(updated.meta.changes) === 0) {
-    return diagnoseAccountMutation(database, id, input.updatedAt, input.name, input.type)
+    return diagnoseAccountMutation(
+      database,
+      id,
+      input.updatedAt,
+      input.name,
+      input.type,
+      input.expectedCurrency,
+    )
   }
 
   const item = await getAccountReference(database, id)
@@ -321,7 +341,10 @@ export async function createCategoryReference(
       COALESCE((SELECT MAX(sort_order) + 10 FROM categories WHERE type = ?), 10),
       NULL,
       ?
-    WHERE NOT EXISTS (
+    FROM ledger_settings AS settings
+    WHERE settings.id = 1
+      AND settings.currency = ?
+      AND NOT EXISTS (
       SELECT 1 FROM categories WHERE name = ? COLLATE NOCASE AND type = ?
     )
   `).bind(
@@ -331,11 +354,16 @@ export async function createCategoryReference(
     presentation.color,
     input.type,
     input.monthlyPlanMinor,
+    input.expectedCurrency,
     input.name,
     input.type,
   ).run()
 
-  if (Number(inserted.meta.changes) === 0) return { kind: 'name_conflict' }
+  if (Number(inserted.meta.changes) === 0) {
+    return await ledgerCurrencyMatches(database, input.expectedCurrency)
+      ? { kind: 'name_conflict' }
+      : { kind: 'currency_conflict' }
+  }
   const item = await getCategoryByName(database, input.name, input.type)
   if (!item) throw new Error('Category insert did not produce a row')
   return { kind: 'created', item }
@@ -354,6 +382,9 @@ export async function updateCategoryReference(
       localization_key = CASE WHEN name = ? THEN localization_key ELSE NULL END,
       updated_at = ${nextUpdatedAt}
     WHERE id = ? AND updated_at = ? AND type = ?
+      AND EXISTS (
+        SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
+      )
       AND NOT EXISTS (
         SELECT 1
         FROM categories AS other
@@ -368,12 +399,19 @@ export async function updateCategoryReference(
     id,
     input.updatedAt,
     input.type,
+    input.expectedCurrency,
     input.name,
     id,
   ).run()
 
   if (Number(updated.meta.changes) === 0) {
-    return diagnoseCategoryMutation(database, id, input.updatedAt, input.name)
+    return diagnoseCategoryMutation(
+      database,
+      id,
+      input.updatedAt,
+      input.name,
+      input.expectedCurrency,
+    )
   }
 
   const item = await getCategoryReference(database, id)
@@ -448,10 +486,14 @@ async function diagnoseAccountMutation(
   updatedAt: string,
   name: string,
   type: Account['type'],
+  expectedCurrency: Account['currency'],
 ): Promise<ReferenceMutationResult<Account>> {
   const existing = await getAccountReference(database, id)
   if (!existing) return { kind: 'not_found' }
   if (existing.updatedAt !== updatedAt) return { kind: 'version_conflict' }
+  if (!await ledgerCurrencyMatches(database, expectedCurrency)) {
+    return { kind: 'currency_conflict' }
+  }
   if (type === 'credit_card' && await hasEmergencyFundGoal(database, id)) {
     return { kind: 'emergency_fund_goal' }
   }
@@ -465,10 +507,14 @@ async function diagnoseCategoryMutation(
   id: number,
   updatedAt: string,
   name: string,
+  expectedCurrency: Account['currency'],
 ): Promise<ReferenceMutationResult<Category>> {
   const existing = await getCategoryReference(database, id)
   if (!existing) return { kind: 'not_found' }
   if (existing.updatedAt !== updatedAt) return { kind: 'version_conflict' }
+  if (!await ledgerCurrencyMatches(database, expectedCurrency)) {
+    return { kind: 'currency_conflict' }
+  }
   return (await categoryNameIsTaken(database, name, existing.type, id))
     ? { kind: 'name_conflict' }
     : { kind: 'version_conflict' }
@@ -524,6 +570,16 @@ async function hasEmergencyFundGoal(database: D1Database, accountId: number) {
     WHERE account_id = ?
     LIMIT 1
   `).bind(accountId).first<{ found: number }>()
+  return row?.found === 1
+}
+
+async function ledgerCurrencyMatches(database: D1Database, expectedCurrency: Account['currency']) {
+  const row = await database.prepare(`
+    SELECT 1 AS found
+    FROM ledger_settings
+    WHERE id = 1 AND currency = ?
+    LIMIT 1
+  `).bind(expectedCurrency).first<{ found: number }>()
   return row?.found === 1
 }
 

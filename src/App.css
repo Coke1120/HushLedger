@@ -3470,6 +3470,10 @@ button.account-register-row:focus-visible {
   gap: 16px;
 }
 
+.ledger-currency-form fieldset {
+  grid-template-columns: minmax(0, 520px);
+}
+
 .emergency-fund-form label {
   display: grid;
   gap: 7px;
@@ -4207,6 +4211,11 @@ button.account-register-row:focus-visible {
   border-radius: 9px;
 }
 
+.ledger-restore-metadata > div.is-changing {
+  background: var(--warning-bg);
+  border-color: #decf91;
+}
+
 .ledger-restore-metadata dt {
   color: var(--muted);
   font-size: 10px;
@@ -4225,6 +4234,11 @@ button.account-register-row:focus-visible {
 
 .ledger-restore-metadata code {
   font-size: 10px;
+}
+
+.ledger-restore-metadata > div.is-changing dd {
+  color: var(--warning);
+  font-weight: 760;
 }
 
 .ledger-restore-counts {
@@ -4261,6 +4275,41 @@ button.account-register-row:focus-visible {
 .ledger-restore-counts tbody tr:last-child th,
 .ledger-restore-counts tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.ledger-restore-currency-warning {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  margin-top: 16px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid #decf91;
+  border-radius: 11px;
+}
+
+.ledger-restore-currency-warning > svg {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+}
+
+.ledger-restore-currency-warning > div {
+  display: grid;
+  gap: 5px;
+}
+
+.ledger-restore-currency-warning strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ledger-restore-currency-warning p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .ledger-restore-danger {

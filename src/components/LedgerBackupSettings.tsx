@@ -10,6 +10,7 @@ import { useI18n, type MessageKey } from '../i18n'
 import {
   LEDGER_BACKUP_CONFIRMATION,
   MAX_LEDGER_BACKUP_FILE_BYTES,
+  ledgerRestorePreviewSchema,
   type LedgerRestoreCommitResult,
   type LedgerRestorePreview,
   type LedgerTableCounts,
@@ -62,6 +63,9 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
     timeStyle: 'short',
   })
   const backupDue = backupHealth ? isLedgerBackupDue(backupHealth) : false
+  const restoreChangesCurrency = preview
+    ? preview.currentCurrency !== preview.backupCurrency
+    : false
 
   useEffect(() => {
     const loadTimeout = window.setTimeout(() => {
@@ -192,11 +196,12 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
     setErrorKey(null)
     setStatusKey(null)
     try {
-      const nextPreview = await api<LedgerRestorePreview>('/api/backups/ledger', {
+      const response = await api<unknown>('/api/backups/ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'preview', backup }),
       })
+      const nextPreview = ledgerRestorePreviewSchema.parse(response)
       setPreview(nextPreview)
       recordBackupActivity('verified')
       setStatusKey('ledgerBackupVerificationComplete')
@@ -350,6 +355,14 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
               <dt>SHA-256</dt>
               <dd><code>{preview.checksum}</code></dd>
             </div>
+            <div className={restoreChangesCurrency ? 'is-changing' : undefined}>
+              <dt>{t('ledgerRestoreCurrentCurrency')}</dt>
+              <dd>{preview.currentCurrency}</dd>
+            </div>
+            <div className={restoreChangesCurrency ? 'is-changing' : undefined}>
+              <dt>{t('ledgerRestoreBackupCurrency')}</dt>
+              <dd>{preview.backupCurrency}</dd>
+            </div>
           </dl>
           <table className="ledger-restore-counts">
             <caption className="sr-only">{t('ledgerRestoreReportTitle')}</caption>
@@ -370,6 +383,21 @@ export function LedgerBackupSettings({ available, onRestored }: LedgerBackupSett
               ))}
             </tbody>
           </table>
+
+          {restoreChangesCurrency ? (
+            <div className="ledger-restore-currency-warning" role="alert">
+              <TriangleAlert aria-hidden="true" />
+              <div>
+                <strong>{t('ledgerRestoreCurrencyChangeWarning', {
+                  currentCurrency: preview.currentCurrency,
+                  backupCurrency: preview.backupCurrency,
+                })}</strong>
+                <p>{t('ledgerRestoreCurrencyChangeHelp', {
+                  backupCurrency: preview.backupCurrency,
+                })}</p>
+              </div>
+            </div>
+          ) : null}
 
           <div className="ledger-restore-danger">
             <TriangleAlert aria-hidden="true" />

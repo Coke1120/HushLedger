@@ -59,7 +59,9 @@ export function AccountTransferList({
                     {transfer.note ? <span className="account-transfer-note">{transfer.note}</span> : null}
                   </span>
                   <time dateTime={transfer.occurredOn}>{formatDate(transfer.occurredOn)}</time>
-                  <strong className="account-transfer-amount">{formatMoney(transfer.amountMinor)}</strong>
+                  <strong className="account-transfer-amount">
+                    {formatMoney(transfer.amountMinor, transfer.currency)}
+                  </strong>
                 </button>
               </li>
             )

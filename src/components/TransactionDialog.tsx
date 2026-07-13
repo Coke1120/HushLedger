@@ -52,7 +52,7 @@ export function TransactionDialog({
   onDuplicate,
   onMakeRecurring,
 }: TransactionDialogProps) {
-  const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const initialTransaction = transaction ?? draft
   const selectableAccounts = useMemo(
     () => accounts.filter((account) => account.isActive || account.id === transaction?.accountId),
@@ -254,7 +254,7 @@ export function TransactionDialog({
       id: draftIdRef.current,
       type,
       amountMinor,
-      currency: 'HKD',
+      currency: ledgerCurrency,
       accountId,
       categoryId: matchingCategories.some((category) => category.id === categoryId)
         ? categoryId
@@ -376,7 +376,7 @@ export function TransactionDialog({
             <label htmlFor="transaction-amount">
               <span>{t('amount')}</span>
               <span className="amount-input-wrap">
-                <span>HK$</span>
+                <span>{ledgerCurrency}</span>
                 <input
                   id="transaction-amount"
                   aria-label={t('amount')}

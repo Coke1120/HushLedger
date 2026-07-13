@@ -232,6 +232,9 @@ export function jsonReferenceMutationResult<T>(result: ReferenceMutationResult<T
   if (result.kind === 'version_conflict') {
     return jsonError(409, 'REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
   }
+  if (result.kind === 'currency_conflict') {
+    return jsonError(409, 'LEDGER_CURRENCY_VERSION_CONFLICT', '帳本幣別已被修改，請重新載入後再試')
+  }
   if (result.kind === 'name_conflict') {
     return jsonError(409, 'REFERENCE_NAME_CONFLICT', '同類型已有相同名稱')
   }

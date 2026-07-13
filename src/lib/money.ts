@@ -1,6 +1,7 @@
 import { evaluateAmountExpression } from './amountExpression'
+import { DEFAULT_LEDGER_CURRENCY } from './currency'
 
-export const DEFAULT_CURRENCY = 'HKD' as const
+export const DEFAULT_CURRENCY = DEFAULT_LEDGER_CURRENCY
 
 const amountPattern = /^(?:0|[1-9]\d*)(?:\.(\d{1,2}))?$/
 

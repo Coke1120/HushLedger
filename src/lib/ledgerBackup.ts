@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import {
+  DEFAULT_LEDGER_CURRENCY,
+  supportedCurrencySchema,
+  type SupportedCurrency,
+} from './currency'
 import { isValidCalendarDate } from './date'
 
 export const LEDGER_BACKUP_FORMAT = 'hushledger-ledger-backup' as const
@@ -8,7 +13,8 @@ export const PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION = 9 as const
 export const PRE_TRANSFERS_LEDGER_SCHEMA_VERSION = 10 as const
 export const PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION = 11 as const
 export const PREVIOUS_LEDGER_SCHEMA_VERSION = 12 as const
-export const LEDGER_SCHEMA_VERSION = 13 as const
+export const PRE_CURRENCY_LEDGER_SCHEMA_VERSION = 13 as const
+export const LEDGER_SCHEMA_VERSION = 14 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -41,7 +47,7 @@ const ledgerBackupAccountFields = {
   id: safePositiveIntegerSchema,
   name: trimmedNameSchema,
   type: z.enum(['cash', 'bank', 'credit_card', 'wallet']),
-  currency: z.literal('HKD'),
+  currency: supportedCurrencySchema,
   isActive: z.boolean(),
   sortOrder: safeNonNegativeIntegerSchema,
   localizationKey: accountLocalizationKeySchema,
@@ -103,7 +109,7 @@ export const ledgerBackupRecurringRuleSchema = z.object({
   name: trimmedNameSchema,
   type: z.enum(['expense', 'income']),
   amountMinor: safePositiveIntegerSchema,
-  currency: z.literal('HKD'),
+  currency: supportedCurrencySchema,
   accountId: safePositiveIntegerSchema,
   categoryId: safePositiveIntegerSchema,
   frequency: z.enum(['daily', 'weekly', 'monthly']),
@@ -128,7 +134,7 @@ const ledgerBackupTransactionFields = {
   id: uuidSchema,
   type: z.enum(['expense', 'income']),
   amountMinor: safePositiveIntegerSchema,
-  currency: z.literal('HKD'),
+  currency: supportedCurrencySchema,
   accountId: safePositiveIntegerSchema,
   categoryId: safePositiveIntegerSchema,
   occurredOn: calendarDateSchema,
@@ -197,7 +203,7 @@ export const ledgerBackupImportKeySchema = z.object({
 export const ledgerBackupAccountTransferSchema = z.object({
   id: uuidSchema,
   amountMinor: safePositiveIntegerSchema,
-  currency: z.literal('HKD'),
+  currency: supportedCurrencySchema,
   fromAccountId: safePositiveIntegerSchema,
   toAccountId: safePositiveIntegerSchema,
   occurredOn: calendarDateSchema,
@@ -225,6 +231,7 @@ export const ledgerBackupEmergencyFundGoalSchema = z.object({
 }).strict()
 
 export const ledgerBackupDataSchema = z.object({
+  currency: supportedCurrencySchema,
   accounts: z.array(ledgerBackupAccountSchema),
   categories: z.array(ledgerBackupCategorySchema),
   recurringRules: z.array(ledgerBackupRecurringRuleSchema),
@@ -234,7 +241,11 @@ export const ledgerBackupDataSchema = z.object({
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-const previousLedgerBackupDataSchema = ledgerBackupDataSchema.omit({
+const preCurrencyLedgerBackupDataSchema = ledgerBackupDataSchema.omit({
+  currency: true,
+}).strict()
+
+const previousLedgerBackupDataSchema = preCurrencyLedgerBackupDataSchema.omit({
   emergencyFundGoals: true,
 }).strict()
 
@@ -279,6 +290,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preCurrencyLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_CURRENCY_LEDGER_SCHEMA_VERSION),
+  data: preCurrencyLedgerBackupDataSchema,
+}).strict()
+
 const preOpeningBalanceLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION),
   data: preOpeningBalanceLedgerBackupDataSchema,
@@ -296,6 +312,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preCurrencyLedgerBackupPayloadSchema,
   previousLedgerBackupPayloadSchema,
   preOpeningBalanceLedgerBackupPayloadSchema,
   preTransfersLedgerBackupPayloadSchema,
@@ -309,6 +326,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preCurrencyLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_CURRENCY_LEDGER_SCHEMA_VERSION),
+  data: preCurrencyLedgerBackupDataSchema,
 }).strict()
 
 const preOpeningBalanceLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -328,6 +350,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preCurrencyLedgerBackupSchema,
   previousLedgerBackupSchema,
   preOpeningBalanceLedgerBackupSchema,
   preTransfersLedgerBackupSchema,
@@ -367,26 +390,31 @@ export type CompatibleLedgerBackupPayload = z.infer<typeof compatibleLedgerBacku
 export type CompatibleLedgerBackup = z.infer<typeof compatibleLedgerBackupSchema>
 export type LedgerRestoreRequest = z.infer<typeof ledgerRestoreRequestSchema>
 
-export type LedgerTableCounts = {
-  accounts: number
-  categories: number
-  recurringRules: number
-  transactions: number
-  accountTransfers: number
-  emergencyFundGoals: number
-  transactionImportKeys: number
-}
+export const ledgerTableCountsSchema = z.object({
+  accounts: safeNonNegativeIntegerSchema,
+  categories: safeNonNegativeIntegerSchema,
+  recurringRules: safeNonNegativeIntegerSchema,
+  transactions: safeNonNegativeIntegerSchema,
+  accountTransfers: safeNonNegativeIntegerSchema,
+  emergencyFundGoals: safeNonNegativeIntegerSchema,
+  transactionImportKeys: safeNonNegativeIntegerSchema,
+}).strict()
 
-export type LedgerRestorePreview = {
-  exportedAt: string
-  checksum: string
-  backupDigest: string
-  currentDigest: string
-  currentRevision: number
-  currentCounts: LedgerTableCounts
-  backupCounts: LedgerTableCounts
-  restoreStatements: number
-}
+export const ledgerRestorePreviewSchema = z.object({
+  exportedAt: timestampSchema,
+  checksum: z.string().regex(/^[0-9a-f]{64}$/),
+  backupDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  currentDigest: z.string().regex(/^[0-9a-f]{64}$/),
+  currentRevision: safePositiveIntegerSchema,
+  currentCurrency: supportedCurrencySchema,
+  backupCurrency: supportedCurrencySchema,
+  currentCounts: ledgerTableCountsSchema,
+  backupCounts: ledgerTableCountsSchema,
+  restoreStatements: safePositiveIntegerSchema,
+}).strict()
+
+export type LedgerTableCounts = z.infer<typeof ledgerTableCountsSchema>
+export type LedgerRestorePreview = z.infer<typeof ledgerRestorePreviewSchema>
 
 export type LedgerRestoreCommitResult = {
   restoredAt: string
@@ -425,19 +453,15 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
   return ledgerBackupDataSchema.parse({
     ...backup.data,
-    accounts: backup.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION
+    currency: DEFAULT_LEDGER_CURRENCY,
+    accounts: backup.schemaVersion >= PREVIOUS_LEDGER_SCHEMA_VERSION
       ? backup.data.accounts
       : backup.data.accounts.map((account) => ({
         ...account,
         openingBalanceMinor: null,
         openingBalanceOn: null,
       })),
-    accountTransfers: (
-      backup.schemaVersion === PREVIOUS_LEDGER_SCHEMA_VERSION
-      || backup.schemaVersion === PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION
-    )
-      ? backup.data.accountTransfers
-      : [],
+    accountTransfers: 'accountTransfers' in backup.data ? backup.data.accountTransfers : [],
     categories: backup.schemaVersion >= PRE_TRANSFERS_LEDGER_SCHEMA_VERSION
       ? backup.data.categories
       : backup.data.categories.map((category) => ({
@@ -447,7 +471,9 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
     transactions: backup.schemaVersion === LEGACY_LEDGER_SCHEMA_VERSION
       ? backup.data.transactions.map((transaction) => ({ ...transaction, cleared: true }))
       : backup.data.transactions,
-    emergencyFundGoals: [],
+    emergencyFundGoals: backup.schemaVersion === PRE_CURRENCY_LEDGER_SCHEMA_VERSION
+      ? backup.data.emergencyFundGoals
+      : [],
   })
 }
 
@@ -482,6 +508,10 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
     'localizationKey',
     issues,
   )
+
+  data.accounts.forEach((account, index) => {
+    validateLedgerCurrency(account.currency, data.currency, `data.accounts.${index}.currency`, issues)
+  })
   collectDuplicateIssues(data.categories, (row) => String(row.id), 'categories', 'id', issues)
   collectDuplicateIssues(
     data.categories,
@@ -528,6 +558,12 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   }
 
   data.recurringRules.forEach((rule, index) => {
+    validateLedgerCurrency(
+      rule.currency,
+      data.currency,
+      `data.recurringRules.${index}.currency`,
+      issues,
+    )
     validateReferencePair(rule, `data.recurringRules.${index}`, accounts, categories, issues)
     if (rule.nextOccurrenceOn < rule.scheduleStartsOn) {
       issues.push({
@@ -544,6 +580,12 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   data.transactions.forEach((transaction, index) => {
+    validateLedgerCurrency(
+      transaction.currency,
+      data.currency,
+      `data.transactions.${index}.currency`,
+      issues,
+    )
     validateReferencePair(transaction, `data.transactions.${index}`, accounts, categories, issues)
     if (transaction.recurringRuleId && !rules.has(transaction.recurringRuleId)) {
       issues.push({
@@ -554,6 +596,12 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   data.accountTransfers.forEach((transfer, index) => {
+    validateLedgerCurrency(
+      transfer.currency,
+      data.currency,
+      `data.accountTransfers.${index}.currency`,
+      issues,
+    )
     const fromAccount = accounts.get(transfer.fromAccountId)
     const toAccount = accounts.get(transfer.toAccountId)
     if (!fromAccount) {
@@ -598,6 +646,17 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   return issues
 }
 
+function validateLedgerCurrency(
+  currency: SupportedCurrency,
+  ledgerCurrency: SupportedCurrency,
+  path: string,
+  issues: LedgerValidationIssue[],
+) {
+  if (currency !== ledgerCurrency) {
+    issues.push({ path, message: 'Currency does not match the ledger currency' })
+  }
+}
+
 function collectDuplicateIssues<T>(
   rows: readonly T[],
   keyFor: (row: T) => string,
@@ -621,7 +680,12 @@ function collectDuplicateIssues<T>(
 }
 
 function validateReferencePair(
-  row: { accountId: number; categoryId: number; currency: 'HKD'; type: 'expense' | 'income' },
+  row: {
+    accountId: number
+    categoryId: number
+    currency: SupportedCurrency
+    type: 'expense' | 'income'
+  },
   path: string,
   accounts: Map<number, LedgerBackupAccount>,
   categories: Map<number, LedgerBackupCategory>,

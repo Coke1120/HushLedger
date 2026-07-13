@@ -1,4 +1,5 @@
 import { isValidCalendarDate } from './date'
+import type { SupportedCurrency } from './currency'
 import { parseAmount } from './money'
 import { rememberPayeeReferences } from './payeeMemory'
 import type { Account, Category, PayeeSuggestion, TransactionInput, TransactionType } from './schema'
@@ -58,6 +59,7 @@ export type BankCsvMappingSuggestion = Partial<BankCsvBaseMapping> & {
 type ReferenceData = {
   accounts: readonly Account[]
   categories: readonly Category[]
+  currency: SupportedCurrency
   payeeSuggestions?: readonly PayeeSuggestion[]
 }
 
@@ -172,7 +174,11 @@ export async function mapBankCsvDocument(
   if (mappingIssue) return { rows: [], issues: [mappingIssue] }
 
   const account = references.accounts.find(
-    (item) => item.id === mapping.accountId && item.isActive && item.currency === 'HKD',
+    (item) => (
+      item.id === mapping.accountId
+      && item.isActive
+      && item.currency === references.currency
+    ),
   )
   const expenseCategory = references.categories.find(
     (item) => item.id === mapping.expenseCategoryId && item.isActive && item.type === 'expense',
@@ -198,7 +204,7 @@ export async function mapBankCsvDocument(
       continue
     }
 
-    const signedAmount = amountForRow(record, mapping)
+    const signedAmount = amountForRow(record, mapping, references.currency)
     if (!signedAmount.ok) {
       issues.push({ row: sourceRow, code: signedAmount.code })
       continue
@@ -229,7 +235,7 @@ export async function mapBankCsvDocument(
       id: crypto.randomUUID(),
       type,
       amountMinor,
-      currency: 'HKD',
+      currency: references.currency,
       accountId: account.id,
       categoryId: rememberedCategoryId ?? (type === 'expense' ? expenseCategory.id : incomeCategory.id),
       occurredOn,
@@ -286,7 +292,11 @@ function validateMapping(
   ) {
     return { row: null, code: 'bank_mapping_incomplete' }
   }
-  if (!references.accounts.some((item) => item.id === mapping.accountId && item.isActive)) {
+  if (!references.accounts.some((item) => (
+    item.id === mapping.accountId
+    && item.isActive
+    && item.currency === references.currency
+  ))) {
     return { row: null, code: 'account_not_found' }
   }
   if (!references.categories.some(
@@ -302,15 +312,16 @@ function validateMapping(
 function amountForRow(
   record: readonly string[],
   mapping: BankCsvMapping,
+  currency: SupportedCurrency,
 ): { ok: true; value: number } | { ok: false; code: 'bank_invalid_amount' | 'bank_amount_conflict' } {
   if (mapping.amountMode === 'signed') {
-    const amount = parseBankAmount(record[mapping.amountColumn])
+    const amount = parseBankAmount(record[mapping.amountColumn], currency)
     if (amount === null || amount === 0) return { ok: false, code: 'bank_invalid_amount' }
     return { ok: true, value: mapping.flipSign ? -amount : amount }
   }
 
-  const debit = parseBankAmount(record[mapping.debitColumn], true)
-  const credit = parseBankAmount(record[mapping.creditColumn], true)
+  const debit = parseBankAmount(record[mapping.debitColumn], currency, true)
+  const credit = parseBankAmount(record[mapping.creditColumn], currency, true)
   if (debit === null || credit === null) return { ok: false, code: 'bank_invalid_amount' }
   if ((debit !== 0 && credit !== 0) || (debit === 0 && credit === 0)) {
     return { ok: false, code: 'bank_amount_conflict' }
@@ -319,7 +330,11 @@ function amountForRow(
   return { ok: true, value: mapping.flipSign ? -amount : amount }
 }
 
-function parseBankAmount(value: string, emptyIsZero = false) {
+function parseBankAmount(
+  value: string,
+  currency: SupportedCurrency,
+  emptyIsZero = false,
+) {
   let normalized = value.trim().replaceAll('\u2212', '-')
   if (!normalized) return emptyIsZero ? 0 : null
 
@@ -335,7 +350,7 @@ function parseBankAmount(value: string, emptyIsZero = false) {
     normalized = normalized.replace(/\s+(?:CR|DR)$/i, '').trim()
     sign = suffix === 'DR' ? -1 : 1
   }
-  normalized = normalized.replace(/^(?:HKD|HK\$|\$)\s*/i, '')
+  normalized = stripCurrencyPrefix(normalized, currency)
   if (normalized.startsWith('-') || normalized.startsWith('+')) {
     if (parenthesized || suffix) return null
     sign = normalized.startsWith('-') ? -1 : 1
@@ -348,6 +363,34 @@ function parseBankAmount(value: string, emptyIsZero = false) {
   } catch {
     return null
   }
+}
+
+function stripCurrencyPrefix(value: string, currency: SupportedCurrency) {
+  const prefixes = new Set(
+    [
+      currency,
+      currencySymbol(currency, 'symbol'),
+      currencySymbol(currency, 'narrowSymbol'),
+    ].filter((prefix): prefix is string => Boolean(prefix)),
+  )
+  const upperValue = value.toLocaleUpperCase('en')
+  for (const prefix of prefixes) {
+    if (upperValue.startsWith(prefix.toLocaleUpperCase('en'))) {
+      return value.slice(prefix.length).trimStart()
+    }
+  }
+  return value
+}
+
+function currencySymbol(
+  currency: SupportedCurrency,
+  currencyDisplay: 'symbol' | 'narrowSymbol',
+) {
+  return new Intl.NumberFormat('en', {
+    style: 'currency',
+    currency,
+    currencyDisplay,
+  }).formatToParts(0).find((part) => part.type === 'currency')?.value
 }
 
 function parseBankDate(value: string, format: BankCsvDateFormat) {

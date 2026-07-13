@@ -46,7 +46,8 @@ knowledge and explains every command and dashboard click.
   can be expanded without changing the exact scheduled income, expense, and net
   totals. Forecast values never change recorded or available balance, and a
   provider statement remains authoritative for the actual date and amount.
-- HKD amounts stored as integer minor units to avoid floating-point errors.
+- Amounts stored in the ledger's selected currency as integer minor units to
+  avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
   month. An optional dated opening balance anchors incomplete history, and an
   in-app month-end reconciliation workspace compares the statement against the
@@ -54,8 +55,8 @@ knowledge and explains every command and dashboard click.
   uncleared entries with direct posting-status controls, and never claims to lock
   the ledger. The same monthly account register merges ordinary transactions with
   both transfer legs and shows the exact recorded balance after every entry.
-- One optional emergency-fund checkpoint compares a user-chosen positive HKD
-  target with the recorded month-end balance of one active cash, bank, or wallet
+- One optional emergency-fund checkpoint compares a user-chosen positive target
+  with the recorded month-end balance of one active cash, bank, or wallet
   account. It does not create a separate balance, reserve or move money, recommend
   an amount or deadline, forecast future funds, or verify availability with a
   provider.
@@ -68,8 +69,8 @@ knowledge and explains every command and dashboard click.
   balance, category, plan, trend, and CSV transaction reports, so withdrawals and
   credit-card payments do not manufacture spending or income.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
-  bounded no-eval parser rounds only the final result before storing exact cents,
-  with touch-friendly operator buttons for mobile entry.
+  bounded no-eval parser rounds only the final result before storing exact minor
+  units, with touch-friendly operator buttons for mobile entry.
 - Save and close the transaction dialog from any field with `Ctrl+Enter` or
   `Command+Enter`. The existing Save button advertises the shortcut visually and
   to assistive technology; HushLedger does not capture global single-letter keys.
@@ -162,6 +163,9 @@ knowledge and explains every command and dashboard click.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
+  Japanese, and French, and for choosing one ledger-wide currency before monetary
+  history exists. Currency stays private in D1 and full-ledger backups; HushLedger
+  does not fetch exchange rates or convert amounts.
 
 HushLedger starts with cash, bank, credit-card, wallet, income, and expense
 defaults. Settings can add custom accounts and categories, rename them, change a
@@ -176,8 +180,17 @@ credit card, or a digital wallet. It is not an additional transaction type.
 
 ## Data invariants
 
-- The default currency is HKD.
-- HK$123.45 is stored as `12345` in `amount_minor`.
+- A fresh ledger defaults to HKD and uses exactly one currency across accounts,
+  transactions, transfers, recurring rules, plans, opening balances, and the
+  emergency-fund checkpoint. Settings can choose AED, AUD, CAD, CHF, CNY, CZK,
+  DKK, EUR, GBP, HKD, ILS, INR, MOP, MXN, MYR, NOK, NZD, PHP, PLN, QAR, SAR,
+  SEK, SGD, THB, TRY, TWD, USD, or ZAR; every supported currency uses two decimal
+  minor units in HushLedger.
+- Currency can change only while the ledger has no transactions, transfers,
+  recurring rules, import tombstones, opening balances, category plans, or
+  emergency-fund checkpoint. A change relabels that pristine ledger and never
+  converts amounts or applies an exchange rate.
+- An amount of 123.45 is stored as `12345` in `amount_minor`.
 - Named transaction views live only in browser storage. They include the bounded
   transaction date scope and ordering choice. A custom range stores its exact
   inclusive endpoints, while selected-month views exclude a particular month.
@@ -206,8 +219,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
   default to cleared. This status records bank-posting review only and is not an
   irreversible reconciliation lock.
 - Existing categories and schema-8/9 backups receive no monthly plan by default.
-  A plan can only be a positive safe-integer HKD amount on an expense category;
-  it never represents reserved or available cash.
+  A plan can only be a positive safe-integer amount in the ledger currency on an
+  expense category; it never represents reserved or available cash.
 - An account opening balance is the balance immediately before its paired
   `YYYY-MM-DD` date. The two values are both present or both null. Null means the
   app derives the balance from all recorded history; schema-8 through schema-11
@@ -218,10 +231,11 @@ credit card, or a digital wallet. It is not an additional transaction type.
   irreversible reconciliation lock. Each inline posting-status change uses the
   same concurrency-checked update as the transaction or transfer editor.
 - The ledger stores at most one emergency-fund checkpoint, backed by one active
-  HKD cash, bank, or wallet account. Progress uses that account's recorded
-  month-end balance only: negative balances contribute zero, and progress above
-  the target is capped at the target. The checkpoint is not an envelope, reserved
-  or available cash, a recommendation, a deadline, or an automated transfer.
+  cash, bank, or wallet account in the ledger currency. Progress uses that
+  account's recorded month-end balance only: negative balances contribute zero,
+  and progress above the target is capped at the target. The checkpoint is not an
+  envelope, reserved or available cash, a recommendation, a deadline, or an
+  automated transfer.
 - Recorded net worth is the exact sum of all available signed account balances at
   each month end. Transfers therefore have zero net effect. If any account balance
   is unavailable for a month, the complete net-worth point is unavailable too.
@@ -269,8 +283,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   match links and clears the existing transaction in that same batch. Possible
   or ambiguous duplicates require an explicit checkbox; invalid or archived
   references are never silently substituted.
-- Full-ledger backups cover accounts, categories, the emergency-fund checkpoint,
-  recurring rules, transactions, account transfers, and import tombstones. A
+- Full-ledger backups cover the ledger currency, accounts, categories, the
+  emergency-fund checkpoint, recurring rules, transactions, account transfers,
+  and import tombstones. A
   SHA-256 checksum detects modification, and a monotonic
   ledger revision rejects restore previews that became stale before commit.
 
@@ -342,12 +357,12 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 
 ## Ledger backup and restore
 
-Settings can download one versioned JSON file containing every account, category,
-optional emergency-fund checkpoint, recurring rule (including soft-deleted rule
-history), transaction, account transfer, and import tombstone. AI provider
-credentials, pasted bank text, language preferences, update preferences, saved
-transaction views, remembered bank CSV layouts, and screen privacy state are
-intentionally excluded.
+Settings can download one versioned JSON file containing the ledger currency and
+every account, category, optional emergency-fund checkpoint, recurring rule
+(including soft-deleted rule history), transaction, account transfer, and import
+tombstone. AI provider credentials, pasted bank text, language preferences,
+update preferences, saved transaction views, remembered bank CSV layouts, and
+screen privacy state are intentionally excluded.
 
 The JSON file is plaintext financial data. Store it only in encrypted storage and
 do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
@@ -365,14 +380,17 @@ Restore is preview-first:
    account/category references, recurring provenance, and active reference minimums.
 3. Review the current-versus-backup row counts for all seven tables.
 4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
-5. HushLedger rechecks the live ledger revision and replaces every table in one D1
-   transaction. A stale preview or any constraint failure writes nothing.
+5. HushLedger rechecks the live ledger revision and replaces the currency and all
+   seven ledger collections in one D1 transaction. A stale preview or any
+   constraint failure writes nothing.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 13 and accepts schemas 8 through 13. Schema 8 through schema 12
-backups upgrade without inventing an emergency-fund checkpoint; their existing
-version-specific defaults for clearing state, monthly plans, transfers, and opening
-balances still apply. For a backup larger than 7 MiB, long-term disaster recovery,
+writes schema 14 and accepts schemas 8 through 14. Schema 8 through schema 13
+backups upgrade to HKD; schema 8 through schema 12 also upgrade without inventing
+an emergency-fund checkpoint. Their existing version-specific defaults for
+clearing state, monthly plans, transfers, and opening balances still apply. A
+schema-14 restore carries its currency with the rest of the ledger instead of
+converting any amount. For a backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
 recovery process in
 [the advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery).
@@ -501,13 +519,15 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete seven-table schema-13 JSON ledger
-and verifies schema-8 through schema-12 compatibility. Those backups never invent
-an emergency-fund checkpoint; schema-11 and older backups also receive no invented
-opening balance, schema-10 and older backups receive no invented transfer,
-schema-9 and older backups receive no invented category plan, and schema-8 history
-upgrades as cleared. The gate rejects a modified checksum and a stale preview, and
-proves that the final re-export exactly matches the pre-restore data.
+The same gate exports and restores a complete schema-14 JSON ledger, including its
+currency and seven data collections, and verifies schema-8 through schema-13
+compatibility. Pre-schema-14 backups upgrade to HKD. Schema-12 and older backups
+never invent an emergency-fund checkpoint; schema-11 and older backups also
+receive no invented opening balance, schema-10 and older backups receive no
+invented transfer, schema-9 and older backups receive no invented category plan,
+and schema-8 history upgrades as cleared. The gate rejects a modified checksum
+and a stale preview, and proves that the final re-export exactly matches the
+pre-restore data.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -532,6 +552,7 @@ npm run types:worker
 | `0011_account_transfers.sql` | Adds atomic account-to-account transfers with independent source and destination posting states and backup revision triggers. |
 | `0012_account_opening_balances.sql` | Adds optional signed, dated account opening balances with database guards requiring the amount and date together. |
 | `0013_emergency_fund_goal.sql` | Adds one optional account-backed emergency-fund checkpoint and ledger-revision triggers without reserving or moving money. |
+| `0014_ledger_currency.sql` | Adds one ledger-wide two-decimal currency setting, migrates existing ledgers as HKD, cascades pristine currency changes across dependent rows, and blocks relabeling after monetary history exists. |
 
 Apply migrations locally:
 
@@ -550,6 +571,8 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 
 ```text
 GET    /api/health
+GET    /api/ledger-settings  (ledger currency and whether it can still change)
+PUT    /api/ledger-settings  (conflict-safe pristine-ledger currency change; no conversion)
 GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (recorded, cleared, and uncleared balances at month end)
 GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)
@@ -620,11 +643,11 @@ and signed net are not truncated by the list limit. The optional `status` filter
 is shared by the aggregate and uncapped CSV export.
 
 Transfers are a separate ledger surface because movement between owned accounts
-must not affect income or expense reporting. New transfers require two active HKD
-accounts. Editing preserves an existing archived source or destination, uses the
-same optimistic `updatedAt` guard as transactions, and records source and
-destination posting independently. Transfer routes are strict, same-origin, and
-never included in transaction CSV exports.
+must not affect income or expense reporting. New transfers require two active
+accounts in the ledger currency. Editing preserves an existing archived source or
+destination, uses the same optimistic `updatedAt` guard as transactions, and
+records source and destination posting independently. Transfer routes are strict,
+same-origin, and never included in transaction CSV exports.
 
 Account balance aggregation is read-only and uses the end of the requested month
 as an exclusive cutoff. It includes transfers in each account but never feeds

@@ -6,11 +6,12 @@ import type { RecurringRule } from '../lib/schema'
 type RecurringDeleteDialogProps = {
   rule: RecurringRule
   deleting: boolean
+  mutable: boolean
   onClose: () => void
   onConfirm: () => Promise<boolean>
 }
 
-export function RecurringDeleteDialog({ rule, deleting, onClose, onConfirm }: RecurringDeleteDialogProps) {
+export function RecurringDeleteDialog({ rule, deleting, mutable, onClose, onConfirm }: RecurringDeleteDialogProps) {
   const { t } = useI18n()
   const dialogRef = useRef<HTMLDivElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -56,6 +57,7 @@ export function RecurringDeleteDialog({ rule, deleting, onClose, onConfirm }: Re
   }, [onClose])
 
   const confirm = async () => {
+    if (!mutable) return
     const deleted = await onConfirm()
     if (deleted) onClose()
   }
@@ -86,7 +88,7 @@ export function RecurringDeleteDialog({ rule, deleting, onClose, onConfirm }: Re
           <button ref={cancelRef} className="button button-secondary" type="button" onClick={onClose} disabled={deleting}>
             {t('cancel')}
           </button>
-          <button className="button button-danger" type="button" onClick={() => void confirm()} disabled={deleting}>
+          <button className="button button-danger" type="button" onClick={() => void confirm()} disabled={deleting || !mutable}>
             {deleting ? <LoaderCircle className="spin" aria-hidden="true" /> : <Trash2 aria-hidden="true" />}
             {deleting ? t('deleting') : t('confirmDelete')}
           </button>

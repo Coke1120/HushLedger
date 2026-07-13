@@ -26,6 +26,7 @@ import {
   parseAmount,
   parseSignedAmount,
 } from '../lib/money'
+import type { SupportedCurrency } from '../lib/currency'
 import {
   canMoveReference,
   orderedReferenceGroup,
@@ -35,6 +36,7 @@ import {
 type ReferenceDataSettingsProps = {
   accounts: Account[]
   categories: Category[]
+  expectedCurrency: SupportedCurrency
   enabled: boolean
   onRefresh: () => Promise<boolean>
 }
@@ -69,6 +71,7 @@ type Editor =
 export function ReferenceDataSettings({
   accounts,
   categories,
+  expectedCurrency,
   enabled,
   onRefresh,
 }: ReferenceDataSettingsProps) {
@@ -125,6 +128,7 @@ export function ReferenceDataSettings({
       () => actionData(createAccountAction({
         name: accountName,
         type: accountType,
+        expectedCurrency,
         ...opening,
       })),
       'referenceCreated',
@@ -151,6 +155,7 @@ export function ReferenceDataSettings({
       () => actionData(createCategoryAction({
         name: categoryName,
         type: categoryType,
+        expectedCurrency,
         monthlyPlanMinor,
       })),
       'referenceCreated',
@@ -210,6 +215,7 @@ export function ReferenceDataSettings({
           () => actionData(updateAccountAction(editor.id, {
             name,
             type: editor.type,
+            expectedCurrency,
             ...(opening ?? { openingBalanceMinor: null, openingBalanceOn: null }),
             updatedAt: editor.updatedAt,
           })),
@@ -220,6 +226,7 @@ export function ReferenceDataSettings({
           () => actionData(updateCategoryAction(editor.id, {
             name,
             type: editor.type,
+            expectedCurrency,
             monthlyPlanMinor,
             updatedAt: editor.updatedAt,
           })),

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { SupportedCurrency } from '../lib/currency'
 import { monthRangeDates, shiftMonth } from '../lib/date'
 import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
@@ -41,7 +42,7 @@ type TransactionRow = {
   id: string
   type: TransactionType
   amountMinor: number
-  currency: 'HKD'
+  currency: SupportedCurrency
   accountId: number
   categoryId: number
   occurredOn: string

@@ -34,6 +34,7 @@ describe('reference data validation', () => {
     assert.deepEqual(accountCreateSchema.parse({ name: 'Savings', type: 'bank' }), {
       name: 'Savings',
       type: 'bank',
+      expectedCurrency: 'HKD',
       openingBalanceMinor: null,
       openingBalanceOn: null,
     })
@@ -51,11 +52,13 @@ describe('reference data validation', () => {
     }), {
       name: 'Education',
       type: 'expense',
+      expectedCurrency: 'HKD',
       monthlyPlanMinor: 25_000,
     })
     assert.deepEqual(categoryCreateSchema.parse({ name: 'Gift', type: 'income' }), {
       name: 'Gift',
       type: 'income',
+      expectedCurrency: 'HKD',
       monthlyPlanMinor: null,
     })
     assert.equal(categoryUpdateSchema.safeParse({
@@ -74,6 +77,11 @@ describe('reference data validation', () => {
   it('rejects empty names, unknown types, and extra fields', () => {
     assert.equal(accountCreateSchema.safeParse({ name: ' ', type: 'bank' }).success, false)
     assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan' }).success, false)
+    assert.equal(accountCreateSchema.safeParse({
+      name: 'Card',
+      type: 'credit_card',
+      expectedCurrency: 'JPY',
+    }).success, false)
     assert.equal(accountCreateSchema.safeParse({
       name: 'Card',
       type: 'credit_card',
@@ -138,6 +146,7 @@ describe('emergency fund goal validation', () => {
     }), {
       accountId: 2,
       targetMinor: 500_000,
+      expectedCurrency: 'HKD',
       expectedUpdatedAt: null,
     })
     assert.equal(emergencyFundGoalSaveSchema.safeParse({
@@ -159,6 +168,12 @@ describe('emergency fund goal validation', () => {
     assert.equal(emergencyFundGoalSaveSchema.safeParse({
       accountId: 2,
       targetMinor: Number.MAX_SAFE_INTEGER + 1,
+      expectedUpdatedAt: null,
+    }).success, false)
+    assert.equal(emergencyFundGoalSaveSchema.safeParse({
+      accountId: 2,
+      targetMinor: 500_000,
+      expectedCurrency: 'JPY',
       expectedUpdatedAt: null,
     }).success, false)
     assert.equal(emergencyFundGoalSaveSchema.safeParse({
@@ -197,7 +212,7 @@ describe('transaction validation', () => {
     ['fractional minor units', { amountMinor: 1.2 }],
     ['unsafe minor units', { amountMinor: Number.MAX_SAFE_INTEGER + 1 }],
     ['non-UUID id', { id: '1' }],
-    ['unsupported currency', { currency: 'TWD' }],
+    ['unsupported currency', { currency: 'JPY' }],
     ['date containing a time', { occurredOn: '2026-07-11T10:30:00.000Z' }],
     ['invalid calendar date', { occurredOn: '2026-02-30' }],
     ['oversized payee', { payee: '商'.repeat(81) }],

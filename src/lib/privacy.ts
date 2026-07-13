@@ -1,3 +1,4 @@
+import { DEFAULT_LEDGER_CURRENCY } from './currency'
 import { formatMoney } from './money'
 
 export function shouldAutomaticallyMaskScreen(
@@ -7,7 +8,7 @@ export function shouldAutomaticallyMaskScreen(
   return visibilityState !== 'visible' || !hasFocus
 }
 
-export function formatPrivateMoney(currency = 'HKD', locale = 'zh-Hant') {
+export function formatPrivateMoney(currency = DEFAULT_LEDGER_CURRENCY, locale = 'zh-Hant') {
   let maskInserted = false
   return new Intl.NumberFormat(locale, {
     style: 'currency',
@@ -30,7 +31,7 @@ export function formatPrivateMoney(currency = 'HKD', locale = 'zh-Hant') {
 
 export function formatMoneyForDisplay(
   minor: number,
-  currency = 'HKD',
+  currency = DEFAULT_LEDGER_CURRENCY,
   locale = 'zh-Hant',
   privateMode = false,
 ) {

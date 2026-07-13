@@ -127,6 +127,7 @@ describe('AI provider adapter', () => {
       {
         provider,
         accountId: 2,
+        currency: 'HKD',
         dateOrder: 'DMY',
         statementText: 'Date Description Amount\n11/07/2026 Example merchant 123.45 DR',
         categories,
@@ -198,6 +199,7 @@ describe('AI provider adapter', () => {
     const input = {
       provider,
       accountId: 2,
+      currency: 'HKD' as const,
       dateOrder: 'DMY' as const,
       statementText: '11/07/2026 Combined purchase 30.00 DR',
       categories,
@@ -246,6 +248,7 @@ describe('AI provider adapter', () => {
           {
             provider,
             accountId: 2,
+            currency: 'HKD',
             dateOrder: 'DMY',
             statementText: 'Merchant 12.00',
             categories,

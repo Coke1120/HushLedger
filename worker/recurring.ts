@@ -3,6 +3,7 @@ import {
   firstOccurrenceOnOrAfter,
   recurrenceAnchorDay,
 } from '../src/lib/recurrence'
+import type { SupportedCurrency } from '../src/lib/currency'
 import type {
   RecurrenceFrequency,
   RecurringGenerationResult,
@@ -20,7 +21,7 @@ type RuleRow = {
   name: string
   type: TransactionType
   amountMinor: number
-  currency: 'HKD'
+  currency: SupportedCurrency
   accountId: number
   categoryId: number
   frequency: RecurrenceFrequency
@@ -51,7 +52,7 @@ export type RecurringRuleView = {
   name: string
   type: TransactionType
   amountMinor: number
-  currency: 'HKD'
+  currency: SupportedCurrency
   accountId: number
   categoryId: number
   frequency: RecurrenceFrequency
@@ -751,7 +752,7 @@ async function validateReferences(
   database: D1Database,
   accountId: number,
   categoryId: number,
-  currency: 'HKD',
+  currency: SupportedCurrency,
   type: TransactionType,
 ) {
   const row = await database

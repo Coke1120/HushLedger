@@ -19,7 +19,6 @@ import {
 } from '../i18n'
 import { api } from '../lib/api'
 import { currentHongKongDate } from '../lib/date'
-import { advanceOccurrence } from '../lib/recurrence'
 import type {
   RecurringGenerationResult,
   RecurringRule,
@@ -31,7 +30,6 @@ import { actionData } from './actionResult'
 
 type MutationOptions = {
   successMessage: LocalizedMessage | ((result: unknown) => LocalizedMessage)
-  demoUpdate: (rules: RecurringRule[]) => RecurringRule[]
   request: () => Promise<unknown>
 }
 
@@ -78,40 +76,14 @@ function localizeDemoRule(rule: RecurringRule, t: Translator): RecurringRule {
   }
 }
 
-function toRule(input: RecurringRuleCreateInput): RecurringRule {
-  const timestamp = new Date().toISOString()
-  const { firstOccurrenceOn, ...ruleInput } = input
-  return {
-    ...ruleInput,
-    scheduleStartsOn: input.scheduleStartsOn,
-    nextOccurrenceOn: firstOccurrenceOn ?? input.scheduleStartsOn,
-    lastOccurrenceOn: null,
-    anchorDay: Number(input.scheduleStartsOn.slice(-2)),
-    generatedCount: 0,
-    lastErrorCode: null,
-    revision: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  }
-}
-
-function updateRule(rule: RecurringRule, input: RecurringRuleUpdateInput): RecurringRule {
-  return {
-    ...rule,
-    ...input,
-    scheduleStartsOn: input.scheduleStartsOn,
-    nextOccurrenceOn: input.scheduleStartsOn,
-    anchorDay: Number(input.scheduleStartsOn.slice(-2)),
-    revision: rule.revision + 1,
-    updatedAt: new Date().toISOString(),
-  }
-}
-
 function resolveSuccessMessage(messageValue: MutationOptions['successMessage'], result?: unknown) {
   return typeof messageValue === 'function' ? messageValue(result) : messageValue
 }
 
-export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
+export function useRecurringRules(
+  onMoneyRefresh: () => Promise<boolean>,
+  mutable: boolean,
+) {
   const { t } = useI18n()
   const [rules, setRules] = useState<RecurringRule[]>(demoRules)
   const [source, setSource] = useState<DataSource>('loading')
@@ -181,7 +153,11 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
   }, [refresh])
 
   const mutate = useCallback(
-    async ({ successMessage, demoUpdate, request }: MutationOptions) => {
+    async ({ successMessage, request }: MutationOptions) => {
+      if (!mutable || source !== 'live') {
+        setMutatingId(null)
+        return false
+      }
       if (submitting.current) return false
       submitting.current = true
       setError(null)
@@ -191,14 +167,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
         if (!navigator.onLine) {
           setError(message('recurringOfflineError'))
           return false
-        }
-
-        if (source === 'demo') {
-          setRules(demoUpdate)
-          setActionMessage(
-            message('recurringDemoSuffix', { message: resolveSuccessMessage(successMessage) }),
-          )
-          return true
         }
 
         const requestResult = await request()
@@ -216,7 +184,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
         setMutatingId(null)
       }
     },
-    [onMoneyRefresh, refresh, source],
+    [mutable, onMoneyRefresh, refresh, source],
   )
 
   const createRule = useCallback(
@@ -224,7 +192,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setMutatingId('new')
       return mutate({
         successMessage: message('recurringCreated'),
-        demoUpdate: (current) => [toRule(input), ...current],
         request: () => actionData(createRecurringRuleAction(input)),
       })
     },
@@ -236,7 +203,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setMutatingId(id)
       return mutate({
         successMessage: message('recurringUpdated'),
-        demoUpdate: (current) => current.map((rule) => (rule.id === id ? updateRule(rule, input) : rule)),
         request: () => actionData(updateRecurringRuleAction(id, input)),
       })
     },
@@ -248,12 +214,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setMutatingId(rule.id)
       return mutate({
         successMessage: message(isActive ? 'recurringResumed' : 'recurringPaused'),
-        demoUpdate: (current) =>
-          current.map((item) =>
-            item.id === rule.id
-              ? { ...item, isActive, revision: item.revision + 1, updatedAt: new Date().toISOString() }
-              : item,
-          ),
         request: () => actionData(setRecurringRuleStatusAction(rule.id, {
           isActive,
           revision: rule.revision,
@@ -268,7 +228,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setMutatingId(rule.id)
       return mutate({
         successMessage: message('recurringDeleted'),
-        demoUpdate: (current) => current.filter((item) => item.id !== rule.id),
         request: () => actionData(deleteRecurringRuleAction(rule.id, { revision: rule.revision })),
       })
     },
@@ -280,20 +239,6 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
       setMutatingId(rule.id)
       return mutate({
         successMessage: message('recurringSkipped'),
-        demoUpdate: (current) => current.map((item) => (
-          item.id === rule.id
-            ? {
-                ...item,
-                nextOccurrenceOn: advanceOccurrence(
-                  item.nextOccurrenceOn,
-                  item.frequency,
-                  item.anchorDay,
-                ),
-                revision: item.revision + 1,
-                updatedAt: new Date().toISOString(),
-              }
-            : item
-        )),
         request: () => actionData(skipRecurringRuleOccurrenceAction(rule.id, {
           revision: rule.revision,
           nextOccurrenceOn: rule.nextOccurrenceOn,
@@ -304,6 +249,7 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
   )
 
   const runDue = useCallback(async () => {
+    if (!mutable || source !== 'live') return false
     if (submitting.current) return false
     setRunning(true)
     setMutatingId('run-due')
@@ -317,12 +263,11 @@ export function useRecurringRules(onMoneyRefresh: () => Promise<boolean>) {
           existing: generation.alreadyExisting,
         })
       },
-      demoUpdate: (current) => current,
       request: () => actionData(runDueRecurringRulesAction()),
     })
     setRunning(false)
     return result
-  }, [mutate])
+  }, [mutable, mutate, source])
 
   const visibleRules = useMemo(() => rules.map((rule) => localizeDemoRule(rule, t)), [rules, t])
   const clearActionMessage = useCallback(() => {

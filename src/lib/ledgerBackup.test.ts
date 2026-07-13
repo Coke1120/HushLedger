@@ -7,6 +7,7 @@ import {
   LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
+  PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PREVIOUS_LEDGER_SCHEMA_VERSION,
   canonicalJson,
@@ -15,6 +16,7 @@ import {
   countLedgerData,
   digestLedgerData,
   ledgerBackupTransactionSchema,
+  ledgerRestorePreviewSchema,
   upgradeLedgerBackupData,
   validateLedgerDataRelations,
   type LedgerBackupData,
@@ -25,6 +27,7 @@ const timestamp = '2026-07-13T00:00:00.000Z'
 
 function ledgerData(): LedgerBackupData {
   return {
+    currency: 'HKD',
     accounts: [
       {
         id: 1,
@@ -152,6 +155,18 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
+function ledgerDataBeforeCurrency(data: LedgerBackupData) {
+  return {
+    accounts: data.accounts,
+    categories: data.categories,
+    recurringRules: data.recurringRules,
+    transactions: data.transactions,
+    accountTransfers: data.accountTransfers,
+    emergencyFundGoals: data.emergencyFundGoals,
+    transactionImportKeys: data.transactionImportKeys,
+  }
+}
+
 function ledgerDataBeforeEmergencyFund(data: LedgerBackupData) {
   return {
     accounts: data.accounts,
@@ -214,6 +229,39 @@ describe('ledger backups', () => {
     )
   })
 
+  it('requires both supported currencies in the restore preview contract', () => {
+    const counts = {
+      accounts: 2,
+      categories: 2,
+      recurringRules: 1,
+      transactions: 1,
+      accountTransfers: 1,
+      emergencyFundGoals: 1,
+      transactionImportKeys: 1,
+    }
+    const preview = {
+      exportedAt: timestamp,
+      checksum: 'a'.repeat(64),
+      backupDigest: 'b'.repeat(64),
+      currentDigest: 'c'.repeat(64),
+      currentRevision: 1,
+      currentCurrency: 'USD',
+      backupCurrency: 'HKD',
+      currentCounts: counts,
+      backupCounts: counts,
+      restoreStatements: 8,
+    }
+
+    assert.deepEqual(ledgerRestorePreviewSchema.parse(preview), preview)
+    assert.equal(ledgerRestorePreviewSchema.safeParse({
+      ...preview,
+      backupCurrency: 'XYZ',
+    }).success, false)
+    const missingBackupCurrency: Record<string, unknown> = { ...preview }
+    delete missingBackupCurrency.backupCurrency
+    assert.equal(ledgerRestorePreviewSchema.safeParse(missingBackupCurrency).success, false)
+  })
+
   it('accepts a complete ledger and counts every restorable table', async () => {
     const data = ledgerData()
     assert.deepEqual(validateLedgerDataRelations(data), [])
@@ -227,6 +275,40 @@ describe('ledger backups', () => {
       transactionImportKeys: 1,
     })
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
+  })
+
+  it('keeps the selected supported currency portable with the ledger', () => {
+    const data = ledgerData()
+    data.currency = 'USD'
+    data.accounts.forEach((row) => { row.currency = 'USD' })
+    data.recurringRules.forEach((row) => { row.currency = 'USD' })
+    data.transactions.forEach((row) => { row.currency = 'USD' })
+    data.accountTransfers.forEach((row) => { row.currency = 'USD' })
+
+    assert.deepEqual(validateLedgerDataRelations(data), [])
+  })
+
+  it('upgrades schema 13 backups as HKD without dropping the emergency fund goal', async () => {
+    const previousData = ledgerDataBeforeCurrency(ledgerData())
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
+    assert.deepEqual(upgraded.emergencyFundGoals, previousData.emergencyFundGoals)
+    assert.equal(upgraded.accountTransfers.length, 1)
   })
 
   it('upgrades schema 12 backups without inventing an emergency fund goal', async () => {
@@ -248,6 +330,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.accountTransfers.length, 1)
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, 125_000)
@@ -272,6 +355,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.accountTransfers.length, 1)
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
@@ -299,6 +383,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.deepEqual(upgraded.accountTransfers, [])
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
@@ -329,6 +414,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, false)
@@ -359,6 +445,7 @@ describe('ledger backups', () => {
     })
 
     const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, true)
@@ -402,6 +489,17 @@ describe('ledger backups', () => {
     const issues = validateLedgerDataRelations(data)
     assert(issues.some(({ path }) => path.endsWith('.id')))
     assert(issues.some(({ message }) => message === 'Referenced destination account is missing'))
+  })
+
+  it('rejects rows whose currency differs from the ledger currency', () => {
+    const data = ledgerData()
+    data.currency = 'USD'
+
+    const paths = validateLedgerDataRelations(data).map(({ path }) => path)
+    assert(paths.includes('data.accounts.0.currency'))
+    assert(paths.includes('data.recurringRules.0.currency'))
+    assert(paths.includes('data.transactions.0.currency'))
+    assert(paths.includes('data.accountTransfers.0.currency'))
   })
 
   it('requires recurring transaction metadata to be complete and derived consistently', () => {

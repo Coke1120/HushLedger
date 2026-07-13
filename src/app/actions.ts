@@ -565,6 +565,9 @@ function referenceMutationResult<T>(result: ReferenceMutationResult<T>): ActionR
   if (result.kind === 'version_conflict') {
     return actionError('REFERENCE_VERSION_CONFLICT', '帳戶或分類已被修改，請重新載入後再試')
   }
+  if (result.kind === 'currency_conflict') {
+    return actionError('LEDGER_CURRENCY_VERSION_CONFLICT', '帳本幣別已被修改，請重新載入後再試')
+  }
   if (result.kind === 'name_conflict') {
     return actionError('REFERENCE_NAME_CONFLICT', '同類型已有相同名稱')
   }

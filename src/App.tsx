@@ -643,6 +643,7 @@ function App({ initialMonth }: { initialMonth: string }) {
             </div> : null}
             {registerAccountId === null && view === 'transactions' && importMode === 'csv' ? (
               <CsvImportPanel
+                key={`csv-import-${data.ledgerSettings.updatedAt}`}
                 accounts={data.accounts}
                 categories={data.categories}
                 available={data.source === 'live' && data.online}
@@ -653,10 +654,11 @@ function App({ initialMonth }: { initialMonth: string }) {
             ) : null}
             {registerAccountId === null && view === 'transactions' && importMode === 'ai' ? (
               <BankImportPanel
+                key={`ai-import-${data.ledgerSettings.updatedAt}`}
                 settings={aiSettings}
                 accounts={data.accounts}
                 categories={data.categories}
-                online={data.online}
+                available={data.source === 'live' && data.online}
                 panelRef={importPanelRef}
                 onClose={closeImport}
                 onConfigure={() => changeView('settings')}
@@ -722,10 +724,11 @@ function App({ initialMonth }: { initialMonth: string }) {
         </div>
         <div hidden={view !== 'recurring'}>
           <RecurringRulesPage
-            key={ledgerGeneration}
+            key={`${ledgerGeneration}:${data.ledgerSettings.updatedAt}`}
             accounts={data.accounts}
             categories={data.categories}
             draft={recurringDraft}
+            mutable={data.source === 'live' && data.online}
             onMoneyRefresh={data.refresh}
             onDraftClose={closeRecurringDraft}
           />
@@ -737,6 +740,7 @@ function App({ initialMonth }: { initialMonth: string }) {
             accounts={data.accounts}
             categories={data.categories}
             emergencyFundGoal={data.emergencyFundGoal}
+            ledgerSettings={data.ledgerSettings}
             canManageReferences={data.source === 'live' && data.online}
             onReferenceRefresh={() => data.refresh(false)}
             onLedgerRestored={handleLedgerRestored}
@@ -747,7 +751,7 @@ function App({ initialMonth }: { initialMonth: string }) {
       <MobileNavigation view={view} onChange={changeView} />
       {dialogOpen ? (
         <TransactionDialog
-          key={editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}
+          key={`${editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}:${data.ledgerSettings.updatedAt}`}
           accounts={data.accounts}
           categories={data.categories}
           saving={data.saving}
@@ -764,7 +768,7 @@ function App({ initialMonth }: { initialMonth: string }) {
       ) : null}
       {transferDialogOpen ? (
         <AccountTransferDialog
-          key={editingTransfer ? `transfer:${editingTransfer.id}` : 'new-transfer'}
+          key={`${editingTransfer ? `transfer:${editingTransfer.id}` : 'new-transfer'}:${data.ledgerSettings.updatedAt}`}
           accounts={data.accounts}
           saving={data.saving}
           serverError={data.saveError}

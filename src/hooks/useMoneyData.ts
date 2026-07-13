@@ -12,6 +12,10 @@ import {
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
 import {
+  DEFAULT_LEDGER_CURRENCY,
+  type LedgerCurrencySettings,
+} from '../lib/currency'
+import {
   addDemo,
   deleteDemo,
   demoAccounts,
@@ -59,6 +63,7 @@ type Snapshot = {
   accounts: Account[]
   categories: Category[]
   emergencyFundGoal: EmergencyFundGoal | null
+  ledgerSettings: LedgerCurrencySettings
 }
 
 function demoSnapshot(
@@ -105,6 +110,11 @@ function demoSnapshot(
     accounts: demoAccounts,
     categories: demoCategories,
     emergencyFundGoal: null,
+    ledgerSettings: {
+      currency: DEFAULT_LEDGER_CURRENCY,
+      updatedAt: '1970-01-01T00:00:00.000Z',
+      canChangeCurrency: false,
+    },
   }
 }
 
@@ -124,7 +134,7 @@ export function useMoneyData(
   dateTo: string,
   registerAccountId: number | null,
 ) {
-  const { t } = useI18n()
+  const { setLedgerCurrency, t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
     demoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
@@ -171,6 +181,7 @@ export function useMoneyData(
       accounts,
       categories,
       emergencyFundGoal,
+      ledgerSettings,
     ] = await Promise.all([
       api<Transaction[]>(`/api/transactions?${transactionQuery}`),
       api<AccountTransfer[]>(`/api/transfers?${transferQuery}`),
@@ -184,6 +195,7 @@ export function useMoneyData(
       api<Account[]>('/api/accounts'),
       api<Category[]>('/api/categories'),
       api<EmergencyFundGoal | null>('/api/emergency-fund-goal'),
+      api<LedgerCurrencySettings>('/api/ledger-settings'),
     ])
     return {
       reportMonth: month,
@@ -197,6 +209,7 @@ export function useMoneyData(
       accounts,
       categories,
       emergencyFundGoal,
+      ledgerSettings,
     }
   }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
@@ -208,6 +221,7 @@ export function useMoneyData(
       if (!navigator.onLine) {
         setOnline(false)
         if (allowDemoFallback) {
+          setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
           setSnapshot(demoSnapshot(
             month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
@@ -220,6 +234,7 @@ export function useMoneyData(
       try {
         const next = await fetchSnapshot()
         if (sequence !== requestSequence.current) return false
+        setLedgerCurrency(next.ledgerSettings.currency)
         setSnapshot(next)
         setSource('live')
         setOnline(true)
@@ -227,6 +242,7 @@ export function useMoneyData(
       } catch {
         if (sequence !== requestSequence.current) return false
         if (allowDemoFallback) {
+          setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
           setSnapshot(demoSnapshot(
             month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
             dateFrom, dateTo,
@@ -238,7 +254,7 @@ export function useMoneyData(
         return false
       }
     },
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, fetchSnapshot, month, payee, scope, search, sort, status, tag, type],
+    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, fetchSnapshot, month, payee, scope, search, setLedgerCurrency, sort, status, tag, type],
   )
 
   useEffect(() => {
@@ -253,6 +269,7 @@ export function useMoneyData(
     }
     const handleOffline = () => {
       setOnline(false)
+      setLedgerCurrency(DEFAULT_LEDGER_CURRENCY)
       setSnapshot(demoSnapshot(
         month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
         dateFrom, dateTo,
@@ -265,7 +282,7 @@ export function useMoneyData(
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, sort, status, tag, type])
+  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, refresh, scope, search, setLedgerCurrency, sort, status, tag, type])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {

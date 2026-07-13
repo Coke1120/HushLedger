@@ -22,7 +22,7 @@ type RecurringRuleDialogProps = {
   categories: Category[]
   saving: boolean
   serverError: string
-  online: boolean
+  mutable: boolean
   onClose: () => void
   onCreate: (input: RecurringRuleCreateInput) => Promise<boolean>
   onEdit: (id: string, input: RecurringRuleUpdateInput) => Promise<boolean>
@@ -35,7 +35,7 @@ export function RecurringRuleDialog({
   categories,
   saving,
   serverError,
-  online,
+  mutable,
   onClose,
   onCreate,
   onEdit,
@@ -43,6 +43,7 @@ export function RecurringRuleDialog({
   const {
     formatDate,
     formatMoney,
+    ledgerCurrency,
     locale,
     localizeEntityName,
     privacyMode,
@@ -140,6 +141,7 @@ export function RecurringRuleDialog({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!mutable) return
     setLocalError('')
     const data = new FormData(event.currentTarget)
 
@@ -160,7 +162,7 @@ export function RecurringRuleDialog({
         name: String(data.get('name') ?? ''),
         type,
         amountMinor,
-        currency: 'HKD' as const,
+        currency: ledgerCurrency,
         accountId,
         categoryId: matchingCategories.some((category) => category.id === categoryId)
           ? categoryId
@@ -263,7 +265,7 @@ export function RecurringRuleDialog({
           <label className="amount-field recurring-amount-field">
             <span>{t('recurringAmount')}</span>
             <span className="amount-input-wrap">
-              <span>HK$</span>
+              <span>{ledgerCurrency}</span>
               <input
                 type={privacyMode ? 'password' : 'text'}
                 name="amount"
@@ -276,7 +278,11 @@ export function RecurringRuleDialog({
                 required
               />
             </span>
-            {rule ? <small>{t('currentAmount', { amount: formatMoney(rule.amountMinor) })}</small> : null}
+            {rule ? (
+              <small>{t('currentAmount', {
+                amount: formatMoney(rule.amountMinor, rule.currency),
+              })}</small>
+            ) : null}
           </label>
 
           <div className="form-grid recurring-form-grid">
@@ -366,10 +372,10 @@ export function RecurringRuleDialog({
             </p>
           ) : null}
 
-          {!online ? <p className="offline-form-note">{t('offlineRecurringForm')}</p> : null}
+          {!mutable ? <p className="offline-form-note">{t('offlineRecurringForm')}</p> : null}
 
           <div className="dialog-actions">
-            <button className="button button-primary save-button" type="submit" disabled={saving || !online}>
+            <button className="button button-primary save-button" type="submit" disabled={saving || !mutable}>
               {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
               {saving ? t('saving') : editing ? t('saveChanges') : t('createRecurringRule')}
             </button>

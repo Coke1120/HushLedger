@@ -29,6 +29,13 @@ describe('screen privacy formatting', () => {
     assert.equal(formatMoneyForDisplay(-9_876_543, 'HKD', 'en', true), expected)
   })
 
+  it('keeps the selected ledger currency visible while masking its amount', () => {
+    const masked = formatMoneyForDisplay(12_345, 'USD', 'en', true)
+    assert.match(masked, /^\$/)
+    assert.ok(masked.includes('••••'))
+    assert.doesNotMatch(masked, /\d/)
+  })
+
   it('keeps each locale currency placement without exposing a number', () => {
     for (const locale of ['zh-Hant', 'en', 'ja', 'fr']) {
       const masked = formatPrivateMoney('HKD', locale)
