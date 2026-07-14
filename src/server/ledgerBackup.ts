@@ -37,6 +37,7 @@ type RawAccountTransfer = Omit<
   LedgerBackupData['accountTransfers'][number],
   'fromCleared' | 'toCleared'
 > & { fromCleared: number; toCleared: number }
+type RawEcbReferenceRate = LedgerBackupData['ecbReferenceRates'][number]
 type LedgerRevisionRow = { revision: number }
 type LedgerSettingsRow = { currency: SupportedCurrency }
 
@@ -74,6 +75,7 @@ type LedgerRestoreChunks = {
   accountTransfers: string[]
   emergencyFundGoals: string[]
   transactionImportKeys: string[]
+  ecbReferenceRates: string[]
 }
 
 const accountQuery = `
@@ -230,6 +232,17 @@ const importKeyQuery = `
     imported_at AS importedAt
   FROM transaction_import_keys
   ORDER BY import_key ASC
+`
+
+const ecbReferenceRateQuery = `
+  SELECT
+    quote_currency AS quoteCurrency,
+    rate,
+    observed_on AS observedOn,
+    fetched_at AS fetchedAt
+  FROM ecb_reference_rates
+  WHERE source = 'ecb' AND base_currency = 'EUR'
+  ORDER BY observed_on ASC, quote_currency ASC
 `
 
 const revisionQuery = 'SELECT revision FROM ledger_state WHERE id = 1'
@@ -424,6 +437,20 @@ const importKeyInsert = `
   FROM json_each(?)
 `
 
+const ecbReferenceRateInsert = `
+  INSERT INTO ecb_reference_rates(
+    source, base_currency, quote_currency, observed_on, rate, fetched_at
+  )
+  SELECT
+    'ecb',
+    'EUR',
+    json_extract(value, '$.quoteCurrency'),
+    json_extract(value, '$.observedOn'),
+    json_extract(value, '$.rate'),
+    json_extract(value, '$.fetchedAt')
+  FROM json_each(?)
+`
+
 const countQuery = `
   SELECT
     (SELECT COUNT(*) FROM accounts) AS accounts,
@@ -433,7 +460,8 @@ const countQuery = `
     (SELECT COUNT(*) FROM transactions) AS transactions,
     (SELECT COUNT(*) FROM account_transfers) AS accountTransfers,
     (SELECT COUNT(*) FROM emergency_fund_goals) AS emergencyFundGoals,
-    (SELECT COUNT(*) FROM transaction_import_keys) AS transactionImportKeys
+    (SELECT COUNT(*) FROM transaction_import_keys) AS transactionImportKeys,
+    (SELECT COUNT(*) FROM ecb_reference_rates) AS ecbReferenceRates
 `
 
 const countGuardQuery = `
@@ -455,6 +483,7 @@ const countGuardQuery = `
     OR accountTransfers <> ?
     OR emergencyFundGoals <> ?
     OR transactionImportKeys <> ?
+    OR ecbReferenceRates <> ?
 `
 
 export async function exportLedgerBackup(
@@ -595,11 +624,12 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
     accountTransfers: chunkRows(data.accountTransfers),
     emergencyFundGoals: chunkRows(data.emergencyFundGoals),
     transactionImportKeys: chunkRows(data.transactionImportKeys),
+    ecbReferenceRates: chunkRows(data.ecbReferenceRates),
   }
 }
 
 export function countRestoreStatements(chunks: LedgerRestoreChunks) {
-  return 12 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
+  return 13 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
 }
 
 async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot> {
@@ -612,6 +642,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
     accountTransfers,
     emergencyFundGoals,
     importKeys,
+    ecbReferenceRates,
     ledgerSettings,
     revision,
   ] =
@@ -624,6 +655,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       database.prepare(accountTransferQuery),
       database.prepare(emergencyFundGoalQuery),
       database.prepare(importKeyQuery),
+      database.prepare(ecbReferenceRateQuery),
       database.prepare(ledgerSettingsQuery),
       database.prepare(revisionQuery),
     ])
@@ -661,6 +693,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
     })),
     emergencyFundGoals: emergencyFundGoals.results,
     transactionImportKeys: importKeys.results,
+    ecbReferenceRates: ecbReferenceRates.results as RawEcbReferenceRate[],
   })
 
   return { data, revision: revisionRow.revision }
@@ -720,6 +753,7 @@ function buildRestoreStatements(
       WHERE COALESCE((SELECT revision FROM ledger_state WHERE id = 1), -1) <> ?
     `).bind(expectedRevision, expectedRevision),
     database.prepare('DELETE FROM transaction_import_keys'),
+    database.prepare('DELETE FROM ecb_reference_rates'),
     database.prepare('DELETE FROM transactions'),
     database.prepare('DELETE FROM account_transfers'),
     database.prepare('DELETE FROM recurring_transfer_rules'),
@@ -747,6 +781,7 @@ function buildRestoreStatements(
   appendChunkStatements(statements, database, transactionInsert, chunks.transactions)
   appendChunkStatements(statements, database, accountTransferInsert, chunks.accountTransfers)
   appendChunkStatements(statements, database, importKeyInsert, chunks.transactionImportKeys)
+  appendChunkStatements(statements, database, ecbReferenceRateInsert, chunks.ecbReferenceRates)
   statements.push(database.prepare(countGuardQuery).bind(
     expectedCounts.accounts,
     expectedCounts.categories,
@@ -756,6 +791,7 @@ function buildRestoreStatements(
     expectedCounts.accountTransfers,
     expectedCounts.emergencyFundGoals,
     expectedCounts.transactionImportKeys,
+    expectedCounts.ecbReferenceRates,
   ))
   statements.push(database.prepare(countQuery))
   return statements
@@ -779,7 +815,8 @@ function sameCounts(left: LedgerTableCounts, right: LedgerTableCounts) {
     left.transactions === right.transactions &&
     left.accountTransfers === right.accountTransfers &&
     left.emergencyFundGoals === right.emergencyFundGoals &&
-    left.transactionImportKeys === right.transactionImportKeys
+    left.transactionImportKeys === right.transactionImportKeys &&
+    left.ecbReferenceRates === right.ecbReferenceRates
   )
 }
 

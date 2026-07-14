@@ -255,8 +255,9 @@ knowledge and explains every command and dashboard click.
 - A settings page for switching immediately among Traditional Chinese, English,
   Japanese, and French, for choosing the default/reporting currency before monetary
   history exists, and for assigning a native currency to each account. Currency
-  stays private in D1 and full-ledger backups; HushLedger does not fetch exchange
-  rates or convert amounts yet.
+  stays private in D1 and full-ledger backups. A user can explicitly fetch and
+  retain ECB EUR-base reference-rate observations; HushLedger never fetches them
+  in the background and does not convert ledger amounts.
 
 HushLedger starts with cash, bank, credit-card, wallet, income, and expense
 defaults. Settings can add custom accounts and categories, rename them, change a
@@ -283,6 +284,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   change relabels that pristine ledger and never converts amounts or applies an
   exchange rate. Until conversion exists, dashboard totals and net worth include
   only the reporting currency.
+- ECB reference rates are optional, explicitly user-requested public data. They
+  are stored as immutable EUR-base decimal-text observations with their ECB date
+  and local fetch time, are included in backups, and never alter original amounts.
 - An amount of 123.45 is stored as `12345` in `amount_minor`.
 - Named transaction views live only in browser storage. They include the bounded
   transaction date scope and ordering choice. A custom range stores its exact
@@ -468,7 +472,7 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 Settings can download one versioned JSON file containing the ledger currency and
 every account, category, optional emergency-fund checkpoint, recurring transaction
 or transfer rule (including soft-deleted rule history), transaction, account transfer, and import
-tombstone. AI provider credentials, pasted bank text, language preferences,
+tombstone, plus any explicitly fetched ECB reference-rate observations. AI provider credentials, pasted bank text, language preferences,
 update preferences, saved transaction views, remembered bank CSV layouts, and
 screen privacy state are intentionally excluded.
 
@@ -486,10 +490,10 @@ Restore is preview-first:
 1. Choose a HushLedger JSON backup of at most 7 MiB.
 2. HushLedger validates the format and schema version, checksum, unique keys,
    account/category references, recurring provenance, and active reference minimums.
-3. Review the current-versus-backup row counts for all eight collections.
+3. Review the current-versus-backup row counts for all nine collections.
 4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
 5. HushLedger rechecks the live ledger revision and replaces the currency and all
-   eight ledger collections in one D1 transaction. A stale preview or any
+   nine ledger collections in one D1 transaction. A stale preview or any
    constraint failure writes nothing.
 
 After a successful replacement, HushLedger removes saved transaction views from
@@ -501,17 +505,19 @@ warns the user to clear the site's browser data before reloading or reusing save
 views.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 18 and accepts schemas 8 through 18. Schema 8 through schema 17
+writes schema 20 and accepts schemas 8 through 20. Schema 8 through schema 19
 backups upgrade in memory; schema 8 through schema 13 default the ledger currency
 to HKD, while schema 8 through schema 12 also upgrade without inventing an
 emergency-fund checkpoint. Their existing version-specific defaults for clearing
 state, monthly plans, transfers, and opening balances still apply. Schema-14 through
-schema-18 restores carry their currency with the rest of the ledger instead of
-converting any amount. Only schemas 15–18 can contain yearly recurring transaction
-rules, only schemas 16–18 can store their end dates, and only schemas 17–18 store
-scheduled-transfer rules and generated-transfer provenance. Schema 18 preserves
+schema-20 restores carry their currency with the rest of the ledger instead of
+converting any amount. Only schemas 15–20 can contain yearly recurring transaction
+rules, only schemas 16–20 can store their end dates, and only schemas 17–20 store
+scheduled-transfer rules and generated-transfer provenance. Schemas 18–20 preserve
 the structured import-review state; older backups reconstruct imported rows from
 their surviving import keys as unreviewed without assigning a state to manual rows.
+Schema 20 also preserves optional ECB reference-rate observations; older backups
+upgrade with an empty observation list and never invent rates.
 For a
 backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
@@ -658,8 +664,8 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete schema-18 JSON ledger, including its
-currency and eight data collections, and verifies schema-8 through schema-17
+The same gate exports and restores a complete schema-20 JSON ledger, including its
+currency and nine data collections, and verifies schema-8 through schema-19
 compatibility. Pre-schema-14 backups upgrade to HKD.
 Schema-14 and older backups retain their existing daily, weekly, or monthly recurring
 rules without inventing a yearly frequency, and schema-15 and older rules receive no
@@ -701,6 +707,7 @@ npm run types:worker
 | `0017_recurring_transfer_rules.sql` | Adds scheduled account-transfer rules plus immutable generated-transfer provenance while preserving manual transfers and report neutrality. |
 | `0018_import_review_status.sql` | Adds a nullable three-state local checklist for imported transactions, backfilling rows with surviving import keys as unreviewed while leaving manual rows unchanged. |
 | `0019_multi_currency_accounts.sql` | Preserves native currencies per account and dependent monetary rows, while keeping the ledger currency as a reporting currency until explicit conversion is added. |
+| `0020_ecb_reference_rates.sql` | Adds immutable, explicitly fetched EUR-base ECB reference-rate observations without modifying ledger money. |
 
 Apply migrations locally:
 
@@ -721,6 +728,8 @@ Successful responses use `{ "ok": true, "data": ... }`. Error responses use
 GET    /api/health
 GET    /api/ledger-settings  (ledger currency and whether it can still change)
 PUT    /api/ledger-settings  (conflict-safe pristine-ledger currency change; no conversion)
+GET    /api/exchange-rates/ecb  (locally retained ECB EUR-base reference-rate observations)
+POST   /api/exchange-rates/ecb  (explicitly fetch the fixed ECB CSV source; never automatic)
 GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (month-end balances and exact uncleared-entry counts)
 GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)

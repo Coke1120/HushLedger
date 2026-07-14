@@ -20,7 +20,8 @@ export const PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION = 15 as const
 export const PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION = 16 as const
 export const PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION = 17 as const
 export const PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION = 18 as const
-export const LEDGER_SCHEMA_VERSION = 19 as const
+export const PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION = 19 as const
+export const LEDGER_SCHEMA_VERSION = 20 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -365,6 +366,18 @@ export const ledgerBackupEmergencyFundGoalSchema = z.object({
   updatedAt: timestampSchema,
 }).strict()
 
+const ecbRateSchema = z.string().regex(/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,12})?$/).refine(
+  (value) => !/^0(?:\.0+)?$/.test(value),
+  'Must be a positive decimal rate',
+)
+
+export const ledgerBackupEcbReferenceRateSchema = z.object({
+  quoteCurrency: supportedCurrencySchema.refine((currency) => currency !== 'EUR'),
+  rate: ecbRateSchema,
+  observedOn: calendarDateSchema,
+  fetchedAt: timestampSchema,
+}).strict()
+
 const preRecurringTransfersLedgerBackupDataSchema = z.object({
   currency: supportedCurrencySchema,
   accounts: z.array(ledgerBackupAccountSchema),
@@ -388,8 +401,12 @@ const preImportReviewLedgerBackupDataSchema = z.object({
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-export const ledgerBackupDataSchema = preImportReviewLedgerBackupDataSchema.extend({
+const preEcbReferenceRatesLedgerBackupDataSchema = preImportReviewLedgerBackupDataSchema.extend({
   transactions: z.array(ledgerBackupTransactionSchema),
+}).strict()
+
+export const ledgerBackupDataSchema = preEcbReferenceRatesLedgerBackupDataSchema.extend({
+  ecbReferenceRates: z.array(ledgerBackupEcbReferenceRateSchema),
 }).strict()
 
 const preScheduleEndLedgerBackupDataSchema = preRecurringTransfersLedgerBackupDataSchema.extend({
@@ -451,7 +468,12 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
 
 const preMultiCurrencyLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION),
-  data: ledgerBackupDataSchema,
+  data: preEcbReferenceRatesLedgerBackupDataSchema,
+}).strict()
+
+const preEcbReferenceRatesLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION),
+  data: preEcbReferenceRatesLedgerBackupDataSchema,
 }).strict()
 
 const preImportReviewLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
@@ -496,6 +518,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preEcbReferenceRatesLedgerBackupPayloadSchema,
   preMultiCurrencyLedgerBackupPayloadSchema,
   preImportReviewLedgerBackupPayloadSchema,
   preRecurringTransfersLedgerBackupPayloadSchema,
@@ -519,7 +542,12 @@ const previousLedgerBackupSchema = ledgerBackupSchema.extend({
 
 const preMultiCurrencyLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION),
-  data: ledgerBackupDataSchema,
+  data: preEcbReferenceRatesLedgerBackupDataSchema,
+}).strict()
+
+const preEcbReferenceRatesLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION),
+  data: preEcbReferenceRatesLedgerBackupDataSchema,
 }).strict()
 
 const preImportReviewLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -564,6 +592,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preEcbReferenceRatesLedgerBackupSchema,
   preMultiCurrencyLedgerBackupSchema,
   preImportReviewLedgerBackupSchema,
   preRecurringTransfersLedgerBackupSchema,
@@ -607,6 +636,7 @@ export type LedgerBackupRecurringTransferRule = z.infer<
 export type LedgerBackupTransaction = z.infer<typeof ledgerBackupTransactionSchema>
 export type LedgerBackupAccountTransfer = z.infer<typeof ledgerBackupAccountTransferSchema>
 export type LedgerBackupEmergencyFundGoal = z.infer<typeof ledgerBackupEmergencyFundGoalSchema>
+export type LedgerBackupEcbReferenceRate = z.infer<typeof ledgerBackupEcbReferenceRateSchema>
 export type LedgerBackupImportKey = z.infer<typeof ledgerBackupImportKeySchema>
 export type LedgerBackupData = z.infer<typeof ledgerBackupDataSchema>
 export type LedgerBackupPayload = z.infer<typeof ledgerBackupPayloadSchema>
@@ -626,6 +656,7 @@ export const ledgerTableCountsSchema = z.object({
   accountTransfers: safeNonNegativeIntegerSchema,
   emergencyFundGoals: safeNonNegativeIntegerSchema,
   transactionImportKeys: safeNonNegativeIntegerSchema,
+  ecbReferenceRates: safeNonNegativeIntegerSchema,
 }).strict()
 
 export const ledgerRestorePreviewSchema = z.object({
@@ -679,8 +710,11 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
+  if (backup.schemaVersion === PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse({ ...backup.data, ecbReferenceRates: [] })
+  }
   if (backup.schemaVersion === PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION) {
-    return ledgerBackupDataSchema.parse(backup.data)
+    return ledgerBackupDataSchema.parse({ ...backup.data, ecbReferenceRates: [] })
   }
   const importedTransactionIds = new Set(
     backup.data.transactionImportKeys.map(({ transactionId }) => transactionId),
@@ -690,7 +724,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
     importReviewStatus: importedTransactionIds.has(transaction.id) ? 'unreviewed' as const : null,
   }))
   if (backup.schemaVersion === PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION) {
-    return ledgerBackupDataSchema.parse({ ...backup.data, transactions })
+    return ledgerBackupDataSchema.parse({ ...backup.data, transactions, ecbReferenceRates: [] })
   }
   const recurringRules = backup.schemaVersion >= PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION
     ? backup.data.recurringRules
@@ -708,6 +742,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
     return ledgerBackupDataSchema.parse({
       ...backup.data,
       transactions,
+      ecbReferenceRates: [],
       recurringTransferRules: [],
       accountTransfers,
     })
@@ -719,6 +754,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
       recurringRules,
       recurringTransferRules: [],
       accountTransfers,
+      ecbReferenceRates: [],
     })
   }
   return ledgerBackupDataSchema.parse({
@@ -746,6 +782,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
     emergencyFundGoals: backup.schemaVersion === PRE_CURRENCY_LEDGER_SCHEMA_VERSION
       ? backup.data.emergencyFundGoals
       : [],
+    ecbReferenceRates: [],
   })
 }
 
@@ -763,6 +800,7 @@ export function countLedgerData(data: LedgerBackupData): LedgerTableCounts {
     accountTransfers: data.accountTransfers.length,
     emergencyFundGoals: data.emergencyFundGoals.length,
     transactionImportKeys: data.transactionImportKeys.length,
+    ecbReferenceRates: data.ecbReferenceRates.length,
   }
 }
 
@@ -787,6 +825,13 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   )
 
   collectDuplicateIssues(data.categories, (row) => String(row.id), 'categories', 'id', issues)
+  collectDuplicateIssues(
+    data.ecbReferenceRates,
+    (row) => `${row.quoteCurrency}:${row.observedOn}`,
+    'ecbReferenceRates',
+    'quoteCurrency/observedOn',
+    issues,
+  )
   collectDuplicateIssues(
     data.categories,
     (row) => `${row.type}:${row.name.toLowerCase()}`,

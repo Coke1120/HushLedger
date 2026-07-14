@@ -53,6 +53,7 @@ const countRows: ReadonlyArray<{ key: keyof LedgerTableCounts; label: MessageKey
   { key: 'accountTransfers', label: 'ledgerTableAccountTransfers' },
   { key: 'emergencyFundGoals', label: 'ledgerTableEmergencyFundGoals' },
   { key: 'transactionImportKeys', label: 'ledgerTableImportKeys' },
+  { key: 'ecbReferenceRates', label: 'ledgerTableEcbReferenceRates' },
 ]
 
 export function LedgerBackupSettings({

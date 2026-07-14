@@ -6,6 +6,7 @@ import type { LedgerCurrencySettings } from '../lib/currency'
 import type { Account, Category, EmergencyFundGoal } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
 import { EmergencyFundSettings } from './EmergencyFundSettings'
+import { EcbReferenceRateSettings } from './EcbReferenceRateSettings'
 import {
   LedgerBackupSettings,
   type LedgerRestoredResult,
@@ -106,6 +107,12 @@ export function SettingsPage({
         enabled={ledgerSettingsEnabled}
         onRefresh={onReferenceRefresh}
         onBusyChange={(busy) => reportMutationState('currency', busy)}
+      />
+
+      <EcbReferenceRateSettings
+        key={`ecb-reference-rates-${ledgerSettings.updatedAt}`}
+        enabled={ledgerSettingsEnabled}
+        onBusyChange={(busy) => reportMutationState('ecb-reference-rates', busy)}
       />
 
       <EmergencyFundSettings

@@ -9,6 +9,7 @@ import {
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
+  PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION,
   PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION,
   PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION,
@@ -190,17 +191,30 @@ function ledgerData(): LedgerBackupData {
       transactionId: '10000000-0000-4000-8000-000000000001',
       importedAt: timestamp,
     }],
+    ecbReferenceRates: [{
+      quoteCurrency: 'USD',
+      rate: '1.1424',
+      observedOn: '2026-07-13',
+      fetchedAt: timestamp,
+    }],
   }
 }
 
 function ledgerDataBeforeImportReview(data: LedgerBackupData) {
+  const beforeEcbReferenceRates = ledgerDataBeforeEcbReferenceRates(data)
   return {
-    ...data,
+    ...beforeEcbReferenceRates,
     transactions: data.transactions.map(({
       importReviewStatus: _importReviewStatus,
       ...transaction
     }) => transaction),
   }
+}
+
+function ledgerDataBeforeEcbReferenceRates(data: LedgerBackupData) {
+  const { ecbReferenceRates, ...beforeEcbReferenceRates } = data
+  void ecbReferenceRates
+  return beforeEcbReferenceRates
 }
 
 function ledgerDataBeforeRecurringTransfers(data: LedgerBackupData) {
@@ -354,6 +368,7 @@ describe('ledger backups', () => {
       accountTransfers: 1,
       emergencyFundGoals: 1,
       transactionImportKeys: 1,
+      ecbReferenceRates: 1,
     }
     const preview = {
       exportedAt: timestamp,
@@ -390,6 +405,7 @@ describe('ledger backups', () => {
       accountTransfers: 1,
       emergencyFundGoals: 1,
       transactionImportKeys: 1,
+      ecbReferenceRates: 1,
     })
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
@@ -518,6 +534,27 @@ describe('ledger backups', () => {
       ...transaction,
       importReviewStatus: 'approved',
     }).success, false)
+  })
+
+  it('upgrades schema 19 without inventing ECB reference-rate observations', async () => {
+    const current = ledgerData()
+    const previousData = ledgerDataBeforeEcbReferenceRates(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_ECB_REFERENCE_RATES_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    assert.deepEqual(upgradeLedgerBackupData(backup).ecbReferenceRates, [])
   })
 
   it('upgrades schema 17 import-linked transactions as unreviewed without inventing reviewed state', async () => {
