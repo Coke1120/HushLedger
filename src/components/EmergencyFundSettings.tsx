@@ -33,7 +33,11 @@ export function EmergencyFundSettings({
 }: EmergencyFundSettingsProps) {
   const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
   const eligibleAccounts = accounts.filter(
-    (account) => account.isActive && account.type !== 'credit_card',
+    (account) => (
+      account.isActive
+      && account.currency === expectedCurrency
+      && account.type !== 'credit_card'
+    ),
   )
   const firstEligibleAccountId = eligibleAccounts[0]?.id ?? 0
   const canonicalAccountId = goal?.accountId ?? firstEligibleAccountId

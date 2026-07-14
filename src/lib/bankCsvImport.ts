@@ -59,7 +59,8 @@ export type BankCsvMappingSuggestion = Partial<BankCsvBaseMapping> & {
 type ReferenceData = {
   accounts: readonly Account[]
   categories: readonly Category[]
-  currency: SupportedCurrency
+  /** @deprecated Callers no longer supply one ledger-wide import currency. */
+  currency?: SupportedCurrency
   payeeSuggestions?: readonly PayeeSuggestion[]
 }
 
@@ -177,7 +178,6 @@ export async function mapBankCsvDocument(
     (item) => (
       item.id === mapping.accountId
       && item.isActive
-      && item.currency === references.currency
     ),
   )
   const expenseCategory = references.categories.find(
@@ -204,7 +204,7 @@ export async function mapBankCsvDocument(
       continue
     }
 
-    const signedAmount = amountForRow(record, mapping, references.currency)
+    const signedAmount = amountForRow(record, mapping, account.currency)
     if (!signedAmount.ok) {
       issues.push({ row: sourceRow, code: signedAmount.code })
       continue
@@ -235,7 +235,7 @@ export async function mapBankCsvDocument(
       id: crypto.randomUUID(),
       type,
       amountMinor,
-      currency: references.currency,
+      currency: account.currency,
       accountId: account.id,
       categoryId: rememberedCategoryId ?? (type === 'expense' ? expenseCategory.id : incomeCategory.id),
       occurredOn,
@@ -295,7 +295,6 @@ function validateMapping(
   if (!references.accounts.some((item) => (
     item.id === mapping.accountId
     && item.isActive
-    && item.currency === references.currency
   ))) {
     return { row: null, code: 'account_not_found' }
   }

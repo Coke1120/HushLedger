@@ -39,9 +39,10 @@ describe('reference data validation', () => {
   const updatedAt = '2026-07-11T10:30:00.000Z'
 
   it('accepts strict account and category mutations', () => {
-    assert.deepEqual(accountCreateSchema.parse({ name: 'Savings', type: 'bank' }), {
+    assert.deepEqual(accountCreateSchema.parse({ name: 'Savings', type: 'bank', currency: 'USD' }), {
       name: 'Savings',
       type: 'bank',
+      currency: 'USD',
       expectedCurrency: 'HKD',
       openingBalanceMinor: null,
       openingBalanceOn: null,
@@ -83,12 +84,12 @@ describe('reference data validation', () => {
   })
 
   it('rejects empty names, unknown types, and extra fields', () => {
-    assert.equal(accountCreateSchema.safeParse({ name: ' ', type: 'bank' }).success, false)
-    assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan' }).success, false)
+    assert.equal(accountCreateSchema.safeParse({ name: ' ', type: 'bank', currency: 'HKD' }).success, false)
+    assert.equal(accountCreateSchema.safeParse({ name: 'Card', type: 'loan', currency: 'HKD' }).success, false)
     assert.equal(accountCreateSchema.safeParse({
       name: 'Card',
       type: 'credit_card',
-      expectedCurrency: 'JPY',
+      currency: 'JPY',
     }).success, false)
     assert.equal(accountCreateSchema.safeParse({
       name: 'Card',

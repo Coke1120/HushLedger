@@ -216,6 +216,7 @@ export function demoAccountBalances(month: string): AccountBalance[] {
       accountName: account.name,
       accountLocalizationKey: account.localizationKey,
       accountType: account.type,
+      currency: account.currency,
       isActive: account.isActive,
       openingBalanceMinor: null,
       openingBalanceOn: null,
@@ -422,7 +423,15 @@ export function summarizeDemoTransactions(
     amountMinor,
     importReviewStatus,
   )
-  return { transactionCount: rows.length, ...exactTransactionTotals(rows) }
+  const currencies = new Set(rows.map(({ currency }) => currency))
+  if (currencies.size > 1) {
+    return { transactionCount: rows.length, currency: null, income: null, expense: null, net: null }
+  }
+  return {
+    transactionCount: rows.length,
+    currency: rows[0]?.currency ?? null,
+    ...exactTransactionTotals(rows),
+  }
 }
 
 export function addDemo(input: TransactionInput) {

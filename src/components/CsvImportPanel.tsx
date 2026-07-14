@@ -50,7 +50,7 @@ export function CsvImportPanel({
   onImported,
   onMutationStateChange,
 }: CsvImportPanelProps) {
-  const { formatDate, formatMoney, ledgerCurrency, localizeEntityName, t } = useI18n()
+  const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const [fileName, setFileName] = useState('')
   const [fileText, setFileText] = useState('')
   const [bankDocument, setBankDocument] = useState<BankCsvDocument | null>(null)
@@ -113,7 +113,6 @@ export function CsvImportPanel({
       const parsed = await parseHushLedgerCsv(text, {
         accounts,
         categories,
-        currency: ledgerCurrency,
       })
       if (sequence !== requestSequence.current) return
       if (parsed.issues.length === 1 && parsed.issues[0].code === 'invalid_header') {

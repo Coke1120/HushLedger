@@ -36,7 +36,7 @@ if (!childRun) {
     })
   })
 } else {
-  const { listTransactionPage } = await import('./money')
+  const { listTransactionPage, summarizeTransactions } = await import('./money')
 
   class TestStatement {
     constructor(
@@ -127,7 +127,7 @@ if (!childRun) {
   function insertTransaction(
     database: TestDatabase,
     index: number,
-    overrides: Partial<Pick<Transaction, 'amountMinor' | 'occurredOn' | 'payee' | 'createdAt'>> = {},
+    overrides: Partial<Pick<Transaction, 'amountMinor' | 'currency' | 'occurredOn' | 'payee' | 'createdAt' | 'type'>> = {},
   ) {
     const occurredOn = overrides.occurredOn ?? `2026-07-${String((index % 28) + 1).padStart(2, '0')}`
     const createdAt = overrides.createdAt
@@ -136,10 +136,12 @@ if (!childRun) {
       INSERT INTO transactions(
         id, type, amount_minor, currency, account_id, category_id, occurred_on,
         cleared, payee, note, created_at, updated_at
-      ) VALUES (?, 'expense', ?, 'HKD', 1, 1, ?, 0, ?, '', ?, ?)
+      ) VALUES (?, ?, ?, ?, 1, 1, ?, 0, ?, '', ?, ?)
     `).run(
       transactionId(index),
+      overrides.type ?? 'expense',
       overrides.amountMinor ?? ((index * 37) % 997) + 1,
+      overrides.currency ?? 'HKD',
       occurredOn,
       overrides.payee ?? (index % 11 === 0 ? '' : ['Alpha', 'beta', 'Gamma'][index % 3]!),
       createdAt,
@@ -212,6 +214,37 @@ if (!childRun) {
   }
 
   describe('transaction keyset pagination', () => {
+    it('withholds monetary totals instead of mixing native currencies', async () => {
+      const database = new TestDatabase()
+      try {
+        insertTransaction(database, 1, { amountMinor: 10_000, currency: 'HKD', payee: 'Mixed' })
+        insertTransaction(database, 2, {
+          amountMinor: 20_000,
+          currency: 'USD',
+          type: 'income',
+          payee: 'Mixed',
+        })
+        const query = { month: '2026-07', scope: 'month' as const, sort: 'date_desc' as const }
+        const expected = {
+          transactionCount: 2,
+          currency: null,
+          income: null,
+          expense: null,
+          net: null,
+        }
+        assert.deepEqual(
+          await summarizeTransactions(database as unknown as D1Database, query),
+          expected,
+        )
+        assert.deepEqual(
+          await summarizeTransactions(database as unknown as D1Database, { ...query, payee: 'Mixed' }),
+          expected,
+        )
+      } finally {
+        database.close()
+      }
+    })
+
     for (const sort of sorts) {
       it(`returns every row exactly once for ${sort}`, async () => {
         const database = new TestDatabase()

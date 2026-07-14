@@ -42,7 +42,7 @@ export function BankCsvMappingForm({
   onDelimiterChange,
   onMapped,
 }: BankCsvMappingFormProps) {
-  const { ledgerCurrency, localizeEntityName, privacyMode, t } = useI18n()
+  const { localizeEntityName, privacyMode, t } = useI18n()
   const suggestion = useMemo(() => suggestBankCsvMapping(document), [document])
   const [savedLayout] = useState(() => {
     if (typeof window === 'undefined') return null
@@ -56,9 +56,7 @@ export function BankCsvMappingForm({
     }
   })
   const initialMapping = savedLayout ?? suggestion
-  const activeAccounts = accounts.filter(
-    (account) => account.isActive && account.currency === ledgerCurrency,
-  )
+  const activeAccounts = accounts.filter((account) => account.isActive)
   const expenseCategories = categories.filter((category) => category.isActive && category.type === 'expense')
   const incomeCategories = categories.filter((category) => category.isActive && category.type === 'income')
   const [dateColumn, setDateColumn] = useState(initialMapping.dateColumn ?? -1)
@@ -115,7 +113,6 @@ export function BankCsvMappingForm({
     const result = await mapBankCsvDocument(document, mapping, {
       accounts,
       categories,
-      currency: ledgerCurrency,
       payeeSuggestions,
     })
     try {

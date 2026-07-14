@@ -84,6 +84,7 @@ describe('demo snapshot currency', () => {
     assert.deepEqual(filtered.transactions.map(({ amountMinor }) => amountMinor), [38_640])
     assert.deepEqual(filtered.transactionFilterSummary, {
       transactionCount: 1,
+      currency: 'HKD',
       income: 0,
       expense: 38_640,
       net: -38_640,
@@ -95,6 +96,7 @@ describe('demo snapshot currency', () => {
     assert.deepEqual(snapshot(undefined, false, null, 'unreviewed').transactions, [])
     assert.deepEqual(snapshot(undefined, false, null, 'reviewed').transactionFilterSummary, {
       transactionCount: 0,
+      currency: null,
       income: 0,
       expense: 0,
       net: 0,

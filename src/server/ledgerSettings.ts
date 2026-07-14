@@ -57,7 +57,21 @@ export async function updateLedgerCurrency(
   expectedUpdatedAt: string,
 ): Promise<LedgerCurrencyUpdateResult> {
   try {
-    const updated = await database.prepare(`
+    const relabelAccounts = database.prepare(`
+      UPDATE accounts
+      SET
+        currency = ?,
+        updated_at = ${nextUpdatedAt}
+      WHERE EXISTS (
+        SELECT 1
+        FROM ledger_settings
+        WHERE id = 1
+          AND updated_at = ?
+          AND currency <> ?
+          AND ${currencyCanChange}
+      )
+    `).bind(currency, expectedUpdatedAt, currency)
+    const updateSettings = database.prepare(`
       UPDATE ledger_settings
       SET
         currency = ?,
@@ -67,10 +81,12 @@ export async function updateLedgerCurrency(
         AND currency <> ?
         AND ${currencyCanChange}
       RETURNING currency, updated_at AS updatedAt
-    `).bind(currency, expectedUpdatedAt, currency).first<{
+    `).bind(currency, expectedUpdatedAt, currency)
+    const [, settingsResult] = await database.batch([relabelAccounts, updateSettings])
+    const updated = settingsResult.results[0] as {
       currency: string
       updatedAt: string
-    }>()
+    } | undefined
 
     if (updated) {
       return {

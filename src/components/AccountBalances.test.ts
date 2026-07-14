@@ -20,6 +20,7 @@ function balance(
     accountName,
     accountLocalizationKey: null,
     accountType: 'bank',
+    currency: 'HKD',
     isActive: true,
     openingBalanceMinor: null,
     openingBalanceOn: null,

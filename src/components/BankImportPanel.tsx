@@ -50,11 +50,10 @@ export function BankImportPanel({
   onImported,
   onMutationStateChange,
 }: BankImportPanelProps) {
-  const { ledgerCurrency, locale, localizeEntityName, privacyMode, t } = useI18n()
-  const activeAccounts = accounts.filter(
-    (account) => account.isActive && account.currency === ledgerCurrency,
-  )
+  const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const activeAccounts = accounts.filter((account) => account.isActive)
   const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
+  const selectedAccount = activeAccounts.find((account) => account.id === accountId)
   const [dateOrder, setDateOrder] = useState<AiDateOrder>('DMY')
   const [statementText, setStatementText] = useState('')
   const [drafts, setDrafts] = useState<EditableBankImportDraft[]>([])
@@ -140,7 +139,7 @@ export function BankImportPanel({
       setError(t('aiOffline'))
       return
     }
-    if (!activeAccounts.some((account) => account.id === accountId)) {
+    if (!selectedAccount) {
       setError(t('errorAccountInvalid'))
       return
     }
@@ -162,7 +161,7 @@ export function BankImportPanel({
         body: JSON.stringify({
           provider: provider.data,
           accountId,
-          currency: ledgerCurrency,
+          currency: selectedAccount.currency,
           dateOrder,
           statementText,
         }),

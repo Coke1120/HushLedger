@@ -940,16 +940,11 @@ describe('ledger backups', () => {
     }).success, false)
   })
 
-  it('rejects rows whose currency differs from the ledger currency', () => {
+  it('keeps native row currencies when the reporting currency differs', () => {
     const data = ledgerData()
     data.currency = 'USD'
 
-    const paths = validateLedgerDataRelations(data).map(({ path }) => path)
-    assert(paths.includes('data.accounts.0.currency'))
-    assert(paths.includes('data.recurringRules.0.currency'))
-    assert(paths.includes('data.recurringTransferRules.0.currency'))
-    assert(paths.includes('data.transactions.0.currency'))
-    assert(paths.includes('data.accountTransfers.0.currency'))
+    assert.deepEqual(validateLedgerDataRelations(data), [])
   })
 
   it('requires recurring transaction metadata to be complete and derived consistently', () => {

@@ -326,12 +326,15 @@ export const accountCreateSchema = z
   .object({
     name: referenceNameSchema,
     type: accountTypeSchema,
+    /** Older app shells omit this and use their expected ledger currency. */
+    currency: supportedCurrencySchema.optional(),
     expectedCurrency: expectedLedgerCurrencySchema,
     openingBalanceMinor: signedMinorSchema.default(null),
     openingBalanceOn: calendarDateSchema.nullable().default(null),
   })
   .strict()
   .superRefine(validateAccountOpeningBalance)
+  .transform((input) => ({ ...input, currency: input.currency ?? input.expectedCurrency }))
 export const accountUpdateSchema = z.object({
   name: referenceNameSchema,
   type: accountTypeSchema,
@@ -475,9 +478,11 @@ export type AccountTransfer = AccountTransferInput & {
 
 export type TransactionFilterSummary = {
   transactionCount: number
-  income: number
-  expense: number
-  net: number
+  /** Set only when all matched transactions share one native currency. */
+  currency: SupportedCurrency | null
+  income: number | null
+  expense: number | null
+  net: number | null
 }
 
 const recurringRuleFieldsSchema = z.object({
@@ -762,6 +767,7 @@ export type AccountBalance = {
   accountName: string
   accountLocalizationKey: AccountLocalizationKey | null
   accountType: AccountType
+  currency: SupportedCurrency
   isActive: boolean
   openingBalanceMinor: number | null
   openingBalanceOn: string | null

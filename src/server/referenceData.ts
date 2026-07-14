@@ -190,31 +190,33 @@ export async function createAccountReference(
     SELECT
       ?,
       ?,
-      settings.currency,
+      ?,
       1,
       COALESCE((SELECT MAX(sort_order) + 10 FROM accounts), 10),
       NULL,
       ?,
       ?
-    FROM ledger_settings AS settings
-    WHERE settings.id = 1
-      AND settings.currency = ?
-      AND NOT EXISTS (
+    WHERE NOT EXISTS (
       SELECT 1 FROM accounts WHERE name = ? COLLATE NOCASE
+    )
+    AND EXISTS (
+      SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
     )
   `).bind(
     input.name,
     input.type,
+    input.currency,
     input.openingBalanceMinor,
     input.openingBalanceOn,
-    input.expectedCurrency,
     input.name,
+    input.expectedCurrency,
   ).run()
 
   if (Number(inserted.meta.changes) === 0) {
-    return await ledgerCurrencyMatches(database, input.expectedCurrency)
-      ? { kind: 'name_conflict' }
-      : { kind: 'currency_conflict' }
+    if (!await ledgerCurrencyMatches(database, input.expectedCurrency)) {
+      return { kind: 'currency_conflict' }
+    }
+    return { kind: 'name_conflict' }
   }
   const item = await getAccountByName(database, input.name)
   if (!item) throw new Error('Account insert did not produce a row')
@@ -236,9 +238,6 @@ export async function updateAccountReference(
       localization_key = CASE WHEN name = ? THEN localization_key ELSE NULL END,
       updated_at = ${nextUpdatedAt}
     WHERE id = ? AND updated_at = ?
-      AND EXISTS (
-        SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
-      )
       AND NOT EXISTS (
         SELECT 1
         FROM accounts AS other
@@ -247,6 +246,9 @@ export async function updateAccountReference(
       AND (? <> 'credit_card' OR NOT EXISTS (
         SELECT 1 FROM emergency_fund_goals WHERE account_id = ?
       ))
+      AND EXISTS (
+        SELECT 1 FROM ledger_settings WHERE id = 1 AND currency = ?
+      )
   `).bind(
     input.name,
     input.type,
@@ -255,11 +257,11 @@ export async function updateAccountReference(
     input.name,
     id,
     input.updatedAt,
-    input.expectedCurrency,
     input.name,
     id,
     input.type,
     id,
+    input.expectedCurrency,
   ).run()
 
   if (Number(updated.meta.changes) === 0) {

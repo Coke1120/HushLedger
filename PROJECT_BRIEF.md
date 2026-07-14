@@ -121,9 +121,10 @@ not operate an independent database server or a multi-user identity system.
   then restore the user's prior in-memory choice.
 - Switch the interface language in Settings; keep the preference in the current
   browser only.
-- Choose one ledger-wide currency in Settings before monetary history exists.
-  Keep it in private D1 data and full-ledger backups; do not fetch exchange rates,
-  convert amounts, or imply multi-currency accounting.
+- Choose the ledger's default/reporting currency in Settings before monetary history
+  exists, and choose an immutable native currency for each account. Keep both in
+  private D1 data and full-ledger backups; do not fetch exchange rates or convert
+  amounts yet.
 
 ### Record money
 
@@ -196,17 +197,21 @@ not operate an independent database server or a multi-user identity system.
 
 ### Ledger currency
 
-Migration `0014_ledger_currency.sql` adds one D1-backed currency for the complete
-ledger. Fresh and upgraded ledgers start as HKD. Settings can change a pristine
-ledger to AED, AUD, CAD, CHF, CNY, CZK, DKK, EUR, GBP, HKD, ILS, INR, MOP, MXN,
-MYR, NOK, NZD, PHP, PLN, QAR, SAR, SEK, SGD, THB, TRY, TWD, USD, or ZAR. Every
+Migration `0014_ledger_currency.sql` adds the D1-backed default/reporting currency
+for the ledger, and `0019_multi_currency_accounts.sql` makes each account's native
+currency explicit. Fresh and upgraded ledgers start with HKD accounts. Settings can
+change a pristine default/reporting currency to AED, AUD, CAD, CHF, CNY, CZK, DKK,
+EUR, GBP, HKD, ILS, INR, MOP, MXN, MYR, NOK, NZD, PHP, PLN, QAR, SAR, SEK, SGD,
+THB, TRY, TWD, USD, or ZAR; new accounts can select any supported currency. Every
 supported currency uses two decimal minor units in HushLedger.
 
-The database rejects a currency change after any transaction, transfer, recurring
-rule, import tombstone, account opening balance, category plan, or emergency-fund
-checkpoint exists. A permitted change cascades through the otherwise-pristine
-accounts. It relabels the ledger and never fetches an exchange rate or converts an
-amount.
+The database rejects a default/reporting-currency change after any transaction,
+transfer, recurring rule, import tombstone, account opening balance, category plan,
+or emergency-fund checkpoint exists. A permitted change cascades through the
+otherwise-pristine accounts. Account currencies are immutable once created;
+transactions, imports, recurring rules, and same-currency transfers follow their
+account's native currency. Dashboard totals and net-worth trends include the
+default/reporting currency only until an explicit conversion stage exists.
 
 ### Transactions
 
@@ -479,8 +484,9 @@ reminder does not prove that a backup file was retained off-platform.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
 - A Settings page with immediate language switching and local-only preference
   persistence.
-- One D1-backed ledger currency selected before monetary history exists, with no
-  exchange-rate lookup, conversion, or per-account currency mode.
+- One D1-backed default/reporting currency selected before monetary history exists,
+  plus immutable native account currencies. There is no exchange-rate lookup or
+  conversion yet, so dashboard totals cover the reporting currency only.
 - An optional emergency-fund checkpoint configured in Settings and reviewed on
   the monthly overview with explicit recorded-balance and non-reservation wording.
 - A persistent header indicator for temporary screen privacy, with no hover or

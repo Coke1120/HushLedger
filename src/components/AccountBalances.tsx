@@ -66,15 +66,15 @@ export function AccountBalances({
                     <dl className="account-balance-values">
                       <div>
                         <dt>{t('recordedBalance')}</dt>
-                        <dd>{formatMoney(account.recordedBalance ?? 0)}</dd>
+                        <dd>{formatMoney(account.recordedBalance ?? 0, account.currency)}</dd>
                       </div>
                       <div>
                         <dt>{t('clearedBalance')}</dt>
-                        <dd>{formatMoney(account.clearedBalance ?? 0)}</dd>
+                        <dd>{formatMoney(account.clearedBalance ?? 0, account.currency)}</dd>
                       </div>
                       <div>
                         <dt>{t('unclearedBalance')}</dt>
-                        <dd>{formatMoney(account.unclearedBalance ?? 0)}</dd>
+                        <dd>{formatMoney(account.unclearedBalance ?? 0, account.currency)}</dd>
                         {showUnclearedCount ? (
                           <>
                             <dt className="account-balance-uncleared-count-label">

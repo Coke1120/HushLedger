@@ -253,9 +253,10 @@ knowledge and explains every command and dashboard click.
 - Manual-by-default app updates with an opt-in automatic install-and-restart mode.
 - Clear loading, demo, offline, success, and error states.
 - A settings page for switching immediately among Traditional Chinese, English,
-  Japanese, and French, and for choosing one ledger-wide currency before monetary
-  history exists. Currency stays private in D1 and full-ledger backups; HushLedger
-  does not fetch exchange rates or convert amounts.
+  Japanese, and French, for choosing the default/reporting currency before monetary
+  history exists, and for assigning a native currency to each account. Currency
+  stays private in D1 and full-ledger backups; HushLedger does not fetch exchange
+  rates or convert amounts yet.
 
 HushLedger starts with cash, bank, credit-card, wallet, income, and expense
 defaults. Settings can add custom accounts and categories, rename them, change a
@@ -270,16 +271,18 @@ credit card, or a digital wallet. It is not an additional transaction type.
 
 ## Data invariants
 
-- A fresh ledger defaults to HKD and uses exactly one currency across accounts,
-  transactions, transfers, recurring rules, plans, opening balances, and the
-  emergency-fund checkpoint. Settings can choose AED, AUD, CAD, CHF, CNY, CZK,
-  DKK, EUR, GBP, HKD, ILS, INR, MOP, MXN, MYR, NOK, NZD, PHP, PLN, QAR, SAR,
-  SEK, SGD, THB, TRY, TWD, USD, or ZAR; every supported currency uses two decimal
-  minor units in HushLedger.
-- Currency can change only while the ledger has no transactions, transfers,
-  recurring transaction or transfer rules, import tombstones, opening balances, category plans, or
-  emergency-fund checkpoint. A change relabels that pristine ledger and never
-  converts amounts or applies an exchange rate.
+- A fresh ledger defaults to HKD. Each account has an immutable native currency;
+  transactions, imports, recurring rules, opening balances, and same-currency
+  transfers follow it. Settings can choose AED, AUD, CAD, CHF, CNY, CZK, DKK, EUR,
+  GBP, HKD, ILS, INR, MOP, MXN, MYR, NOK, NZD, PHP, PLN, QAR, SAR, SEK, SGD, THB,
+  TRY, TWD, USD, or ZAR; every supported currency uses two decimal minor units in
+  HushLedger.
+- The default/reporting currency can change only while the ledger has no
+  transactions, transfers, recurring transaction or transfer rules, import
+  tombstones, opening balances, category plans, or emergency-fund checkpoint. A
+  change relabels that pristine ledger and never converts amounts or applies an
+  exchange rate. Until conversion exists, dashboard totals and net worth include
+  only the reporting currency.
 - An amount of 123.45 is stored as `12345` in `amount_minor`.
 - Named transaction views live only in browser storage. They include the bounded
   transaction date scope and ordering choice. A custom range stores its exact
@@ -697,6 +700,7 @@ npm run types:worker
 | `0016_recurring_rule_end_dates.sql` | Adds optional inclusive end dates so recurring rules can complete automatically without deleting generated history. |
 | `0017_recurring_transfer_rules.sql` | Adds scheduled account-transfer rules plus immutable generated-transfer provenance while preserving manual transfers and report neutrality. |
 | `0018_import_review_status.sql` | Adds a nullable three-state local checklist for imported transactions, backfilling rows with surviving import keys as unreviewed while leaving manual rows unchanged. |
+| `0019_multi_currency_accounts.sql` | Preserves native currencies per account and dependent monetary rows, while keeping the ledger currency as a reporting currency until explicit conversion is added. |
 
 Apply migrations locally:
 

@@ -264,12 +264,14 @@ async function verifyUpgradeMigration() {
   const scheduleEndMigrationNames = allMigrationNames.filter((name) => /^0016_/.test(name))
   const recurringTransferMigrationNames = allMigrationNames.filter((name) => /^0017_/.test(name))
   const importReviewMigrationNames = allMigrationNames.filter((name) => /^0018_/.test(name))
+  const multiCurrencyMigrationNames = allMigrationNames.filter((name) => /^0019_/.test(name))
   assert.equal(initialMigrationNames.length, 4)
   assert.equal(preYearlyMigrationNames.length, 10)
   assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
   assert.deepEqual(scheduleEndMigrationNames, ['0016_recurring_rule_end_dates.sql'])
   assert.deepEqual(recurringTransferMigrationNames, ['0017_recurring_transfer_rules.sql'])
   assert.deepEqual(importReviewMigrationNames, ['0018_import_review_status.sql'])
+  assert.deepEqual(multiCurrencyMigrationNames, ['0019_multi_currency_accounts.sql'])
   await Promise.all(
     initialMigrationNames.map((name) => (
       copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
@@ -464,6 +466,37 @@ async function verifyUpgradeMigration() {
     upgradeConfig,
   ])
 
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    "INSERT INTO emergency_fund_goals(id,account_id,target_minor,created_at,updated_at) VALUES (1,1,500000,'2026-07-12T00:00:00.000Z','2026-07-12T00:00:00.000Z');",
+    '--yes',
+  ])
+
+  await Promise.all(
+    multiCurrencyMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
   const verification = await runWrangler([
     'd1',
     'execute',
@@ -556,7 +589,12 @@ async function verifyUpgradeMigration() {
        (SELECT COUNT(*) FROM recurring_transfer_rules WHERE currency <> ledger_settings.currency) AS recurringTransferRuleMismatches,
        (SELECT COUNT(*) FROM account_transfers WHERE currency <> ledger_settings.currency) AS transferMismatches
      FROM ledger_settings WHERE id = 1;
-     PRAGMA foreign_key_check;`,
+     PRAGMA foreign_key_check;
+     SELECT account_id AS accountId, target_minor AS targetMinor
+     FROM emergency_fund_goals WHERE id = 1;
+     SELECT COUNT(*) AS accountIndexes
+     FROM sqlite_master
+     WHERE type = 'index' AND name IN ('idx_accounts_active_sort', 'idx_accounts_localization_key');`,
     '--json',
   ])
   const statements = JSON.parse(verification.stdout)
@@ -610,7 +648,7 @@ async function verifyUpgradeMigration() {
     updatedAt: '2026-07-12T04:05:06.000Z',
   }])
   assert.equal(statements[6].results[0].importKeys, 1)
-  assert.equal(statements[7].results[0].revision, 6)
+  assert.equal(statements[7].results[0].revision, 7)
   assert.deepEqual(statements[8].results, [
     { name: 'account_transfers' },
     { name: 'emergency_fund_goals' },
@@ -632,6 +670,8 @@ async function verifyUpgradeMigration() {
     transferMismatches: 0,
   }])
   assert.deepEqual(statements[16].results, [])
+  assert.deepEqual(statements[17].results, [{ accountId: 1, targetMinor: 500000 }])
+  assert.equal(statements[18].results[0].accountIndexes, 2)
 
   await runWrangler([
     'd1',
@@ -1262,7 +1302,7 @@ async function verifyPristineCurrencyApi() {
     const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
-    assert.equal(usdBackup.schemaVersion, 18)
+    assert.equal(usdBackup.schemaVersion, 19)
     assert.equal(usdBackup.data.currency, 'USD')
     assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
     assert(usdBackup.data.accounts.every(({
@@ -3011,6 +3051,7 @@ async function verifyWorkerApi() {
     assert.equal(result.response.status, 200)
     assert.deepEqual(result.payload.data, {
       transactionCount: 0,
+      currency: null,
       income: 0,
       expense: 0,
       net: 0,
@@ -4311,6 +4352,7 @@ async function verifyWorkerApi() {
   assert.equal(completeFilterSummary.response.status, 200)
   assert.deepEqual(completeFilterSummary.payload.data, {
     transactionCount: 205,
+    currency: 'HKD',
     income: 0,
     expense: 41_615,
     net: -41_615,
@@ -4443,6 +4485,7 @@ async function verifyWorkerApi() {
   assert.equal(exactAmountPrivateQuery.payload.data.transactions[0].amountMinor, 225)
   assert.deepEqual(exactAmountPrivateQuery.payload.data.summary, {
     transactionCount: 1,
+    currency: 'HKD',
     income: 0,
     expense: 225,
     net: -225,
@@ -4593,6 +4636,7 @@ async function verifyWorkerApi() {
   assert.equal(emptyFilterSummary.response.status, 200)
   assert.deepEqual(emptyFilterSummary.payload.data, {
     transactionCount: 0,
+    currency: null,
     income: 0,
     expense: 0,
     net: 0,
@@ -4685,6 +4729,7 @@ async function verifyWorkerApi() {
   assert.equal(accentedPayeeSummary.response.status, 200)
   assert.deepEqual(accentedPayeeSummary.payload.data, {
     transactionCount: 2,
+    currency: 'HKD',
     income: 0,
     expense: 400,
     net: -400,
@@ -4742,6 +4787,7 @@ async function verifyWorkerApi() {
   assert.equal(allHistorySummary.response.status, 200)
   assert.deepEqual(allHistorySummary.payload.data, {
     transactionCount: 1,
+    currency: 'HKD',
     income: 0,
     expense: 12_345,
     net: -12_345,
@@ -5495,6 +5541,7 @@ async function verifyWorkerApi() {
   assert.equal(duplicateReviewSummary.response.status, 200)
   assert.deepEqual(duplicateReviewSummary.payload.data, {
     transactionCount: 2,
+    currency: 'HKD',
     income: 0,
     expense: transactionBody.amountMinor * 2,
     net: transactionBody.amountMinor * -2,
@@ -5525,6 +5572,7 @@ async function verifyWorkerApi() {
   assert.equal(reviewedDuplicateSummary.response.status, 200)
   assert.deepEqual(reviewedDuplicateSummary.payload.data, {
     transactionCount: 1,
+    currency: 'HKD',
     income: 0,
     expense: transactionBody.amountMinor,
     net: -transactionBody.amountMinor,
@@ -6395,7 +6443,7 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 18)
+  assert.equal(backup.schemaVersion, 19)
   assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
@@ -6664,7 +6712,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema17Restore.response.status, 200, JSON.stringify(schema17Restore.payload))
   const upgradedSchema17Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema17Backup.payload.schemaVersion, 18)
+  assert.equal(upgradedSchema17Backup.payload.schemaVersion, 19)
   assert.equal(
     upgradedSchema17Backup.payload.data.transactions.find(
       ({ id }) => id === reviewedBackupImportId,
@@ -6704,7 +6752,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema16Restore.response.status, 200, JSON.stringify(schema16Restore.payload))
   const upgradedSchema16Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema16Backup.payload.schemaVersion, 18)
+  assert.equal(upgradedSchema16Backup.payload.schemaVersion, 19)
   assert.deepEqual(upgradedSchema16Backup.payload.data.recurringTransferRules, [])
   assert(upgradedSchema16Backup.payload.data.accountTransfers.every(({
     recurringTransferRuleId,
@@ -6738,7 +6786,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema15Restore.response.status, 200, JSON.stringify(schema15Restore.payload))
   const upgradedSchema15Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 18)
+  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 19)
   assert(upgradedSchema15Backup.payload.data.recurringRules.every(
     ({ scheduleEndsOn }) => scheduleEndsOn === null,
   ))
@@ -6774,7 +6822,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
   const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 18)
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 19)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
   const schema12Backup = withoutYearlyRecurringData(backup)
@@ -7258,8 +7306,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0018',
-      upgradeMigration: '0004-to-0018-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-and-import-review',
+      freshMigrations: '0001-0019',
+      upgradeMigration: '0004-to-0019-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-import-review-and-emergency-fund-goals',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

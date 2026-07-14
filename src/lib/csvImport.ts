@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { restoreSpreadsheetText } from './csv'
-import type { SupportedCurrency } from './currency'
+import { supportedCurrencySchema, type SupportedCurrency } from './currency'
 import { isValidCalendarDate } from './date'
 import { parseAmount } from './money'
 import {
@@ -139,7 +139,8 @@ export type CsvImportParseResult = {
 type ReferenceData = {
   accounts: readonly Account[]
   categories: readonly Category[]
-  currency: SupportedCurrency
+  /** @deprecated Callers no longer supply one ledger-wide import currency. */
+  currency?: SupportedCurrency
 }
 
 export async function parseHushLedgerCsv(
@@ -212,22 +213,12 @@ export async function parseHushLedgerCsv(
       continue
     }
 
-    const currency = value('Currency').trim().toUpperCase()
-    if (currency !== references.currency) {
-      issues.push({ row: sourceRow, code: 'invalid_currency', value: currency })
+    const parsedCurrency = supportedCurrencySchema.safeParse(value('Currency').trim().toUpperCase())
+    if (!parsedCurrency.success) {
+      issues.push({ row: sourceRow, code: 'invalid_currency', value: value('Currency').trim() })
       continue
     }
-
-    const clearingStatus = value('Cleared').trim().toLowerCase()
-    const cleared = clearingStatus === '' || clearingStatus === 'cleared'
-      ? true
-      : clearingStatus === 'uncleared'
-        ? false
-        : null
-    if (cleared === null) {
-      issues.push({ row: sourceRow, code: 'invalid_clearing_status', value: value('Cleared').trim() })
-      continue
-    }
+    const currency = parsedCurrency.data
 
     const accountReference = spreadsheetReference(value('Account'))
     const accountName = accountReference.restored
@@ -240,6 +231,22 @@ export async function parseHushLedgerCsv(
     }
     if (matchingAccounts.length > 1) {
       issues.push({ row: sourceRow, code: 'account_ambiguous', value: accountName })
+      continue
+    }
+    const account = matchingAccounts[0]
+    if (account.currency !== currency) {
+      issues.push({ row: sourceRow, code: 'invalid_currency', value: currency })
+      continue
+    }
+
+    const clearingStatus = value('Cleared').trim().toLowerCase()
+    const cleared = clearingStatus === '' || clearingStatus === 'cleared'
+      ? true
+      : clearingStatus === 'uncleared'
+        ? false
+        : null
+    if (cleared === null) {
+      issues.push({ row: sourceRow, code: 'invalid_clearing_status', value: value('Cleared').trim() })
       continue
     }
 
@@ -279,8 +286,8 @@ export async function parseHushLedgerCsv(
       id: sourceId || crypto.randomUUID(),
       type,
       amountMinor,
-      currency: references.currency,
-      accountId: matchingAccounts[0].id,
+      currency,
+      accountId: account.id,
       categoryId: matchingCategories[0].id,
       occurredOn,
       cleared,

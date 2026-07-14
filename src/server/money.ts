@@ -93,7 +93,12 @@ type ExpenseCategoryQueryRow = ExpenseCategorySummary & {
   previousMonthAmountMinor: number
 }
 
-type TransactionFilterSummaryRow = Omit<TransactionFilterSummary, 'net'>
+type TransactionFilterSummaryRow = {
+  currency: SupportedCurrency
+  transactionCount: number
+  income: number
+  expense: number
+}
 
 export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRuleName'> & {
   recurringRuleId: string | null
@@ -286,6 +291,7 @@ async function listAccountBalancesByMonth(
       account.name AS accountName,
       account.localization_key AS accountLocalizationKey,
       account.type AS accountType,
+      account.currency,
       account.is_active AS isActive,
       account.opening_balance_minor AS openingBalanceMinor,
       account.opening_balance_on AS openingBalanceOn,
@@ -338,7 +344,14 @@ export async function listNetWorthTrend(
   month: string,
 ): Promise<NetWorthTrendPoint[]> {
   const months = netWorthTrendMonths(month)
-  return buildNetWorthTrend(month, await listAccountBalancesByMonth(database, months))
+  const settings = await database.prepare('SELECT currency FROM ledger_settings WHERE id = 1')
+    .first<{ currency: SupportedCurrency }>()
+  if (!settings) throw new Error('Ledger currency setting is missing')
+  return buildNetWorthTrend(
+    month,
+    await listAccountBalancesByMonth(database, months),
+    settings.currency,
+  )
 }
 
 export async function listCategories(database: D1Database): Promise<Category[]> {
@@ -623,12 +636,13 @@ export async function summarizeTransactions(
     // ponytail: D1 has no Unicode case folding; scan the already-filtered personal ledger.
     // Add an indexed normalized payee key if this becomes a measured bottleneck.
     const transactions = await selectTransactions(database, query, null)
-    return { transactionCount: transactions.length, ...exactTransactionTotals(transactions) }
+    return summarizeNativeTransactionTotals(transactions)
   }
 
   const { clause, values } = transactionQueryWhere(query)
-  const row = await database.prepare(`
+  const rows = (await database.prepare(`
     SELECT
+      t.currency AS currency,
       COUNT(*) AS transactionCount,
       TOTAL(CASE WHEN t.type = 'income' THEN t.amount_minor ELSE 0 END) AS income,
       TOTAL(CASE WHEN t.type = 'expense' THEN t.amount_minor ELSE 0 END) AS expense
@@ -636,19 +650,39 @@ export async function summarizeTransactions(
     INNER JOIN accounts a ON a.id = t.account_id
     INNER JOIN categories category ON category.id = t.category_id
     WHERE ${clause}
+    GROUP BY t.currency
   `)
     .bind(...values)
-    .first<TransactionFilterSummaryRow>()
+    .all<TransactionFilterSummaryRow>()).results
 
-  if (!row) throw new Error('Transaction summary aggregate is missing')
-  if (!Number.isSafeInteger(row.transactionCount) || row.transactionCount < 0) {
+  return summarizeNativeTransactionTotals(rows.flatMap((row) => [
+    { type: 'income' as const, amountMinor: row.income, currency: row.currency, count: row.transactionCount },
+    { type: 'expense' as const, amountMinor: row.expense, currency: row.currency, count: 0 },
+  ]))
+}
+
+function summarizeNativeTransactionTotals(
+  entries: readonly {
+    type: TransactionType
+    amountMinor: number
+    currency: SupportedCurrency
+    count?: number
+  }[],
+): TransactionFilterSummary {
+  const currencies = new Set(entries.map(({ currency }) => currency))
+  const transactionCount = entries.reduce((total, entry) => total + (entry.count ?? 1), 0)
+  if (!Number.isSafeInteger(transactionCount) || transactionCount < 0) {
     throw new Error('Transaction count exceeds the safe integer range')
   }
-  const totals = exactTransactionTotals([
-    { type: 'income', amountMinor: row.income },
-    { type: 'expense', amountMinor: row.expense },
-  ])
-  return { transactionCount: row.transactionCount, ...totals }
+  if (currencies.size > 1) {
+    return { transactionCount, currency: null, income: null, expense: null, net: null }
+  }
+  const totals = exactTransactionTotals(entries)
+  return {
+    transactionCount,
+    currency: entries[0]?.currency ?? null,
+    ...totals,
+  }
 }
 
 async function selectTransactions(
@@ -1095,6 +1129,7 @@ export async function getSummary(
         TOTAL(CASE WHEN type = 'expense' THEN amount_minor ELSE 0 END) AS expense
       FROM transactions
       WHERE occurred_on >= ? AND occurred_on < ?
+        AND currency = (SELECT currency FROM ledger_settings WHERE id = 1)
     `)
       .bind(start, end)
       .first<SummaryRow>(),
@@ -1107,6 +1142,7 @@ export async function getSummary(
         SUM(CASE WHEN type = 'expense' THEN 1 ELSE 0 END) AS expenseTransactionCount
       FROM transactions
       WHERE occurred_on >= ? AND occurred_on < ?
+        AND currency = (SELECT currency FROM ledger_settings WHERE id = 1)
       GROUP BY month
       ORDER BY month ASC
     `)
@@ -1124,6 +1160,7 @@ export async function getSummary(
       FROM transactions t
       INNER JOIN categories category ON category.id = t.category_id
       WHERE t.type = 'income' AND t.occurred_on >= ? AND t.occurred_on < ?
+        AND t.currency = (SELECT currency FROM ledger_settings WHERE id = 1)
       GROUP BY
         category.id,
         category.name,
@@ -1148,6 +1185,7 @@ export async function getSummary(
       FROM transactions t
       INNER JOIN categories category ON category.id = t.category_id
       WHERE t.type = 'expense' AND t.occurred_on >= ? AND t.occurred_on < ?
+        AND t.currency = (SELECT currency FROM ledger_settings WHERE id = 1)
       GROUP BY
         category.id,
         category.name,
@@ -1167,6 +1205,7 @@ export async function getSummary(
         COUNT(*) AS transactionCount
       FROM transactions
       WHERE type = 'expense'
+        AND currency = (SELECT currency FROM ledger_settings WHERE id = 1)
         AND occurred_on >= ?
         AND occurred_on < ?
         AND trim(payee) <> ''
@@ -1188,6 +1227,7 @@ export async function getSummary(
       LEFT JOIN transactions t
         ON t.category_id = category.id
         AND t.type = 'expense'
+        AND t.currency = (SELECT currency FROM ledger_settings WHERE id = 1)
         AND t.occurred_on >= ?
         AND t.occurred_on < ?
       WHERE category.type = 'expense'
@@ -1221,6 +1261,7 @@ export async function getSummary(
         schedule_ends_on AS scheduleEndsOn
       FROM recurring_rules
       WHERE is_active = 1
+        AND currency = (SELECT currency FROM ledger_settings WHERE id = 1)
         AND deleted_at IS NULL
         AND next_occurrence_on < ?
         AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
@@ -1247,6 +1288,7 @@ export async function getSummary(
       INNER JOIN accounts source ON source.id = r.from_account_id
       INNER JOIN accounts destination ON destination.id = r.to_account_id
       WHERE r.is_active = 1
+        AND r.currency = (SELECT currency FROM ledger_settings WHERE id = 1)
         AND r.deleted_at IS NULL
         AND r.next_occurrence_on < ?
         AND (r.schedule_ends_on IS NULL OR r.next_occurrence_on <= r.schedule_ends_on)

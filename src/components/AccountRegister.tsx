@@ -26,6 +26,7 @@ import { api } from '../lib/api'
 import { isValidCalendarDate } from '../lib/date'
 import { parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
+import type { SupportedCurrency } from '../lib/currency'
 import type {
   AccountRegister as AccountRegisterData,
   AccountRegisterClearingInput,
@@ -36,6 +37,7 @@ import type {
 
 type AccountRegisterProps = {
   accountId: number
+  currency: SupportedCurrency
   register: AccountRegisterData | null
   canExport: boolean
   snapshotVersion: number
@@ -60,6 +62,7 @@ type LoadedUnclearedReview = {
 
 export function AccountRegister({
   accountId,
+  currency,
   register,
   canExport,
   snapshotVersion,
@@ -453,7 +456,7 @@ export function AccountRegister({
             ? t('accountRegisterLoading')
             : rangeRegister.startingBalanceMinor === null
               ? t('accountRegisterUnavailable')
-              : formatMoney(rangeRegister.startingBalanceMinor)}
+              : formatMoney(rangeRegister.startingBalanceMinor, currency)}
           </dd>
         </div>
         <div>
@@ -462,7 +465,7 @@ export function AccountRegister({
             ? t('accountRegisterLoading')
             : rangeRegister.endingBalanceMinor === null
               ? t('accountRegisterUnavailable')
-              : formatMoney(rangeRegister.endingBalanceMinor)}
+              : formatMoney(rangeRegister.endingBalanceMinor, currency)}
           </dd>
         </div>
         <div>
@@ -532,15 +535,15 @@ export function AccountRegister({
               <dl className="account-reconciliation-balances">
                 <div>
                   <dt>{t('recordedBalance')}</dt>
-                  <dd>{formatMoney(cutoffBalances?.endingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.endingBalanceMinor ?? 0, currency)}</dd>
                 </div>
                 <div>
                   <dt>{t('clearedBalance')}</dt>
-                  <dd>{formatMoney(cutoffBalances?.clearedEndingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.clearedEndingBalanceMinor ?? 0, currency)}</dd>
                 </div>
                 <div>
                   <dt>{t('unclearedBalance')}</dt>
-                  <dd>{formatMoney(cutoffBalances?.unclearedEndingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.unclearedEndingBalanceMinor ?? 0, currency)}</dd>
                 </div>
               </dl>
               <div className="statement-comparison">
@@ -564,7 +567,7 @@ export function AccountRegister({
                   ) : statementResult === 0 ? (
                     <strong className="is-match">{t('statementBalancesMatch')}</strong>
                   ) : (
-                    <strong>{t('statementDifference', { amount: formatMoney(statementResult) })}</strong>
+                    <strong>{t('statementDifference', { amount: formatMoney(statementResult, currency) })}</strong>
                   )}
                 </div>
               </div>
@@ -717,10 +720,10 @@ export function AccountRegister({
                 <time dateTime={entry.occurredOn}>{formatDate(entry.occurredOn)}</time>
                 <span className="account-register-money">
                   <strong className={entry.amountMinor >= 0 ? 'income' : 'expense'}>
-                    {amountSign}{formatMoney(Math.abs(entry.amountMinor))}
+                    {amountSign}{formatMoney(Math.abs(entry.amountMinor), currency)}
                   </strong>
                   <small>{t('accountRegisterRunningBalance', {
-                    amount: formatMoney(entry.runningBalanceMinor),
+                    amount: formatMoney(entry.runningBalanceMinor, currency),
                   })}</small>
                 </span>
               </>

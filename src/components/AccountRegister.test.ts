@@ -58,6 +58,7 @@ function renderRegister(
     { value: context },
     createElement(AccountRegister, {
       accountId,
+      currency: 'HKD',
       register: registerData,
       canExport,
       snapshotVersion: 1,

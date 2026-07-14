@@ -73,7 +73,8 @@ export function RecurringRuleDialog({
   const [isActive, setIsActive] = useState(initialRule?.isActive ?? true)
   const [localError, setLocalError] = useState('')
   const [openingLedgerContext] = useState(ledgerContext)
-  const [draftCurrency] = useState(ledgerCurrency)
+  const selectedAccount = selectableAccounts.find((account) => account.id === accountId)
+  const draftCurrency = selectedAccount?.currency ?? ledgerCurrency
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)

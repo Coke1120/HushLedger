@@ -19,7 +19,8 @@ export const PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION = 14 as const
 export const PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION = 15 as const
 export const PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION = 16 as const
 export const PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION = 17 as const
-export const LEDGER_SCHEMA_VERSION = 18 as const
+export const PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION = 18 as const
+export const LEDGER_SCHEMA_VERSION = 19 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -448,6 +449,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preMultiCurrencyLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION),
+  data: ledgerBackupDataSchema,
+}).strict()
+
 const preImportReviewLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION),
   data: preImportReviewLedgerBackupDataSchema,
@@ -490,6 +496,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preMultiCurrencyLedgerBackupPayloadSchema,
   preImportReviewLedgerBackupPayloadSchema,
   preRecurringTransfersLedgerBackupPayloadSchema,
   preScheduleEndLedgerBackupPayloadSchema,
@@ -508,6 +515,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preMultiCurrencyLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION),
+  data: ledgerBackupDataSchema,
 }).strict()
 
 const preImportReviewLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -552,6 +564,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preMultiCurrencyLedgerBackupSchema,
   preImportReviewLedgerBackupSchema,
   preRecurringTransfersLedgerBackupSchema,
   preScheduleEndLedgerBackupSchema,
@@ -666,6 +679,9 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
+  if (backup.schemaVersion === PRE_MULTI_CURRENCY_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse(backup.data)
+  }
   const importedTransactionIds = new Set(
     backup.data.transactionImportKeys.map(({ transactionId }) => transactionId),
   )
@@ -770,9 +786,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
     issues,
   )
 
-  data.accounts.forEach((account, index) => {
-    validateLedgerCurrency(account.currency, data.currency, `data.accounts.${index}.currency`, issues)
-  })
   collectDuplicateIssues(data.categories, (row) => String(row.id), 'categories', 'id', issues)
   collectDuplicateIssues(
     data.categories,
@@ -833,12 +846,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   }
 
   data.recurringRules.forEach((rule, index) => {
-    validateLedgerCurrency(
-      rule.currency,
-      data.currency,
-      `data.recurringRules.${index}.currency`,
-      issues,
-    )
     validateReferencePair(rule, `data.recurringRules.${index}`, accounts, categories, issues)
     if (rule.nextOccurrenceOn < rule.scheduleStartsOn) {
       issues.push({
@@ -856,7 +863,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
 
   data.recurringTransferRules.forEach((rule, index) => {
     const path = `data.recurringTransferRules.${index}`
-    validateLedgerCurrency(rule.currency, data.currency, `${path}.currency`, issues)
     validateTransferAccountReferences(rule, path, accounts, issues)
     if (rule.nextOccurrenceOn < rule.scheduleStartsOn) {
       issues.push({
@@ -873,12 +879,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   data.transactions.forEach((transaction, index) => {
-    validateLedgerCurrency(
-      transaction.currency,
-      data.currency,
-      `data.transactions.${index}.currency`,
-      issues,
-    )
     validateReferencePair(transaction, `data.transactions.${index}`, accounts, categories, issues)
     if (transaction.recurringRuleId && !rules.has(transaction.recurringRuleId)) {
       issues.push({
@@ -899,12 +899,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
 
   data.accountTransfers.forEach((transfer, index) => {
     const path = `data.accountTransfers.${index}`
-    validateLedgerCurrency(
-      transfer.currency,
-      data.currency,
-      `${path}.currency`,
-      issues,
-    )
     validateTransferAccountReferences(transfer, path, accounts, issues)
     if (
       transfer.recurringTransferRuleId &&
@@ -933,17 +927,6 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   return issues
-}
-
-function validateLedgerCurrency(
-  currency: SupportedCurrency,
-  ledgerCurrency: SupportedCurrency,
-  path: string,
-  issues: LedgerValidationIssue[],
-) {
-  if (currency !== ledgerCurrency) {
-    issues.push({ path, message: 'Currency does not match the ledger currency' })
-  }
 }
 
 function collectDuplicateIssues<T>(

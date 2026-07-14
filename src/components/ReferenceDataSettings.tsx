@@ -26,7 +26,11 @@ import {
   parseAmount,
   parseSignedAmount,
 } from '../lib/money'
-import type { SupportedCurrency } from '../lib/currency'
+import {
+  currencyDisplayName,
+  SUPPORTED_CURRENCIES,
+  type SupportedCurrency,
+} from '../lib/currency'
 import {
   canMoveReference,
   orderedReferenceGroup,
@@ -80,6 +84,7 @@ export function ReferenceDataSettings({
   const { formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [accountName, setAccountName] = useState('')
   const [accountType, setAccountType] = useState<AccountType>('bank')
+  const [accountCurrency, setAccountCurrency] = useState<SupportedCurrency>(expectedCurrency)
   const [accountOpeningBalance, setAccountOpeningBalance] = useState('')
   const [accountOpeningBalanceOn, setAccountOpeningBalanceOn] = useState('')
   const [categoryName, setCategoryName] = useState('')
@@ -132,6 +137,7 @@ export function ReferenceDataSettings({
       () => actionData(createAccountAction({
         name: accountName,
         type: accountType,
+        currency: accountCurrency,
         expectedCurrency,
         ...opening,
       })),
@@ -325,6 +331,20 @@ export function ReferenceDataSettings({
               </select>
             </label>
             <label>
+              <span>{t('accountCurrency')}</span>
+              <select
+                value={accountCurrency}
+                onChange={(event) => setAccountCurrency(event.target.value as SupportedCurrency)}
+                disabled={!enabled || busy !== null}
+              >
+                {SUPPORTED_CURRENCIES.map((currency) => (
+                  <option value={currency} key={currency}>
+                    {currencyDisplayName(currency, locale)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
               <span>{t('openingBalanceOptional')}</span>
               <input
                 type={privacyMode ? 'password' : 'text'}
@@ -358,10 +378,10 @@ export function ReferenceDataSettings({
               <li key={account.id}>
                 <ReferenceRow
                   name={localizeEntityName(account.name, account.localizationKey)}
-                  detail={`${accountTypeLabel(t, account.type)} · ${account.openingBalanceMinor === null
+                  detail={`${accountTypeLabel(t, account.type)} · ${account.currency} · ${account.openingBalanceMinor === null
                     ? t('balanceFromRecordedHistory')
                     : t('openingBalanceValue', {
-                        amount: formatMoney(account.openingBalanceMinor),
+                        amount: formatMoney(account.openingBalanceMinor, account.currency),
                         date: account.openingBalanceOn ?? '',
                       })}`}
                   active={account.isActive}

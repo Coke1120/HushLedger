@@ -53,9 +53,18 @@ export function RecurringTransferRuleDialog({
     )),
     [accounts, rule],
   )
-  const initialFrom = rule?.fromAccountId ?? selectableAccounts[0]?.id ?? 0
+  const transferableAccounts = useMemo(
+    () => selectableAccounts.filter((source) => selectableAccounts.some(
+      (destination) => destination.id !== source.id && destination.currency === source.currency,
+    )),
+    [selectableAccounts],
+  )
+  const initialFrom = rule?.fromAccountId ?? transferableAccounts[0]?.id ?? 0
+  const initialFromCurrency = selectableAccounts.find((account) => account.id === initialFrom)?.currency
   const initialTo = rule?.toAccountId
-    ?? selectableAccounts.find(({ id }) => id !== initialFrom)?.id
+    ?? selectableAccounts.find((account) => (
+      account.id !== initialFrom && account.currency === initialFromCurrency
+    ))?.id
     ?? 0
   const [fromAccountId, setFromAccountId] = useState(initialFrom)
   const [toAccountId, setToAccountId] = useState(initialTo)
@@ -67,7 +76,11 @@ export function RecurringTransferRuleDialog({
   const [isActive, setIsActive] = useState(rule?.isActive ?? true)
   const [localError, setLocalError] = useState('')
   const [openingLedgerContext] = useState(ledgerContext)
-  const [draftCurrency] = useState(ledgerCurrency)
+  const sourceAccount = selectableAccounts.find((account) => account.id === fromAccountId)
+  const draftCurrency = sourceAccount?.currency ?? ledgerCurrency
+  const destinationAccounts = selectableAccounts.filter((account) => (
+    account.id !== fromAccountId && account.currency === draftCurrency
+  ))
   const dialogRef = useRef<HTMLDivElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
@@ -148,8 +161,14 @@ export function RecurringTransferRuleDialog({
 
   const changeSource = (nextId: number) => {
     setFromAccountId(nextId)
-    if (nextId === toAccountId) {
-      setToAccountId(selectableAccounts.find(({ id }) => id !== nextId)?.id ?? 0)
+    const nextCurrency = selectableAccounts.find((account) => account.id === nextId)?.currency
+    if (
+      nextId === toAccountId
+      || selectableAccounts.find((account) => account.id === toAccountId)?.currency !== nextCurrency
+    ) {
+      setToAccountId(selectableAccounts.find((account) => (
+        account.id !== nextId && account.currency === nextCurrency
+      ))?.id ?? 0)
     }
     setLocalError('')
   }
@@ -283,7 +302,7 @@ export function RecurringTransferRuleDialog({
               <label>
                 <span>{t('transferFrom')}</span>
                 <select value={fromAccountId} onChange={(event) => changeSource(Number(event.target.value))} required>
-                  {selectableAccounts.map((account) => (
+                  {transferableAccounts.map((account) => (
                     <option value={account.id} key={account.id}>
                       {accountLabel(account, localizeEntityName, t('inactive'))}
                     </option>
@@ -293,7 +312,7 @@ export function RecurringTransferRuleDialog({
               <label>
                 <span>{t('transferTo')}</span>
                 <select value={toAccountId} onChange={(event) => setToAccountId(Number(event.target.value))} required>
-                  {selectableAccounts.filter(({ id }) => id !== fromAccountId).map((account) => (
+                  {destinationAccounts.map((account) => (
                     <option value={account.id} key={account.id}>
                       {accountLabel(account, localizeEntityName, t('inactive'))}
                     </option>
@@ -362,7 +381,7 @@ export function RecurringTransferRuleDialog({
             {!mutable ? <p className="offline-form-note">{t('scheduledTransferOfflineForm')}</p> : null}
 
             <div className="dialog-actions">
-              <button className="button button-primary save-button" type="submit" disabled={saving || !draftMutable || selectableAccounts.length < 2}>
+              <button className="button button-primary save-button" type="submit" disabled={saving || !draftMutable || destinationAccounts.length === 0}>
                 {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {saving ? t('saving') : rule ? t('saveChanges') : t('createScheduledTransfer')}
               </button>

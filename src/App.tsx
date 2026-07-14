@@ -856,6 +856,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               <AccountRegister
                 key={`${registerAccountId}:${month}`}
                 accountId={registerAccountId}
+                currency={data.accounts.find((account) => account.id === registerAccountId)?.currency
+                  ?? data.ledgerSettings.currency}
                 register={data.accountRegister}
                 canExport={data.source === 'live' && data.online}
                 snapshotVersion={data.snapshotVersion}

@@ -48,6 +48,7 @@ function cursorFor(row: Transaction, revision = 9): TransactionPageCursor {
 
 const summary = {
   transactionCount: 205,
+  currency: 'HKD' as const,
   income: 0,
   expense: 21_115,
   net: -21_115,

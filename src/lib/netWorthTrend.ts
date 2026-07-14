@@ -1,4 +1,5 @@
 import { shiftMonth } from './date'
+import type { SupportedCurrency } from './currency'
 import type { AccountBalance, NetWorthTrendPoint } from './schema'
 
 export const netWorthTrendMonthCount = 6
@@ -12,9 +13,12 @@ export function netWorthTrendMonths(selectedMonth: string) {
 export function buildNetWorthTrend(
   selectedMonth: string,
   balancesByMonth: ReadonlyMap<string, AccountBalance[]>,
+  reportingCurrency: SupportedCurrency = 'HKD',
 ): NetWorthTrendPoint[] {
   return netWorthTrendMonths(selectedMonth).map((month) => {
-    const balances = balancesByMonth.get(month) ?? []
+    const balances = (balancesByMonth.get(month) ?? []).filter(
+      (account) => account.currency === reportingCurrency,
+    )
     const unavailableAccountCount = balances.filter(
       ({ recordedBalance }) => recordedBalance === null,
     ).length

@@ -79,7 +79,6 @@ export function TransactionDialog({
   const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
   const [openingLedgerContext] = useState(ledgerContext)
-  const [draftCurrency] = useState(ledgerCurrency)
   const [draftSource, setDraftSource] = useState<'live' | 'demo' | null>(() => (
     source === 'live' || source === 'demo' ? source : null
   ))
@@ -104,6 +103,8 @@ export function TransactionDialog({
     ),
     [categories, transaction?.categoryId, type],
   )
+  const selectedAccount = selectableAccounts.find((account) => account.id === accountId)
+  const draftCurrency = selectedAccount?.currency ?? ledgerCurrency
   const suggestedPayees = useMemo(() => payeeOptions(suggestions, type), [suggestions, type])
   const hasActiveReferences = Boolean(
     transaction

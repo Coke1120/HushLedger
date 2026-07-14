@@ -92,6 +92,7 @@ describe('localized demo data', () => {
         'month', null, null, null, null, amountMinor,
       ), {
         transactionCount: 2,
+        currency: 'HKD',
         income: amountMinor,
         expense: amountMinor,
         net: 0,
@@ -193,6 +194,7 @@ describe('localized demo data', () => {
         'range', '2026-06-30', '2026-06-30',
       ), {
         transactionCount: 1,
+        currency: 'HKD',
         income: 0,
         expense: prior.amountMinor,
         net: -prior.amountMinor,
@@ -329,6 +331,7 @@ describe('localized demo data', () => {
       ),
       {
         transactionCount: 1,
+        currency: 'HKD',
         income: 0,
         expense: 38_640,
         net: -38_640,
@@ -363,6 +366,7 @@ describe('localized demo data', () => {
         ),
         {
           transactionCount: 2,
+          currency: 'HKD',
           income: 0,
           expense: original.amountMinor * 2,
           net: original.amountMinor * -2,

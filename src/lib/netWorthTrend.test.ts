@@ -9,6 +9,7 @@ function balance(recordedBalance: number | null): AccountBalance {
     accountName: 'Bank',
     accountLocalizationKey: null,
     accountType: 'bank',
+    currency: 'HKD',
     isActive: true,
     openingBalanceMinor: null,
     openingBalanceOn: null,
