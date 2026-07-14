@@ -37,6 +37,7 @@ export type LedgerRestoredResult = {
 
 type LedgerBackupSettingsProps = {
   available: boolean
+  onBackupDueChange: (due: boolean | null) => void
   onRestored: () => Promise<LedgerRestoredResult>
   onRestoreStateChange: (restoring: boolean) => boolean
 }
@@ -56,6 +57,7 @@ const countRows: ReadonlyArray<{ key: keyof LedgerTableCounts; label: MessageKey
 
 export function LedgerBackupSettings({
   available,
+  onBackupDueChange,
   onRestored,
   onRestoreStateChange,
 }: LedgerBackupSettingsProps) {
@@ -73,25 +75,32 @@ export function LedgerBackupSettings({
     dateStyle: 'medium',
     timeStyle: 'short',
   })
-  const backupDue = backupHealth ? isLedgerBackupDue(backupHealth) : false
+  const backupDue = backupHealth === null ? null : isLedgerBackupDue(backupHealth)
   const restoreChangesCurrency = preview
     ? preview.currentCurrency !== preview.backupCurrency
     : false
 
   useEffect(() => {
-    const loadTimeout = window.setTimeout(() => {
+    onBackupDueChange(backupDue)
+  }, [backupDue, onBackupDueChange])
+
+  useEffect(() => {
+    const loadStoredHealth = (mergeEarlyChanges: boolean) => {
       try {
         const stored = parseLedgerBackupHealth(
           window.localStorage.getItem(LEDGER_BACKUP_PREPARED_STORAGE_KEY),
           window.localStorage.getItem(LEDGER_BACKUP_VERIFIED_STORAGE_KEY),
         )
-        setBackupHealth((current) => current
+        setBackupHealth((current) => mergeEarlyChanges && current
           ? mergeLedgerBackupHealth(current, stored)
           : stored)
       } catch {
-        setBackupHealth((current) => current ?? { ...emptyLedgerBackupHealth })
+        setBackupHealth((current) => current
+          ? { ...current }
+          : { ...emptyLedgerBackupHealth })
       }
-    }, 0)
+    }
+    const loadTimeout = window.setTimeout(() => loadStoredHealth(true), 0)
     const syncStoredHealth = (event: StorageEvent) => {
       if (event.storageArea !== window.localStorage) return
       const key = event.key
@@ -110,10 +119,15 @@ export function LedgerBackupSettings({
         ))
       }
     }
+    const refreshVisibleHealth = () => {
+      if (document.visibilityState === 'visible') loadStoredHealth(false)
+    }
     window.addEventListener('storage', syncStoredHealth)
+    document.addEventListener('visibilitychange', refreshVisibleHealth)
     return () => {
       window.clearTimeout(loadTimeout)
       window.removeEventListener('storage', syncStoredHealth)
+      document.removeEventListener('visibilitychange', refreshVisibleHealth)
     }
   }, [])
 

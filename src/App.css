@@ -442,6 +442,54 @@ textarea:focus-visible {
   color: var(--expense);
 }
 
+.ledger-backup-reminder {
+  display: grid;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.ledger-backup-reminder-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  color: var(--brand);
+  background: var(--income-soft);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.ledger-backup-reminder-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.ledger-backup-reminder-copy h2,
+.ledger-backup-reminder-copy p {
+  margin: 0;
+}
+
+.ledger-backup-reminder-copy h2 {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.ledger-backup-reminder-copy p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ledger-backup-reminder .button {
+  white-space: nowrap;
+}
+
 .category-spending-panel {
   padding: 24px 28px;
   margin-bottom: 24px;
@@ -6240,6 +6288,19 @@ button.account-register-row:focus-visible {
   .summary-balance strong {
     margin-top: 22px;
     font-size: clamp(29px, 10vw, 42px);
+  }
+
+  .ledger-backup-reminder {
+    padding: 16px;
+    margin-bottom: 18px;
+    border-radius: 14px;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .ledger-backup-reminder .button {
+    width: 100%;
+    grid-column: 1 / -1;
   }
 
   .category-spending-panel {

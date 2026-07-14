@@ -13,6 +13,7 @@ import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
 import { EmergencyFundProgress } from './components/EmergencyFundProgress'
 import { IncomeSources } from './components/IncomeSources'
+import { LedgerBackupReminder } from './components/LedgerBackupReminder'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
@@ -107,6 +108,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [importMutationInProgress, setImportMutationInProgress] = useState(false)
   const [recurringMutationInProgress, setRecurringMutationInProgress] = useState(false)
   const [settingsMutationInProgress, setSettingsMutationInProgress] = useState(false)
+  const [ledgerBackupDue, setLedgerBackupDue] = useState<boolean | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiImportButtonRef = useRef<HTMLButtonElement>(null)
@@ -627,6 +629,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             />
             {view === 'overview' ? (
               <>
+                <LedgerBackupReminder
+                  due={ledgerBackupDue}
+                  live={data.source === 'live'}
+                  disabled={ledgerInteractionLocked}
+                  onReview={() => changeView('settings')}
+                />
                 <AccountBalances
                   balances={data.accountBalances}
                   month={month}
@@ -942,6 +950,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             canManageReferences={data.source === 'live' && data.online}
             ledgerRestoreInProgress={ledgerRestoreInProgress}
             otherLedgerMutationInProgress={otherLedgerMutationInProgress}
+            onBackupDueChange={setLedgerBackupDue}
             onReferenceRefresh={() => data.refresh('error')}
             onLedgerRestored={handleLedgerRestored}
             onLedgerMutationStateChange={setSettingsMutationInProgress}

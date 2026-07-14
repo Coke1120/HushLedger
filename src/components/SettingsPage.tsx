@@ -37,6 +37,7 @@ type SettingsPageProps = {
   canManageReferences: boolean
   ledgerRestoreInProgress: boolean
   otherLedgerMutationInProgress: boolean
+  onBackupDueChange: (due: boolean | null) => void
   onReferenceRefresh: () => Promise<boolean>
   onLedgerRestored: () => Promise<LedgerRestoredResult>
   onLedgerMutationStateChange: (mutating: boolean) => void
@@ -53,6 +54,7 @@ export function SettingsPage({
   canManageReferences,
   ledgerRestoreInProgress,
   otherLedgerMutationInProgress,
+  onBackupDueChange,
   onReferenceRefresh,
   onLedgerRestored,
   onLedgerMutationStateChange,
@@ -128,6 +130,7 @@ export function SettingsPage({
 
       <LedgerBackupSettings
         available={restoreAvailable}
+        onBackupDueChange={onBackupDueChange}
         onRestored={onLedgerRestored}
         onRestoreStateChange={onLedgerRestoreStateChange}
       />

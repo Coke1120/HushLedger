@@ -103,7 +103,9 @@ not operate an independent database server or a multi-user identity system.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
   replacement. Keep the latest backup-preparation and integrity-check dates in
-  this browser only, with a reminder after 30 days without a download.
+  this browser only. When that browser has no preparation record from the last
+  30 days, show a live-ledger Overview reminder that links to backup settings
+  without claiming that another copy is missing or restorable.
 - Mask formatted amounts, category proportions, editable amount fields, pasted
   bank text, and raw mapped CSV samples with a current-tab screen privacy control
   before sharing the screen; force the mask while the app is hidden or unfocused,

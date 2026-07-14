@@ -87,4 +87,13 @@ describe('ledger backup health', () => {
     assert.equal(isLedgerBackupDue(health, new Date('2026-07-01T00:00:00.000Z')), true)
     assert.equal(isLedgerBackupDue(health, new Date('2026-05-31T23:59:59.999Z')), true)
   })
+
+  it('does not treat integrity verification as a prepared backup download', () => {
+    const verifiedOnly = recordLedgerBackupVerification(
+      emptyLedgerBackupHealth,
+      new Date('2026-07-01T00:00:00.000Z'),
+    )
+
+    assert.equal(isLedgerBackupDue(verifiedOnly, new Date('2026-07-01T00:00:01.000Z')), true)
+  })
 })

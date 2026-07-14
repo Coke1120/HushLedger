@@ -97,6 +97,21 @@ describe('message catalogs', () => {
     )
   })
 
+  it('limits backup health claims to browser-local preparation records', () => {
+    assert.equal(
+      translate('en', 'ledgerBackupHealthDue', { count: 30 }),
+      'Backup reminder: this browser has no record of preparing a ledger download in the last 30 days.',
+    )
+    assert.equal(
+      translate('en', 'overviewBackupReminderHelp', { count: 30 }),
+      'This browser has no record of HushLedger preparing a ledger download in the last 30 days. It cannot tell whether another copy exists or can be restored.',
+    )
+    assert.equal(
+      translate('en', 'ledgerBackupHealthLocalOnly'),
+      'These dates stay in this browser. They do not prove where a file is stored or that it can be restored.',
+    )
+  })
+
   it('preserves interpolation placeholders in every locale', () => {
     const placeholders = (value: string) =>
       [...value.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((match) => match[1]).sort()

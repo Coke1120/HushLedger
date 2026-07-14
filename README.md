@@ -182,7 +182,9 @@ knowledge and explains every command and dashboard click.
   restore waits for in-flight ledger changes, then temporarily locks ledger
   controls, navigation, restarts, and leave-without-warning paths through refresh.
   A browser-local health record shows the last prepared backup download and integrity
-  check, and warns after 30 days without a download.
+  check. When that browser has no preparation record from the last 30 days, Overview
+  links to the backup settings without claiming that an off-platform copy is missing
+  or restorable.
 - Edit or delete an existing transaction with conflict detection if another
   session changed it first.
 - Before a manual create or edit, warn when the local ledger already contains an
