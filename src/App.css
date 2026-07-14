@@ -2499,6 +2499,46 @@ textarea:focus-visible {
   border-top: 1px solid var(--line);
 }
 
+.account-reconciliation-review-copy {
+  display: grid;
+  flex: 1 1 340px;
+  gap: 10px;
+}
+
+.account-reconciliation-complete-review {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.account-reconciliation-complete-review p {
+  flex: 1 1 300px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.account-reconciliation-complete-review .button {
+  min-height: 44px;
+  white-space: normal;
+}
+
+.account-reconciliation-complete-review span {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-reconciliation-complete-review span:empty {
+  display: none;
+}
+
+.account-reconciliation-complete-review span.is-error {
+  color: var(--expense);
+}
+
 .account-reconciliation-filter {
   display: inline-flex;
   min-height: 44px;
@@ -2556,7 +2596,7 @@ textarea:focus-visible {
   border-top: 1px solid var(--line);
 }
 
-.account-register-list li > div.account-register-row {
+.account-register-list li > div.account-register-row:only-child {
   grid-column: 1 / -1;
 }
 
@@ -6301,6 +6341,10 @@ button.account-register-row:focus-visible {
   .account-reconciliation-balances {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
+  }
+
+  .account-reconciliation-complete-review .button {
+    width: 100%;
   }
 
   .account-register-row {

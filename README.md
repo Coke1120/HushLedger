@@ -73,12 +73,14 @@ knowledge and explains every command and dashboard click.
   offsetting movements cannot hide review work. An optional dated opening balance
   anchors incomplete history. The in-app month-end reconciliation workspace
   compares the statement with the exact cleared balance. It keeps the statement
-  value only on screen, highlights
-  uncleared entries with direct posting-status controls, and never claims to lock
-  the ledger. The same monthly account register merges ordinary transactions with
-  both transfer legs and shows the exact recorded balance after every entry. Its
-  separate CSV export downloads the complete selected account and range, including
-  clearing state and running balances, without the 200-row screen limit.
+  value only on screen and never claims to lock the ledger. Its normal register
+  remains range-bound and capped for responsive browsing; when that view cannot
+  prove completeness, an explicit private action can load every uncleared entry
+  through the statement close, including older out-of-period rows, with direct
+  posting-status controls and exact full-history running balances. The same account
+  register merges ordinary transactions with both transfer legs. Its separate CSV
+  export downloads the complete selected account and range, including clearing
+  state and running balances, without the 200-row screen limit.
 - One optional emergency-fund checkpoint compares a user-chosen positive target
   with the recorded month-end balance of one active cash, bank, or wallet
   account. It does not create a separate balance, reserve or move money, recommend
@@ -138,7 +140,9 @@ knowledge and explains every command and dashboard click.
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
   account register can switch a transaction or the displayed side of a transfer
-  directly, while its row still opens the full editor.
+  directly, even when a complete uncleared review has loaded an older row whose
+  full editor record is outside the current screen data. Loaded editor rows still
+  open the full editor.
 - Explicitly select any of the 200 visible ledger rows to mark them cleared or
   uncleared together, or move a same-type selection to another active category.
   Each change is all-or-none: if any selected row has changed in another session,
@@ -295,8 +299,10 @@ credit card, or a digital wallet. It is not an additional transaction type.
   the selected month-end cutoff. Cleared balances include only posted movements,
   and the uncleared count treats each transfer side independently;
   the reconciliation workspace stores no statement value and does not claim an
-  irreversible reconciliation lock. Each inline posting-status change uses the
-  same concurrency-checked update as the transaction or transfer editor.
+  irreversible reconciliation lock. A complete uncleared review is loaded only
+  after an explicit same-origin request, verifies its exact row count, and remains
+  in current-screen memory. Each inline posting-status change is account-bound and
+  concurrency-checked; changing a transfer updates only the selected account's leg.
 - The ledger stores at most one emergency-fund checkpoint, backed by one active
   cash, bank, or wallet account in the ledger currency. Progress uses that
   account's recorded month-end balance only: negative balances contribute zero,
@@ -321,7 +327,8 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Bulk clearing accepts only explicit transaction IDs paired with their
   `updated_at` versions, is bounded to 200 rows, and runs as one guarded SQL
   statement. A missing or stale row makes the complete update fail without a
-  partial posting-status change.
+  partial posting-status change. Its route-specific 32 KiB body cap accommodates
+  all 200 canonical UUID/version pairs while remaining independently bounded.
 - Bulk recategorization uses the same explicit, bounded conflict tokens and a D1
   transactional batch. The target must be active and match every selected
   transaction type; `RETURNING` verifies the exact rows without counting the
@@ -338,9 +345,12 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - The account register orders dated opening balances, transactions, and incoming
   or outgoing transfer legs in one stable stream. When a month exceeds 200 rows,
   it returns the newest 200 but calculates every displayed running balance from
-  the complete month. Its explicit same-origin CSV action re-reads every matching
-  entry without that display cap and orders them oldest-first for review. Activity
-  before a dated opening balance is never presented as trustworthy history.
+  the complete month. Its explicit all-uncleared action calculates running balances
+  over all known activity through the cutoff before returning every uncleared row,
+  verifies the exact count, and has no 200-row cap. A separate same-origin CSV action
+  re-reads every matching range entry without that display cap and orders them
+  oldest-first for review. Activity before a dated opening balance is never
+  presented as trustworthy history.
 - Disabled accounts and categories are unavailable to new entries. An existing
   transaction may keep and edit against its archived references until the user
   explicitly reassigns them to active ones.
@@ -684,6 +694,8 @@ PUT    /api/ledger-settings  (conflict-safe pristine-ledger currency change; no 
 GET    /api/accounts
 GET    /api/accounts/balances?month=YYYY-MM  (month-end balances and exact uncleared-entry counts)
 GET    /api/accounts/register?month=YYYY-MM&accountId=ID  (merged monthly activity with exact running balances)
+POST   /api/accounts/register/uncleared  (explicit uncapped uncleared snapshot through a cutoff; JSON body)
+PATCH  /api/accounts/register/clearing  (account-bound optimistic status update for one transaction or transfer leg)
 GET    /api/reports/net-worth?month=YYYY-MM  (six complete-or-unavailable month-end net-worth points)
 GET    /api/emergency-fund-goal  (the optional account-backed checkpoint, or null)
 PUT    /api/emergency-fund-goal  (create or conflict-safe update)
@@ -779,12 +791,23 @@ them back into income, expense, category, plan, trend, or CSV totals. A statemen
 value entered in the UI stays in component memory only and is compared with the
 cleared balance; it is not sent to an API or written to D1.
 
-The account register is also read-only. Its starting balance uses the dated
-opening balance plus every earlier recorded movement inside that account's known
-history. A dated opening inside the selected month appears as the first trusted
-entry; months entirely before that date remain unavailable. The endpoint merges
-both sides of transfers without converting them into income or expense and uses
-stable date, creation-time, and ID ordering for same-day entries.
+The normal account-register query is read-only. Its starting balance uses the
+dated opening balance plus every earlier recorded movement inside that account's
+known history. A dated opening inside the selected range appears as the first
+trusted entry; ranges entirely before that date remain unavailable. The endpoint
+merges both sides of transfers without converting them into income or expense and
+uses stable date, creation-time, and ID ordering for same-day entries.
+
+The complete uncleared review is a separate explicit same-origin JSON `POST`, not
+an automatic widening of the normal range. One database statement calculates
+running balances over all known activity through the requested close date before
+filtering uncleared rows, returns an exact count with no interactive cap, and fails
+closed if the count or money invariants disagree. The response is private and
+`no-store`; the browser keeps it only in the open reconciliation screen and clears
+it when the account, dates, mode, or screen changes. Its narrow clearing mutation
+requires the account, source ID, kind, and optimistic `updatedAt` version. For a
+transfer it writes only the displayed account's clearing flag, never the opposite
+leg or unrelated editable fields.
 
 The account-register export uses the same calculation but removes only the
 interactive 200-entry cap. It adds an explicit `range_start` balance row when the

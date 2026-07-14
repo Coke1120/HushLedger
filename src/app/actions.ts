@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import {
   accountCreateSchema,
+  accountRegisterClearingSchema,
   accountTransferDeleteSchema,
   accountTransferInputSchema,
   accountTransferUpdateSchema,
@@ -43,6 +44,10 @@ import {
 import { isServerActionAllowed } from '../server/auth'
 import { getDatabase } from '../server/db'
 import { sanitizeValidationIssues } from '../server/http'
+import {
+  setAccountRegisterEntryClearing,
+  type SetAccountRegisterEntryClearingResult,
+} from '../server/accountRegister'
 import {
   createTransaction,
   deleteTransaction,
@@ -301,6 +306,24 @@ export async function setTransactionsClearingAction(
     }
     return revalidatedSuccess({ updated: result.count, cleared: parsed.data.cleared })
   })
+}
+
+export async function setAccountRegisterEntryClearingAction(
+  input: unknown,
+): Promise<ActionResult<{ id: string; updatedAt: string; cleared: boolean }>> {
+  const denied = await accessDenied<{ id: string; updatedAt: string; cleared: boolean }>()
+  if (denied) return denied
+
+  const parsed = accountRegisterClearingSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('流水帳清算狀態資料不正確', parsed.error.issues)
+  }
+
+  return runAction('set_account_register_entry_clearing', async () =>
+    accountRegisterClearingResult(
+      await setAccountRegisterEntryClearing(await getDatabase(), parsed.data),
+    ),
+  )
 }
 
 export async function setTransactionsCategoryAction(
@@ -812,6 +835,25 @@ function transactionMutationResult(result: UpdateTransactionResult): ActionResul
   }
   if (result.kind === 'reference_invalid') return referenceError(result.code)
   return revalidatedSuccess(result.transaction)
+}
+
+function accountRegisterClearingResult(
+  result: SetAccountRegisterEntryClearingResult,
+): ActionResult<{ id: string; updatedAt: string; cleared: boolean }> {
+  if (result.kind === 'not_found') {
+    return actionError('REGISTER_ENTRY_NOT_FOUND', '找不到指定的流水帳項目')
+  }
+  if (result.kind === 'version_conflict') {
+    return actionError('REGISTER_ENTRY_VERSION_CONFLICT', '流水帳項目已被修改，請重新載入後再試')
+  }
+  if (result.kind === 'account_mismatch') {
+    return actionError('REGISTER_ENTRY_ACCOUNT_MISMATCH', '流水帳項目不屬於指定帳戶')
+  }
+  return revalidatedSuccess({
+    id: result.id,
+    updatedAt: result.updatedAt,
+    cleared: result.cleared,
+  })
 }
 
 function transferMutationResult(result: UpdateAccountTransferResult): ActionResult<AccountTransfer> {

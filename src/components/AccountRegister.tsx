@@ -10,19 +10,27 @@ import {
   ReceiptText,
   Scale,
 } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { visibleAccountRegisterEntries } from '../lib/accountRegister'
 import {
   accountRegisterExportCanStart,
   accountRegisterExportIsCurrent,
 } from '../lib/accountRegisterExport'
+import {
+  accountUnclearedReviewContext,
+  accountUnclearedReviewIsCurrent,
+  parseAccountUnclearedReview,
+} from '../lib/accountRegisterReview'
+import { api } from '../lib/api'
 import { isValidCalendarDate } from '../lib/date'
 import { parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
 import type {
   AccountRegister as AccountRegisterData,
+  AccountRegisterClearingInput,
   AccountTransfer,
+  AccountUnclearedReview,
   Transaction,
 } from '../lib/schema'
 
@@ -30,6 +38,7 @@ type AccountRegisterProps = {
   accountId: number
   register: AccountRegisterData | null
   canExport: boolean
+  snapshotVersion: number
   dateFrom: string
   dateTo: string
   transactions: Transaction[]
@@ -41,18 +50,19 @@ type AccountRegisterProps = {
   onDateRangeChange: (dateFrom: string, dateTo: string) => void
   onEditTransaction: (transaction: Transaction) => void
   onEditTransfer: (transfer: AccountTransfer) => void
-  onSetTransactionCleared: (transaction: Transaction, cleared: boolean) => Promise<boolean>
-  onSetTransferCleared: (
-    transfer: AccountTransfer,
-    accountId: number,
-    cleared: boolean,
-  ) => Promise<boolean>
+  onSetEntryCleared: (input: AccountRegisterClearingInput) => Promise<boolean>
+}
+
+type LoadedUnclearedReview = {
+  context: string
+  data: AccountUnclearedReview
 }
 
 export function AccountRegister({
   accountId,
   register,
   canExport,
+  snapshotVersion,
   dateFrom,
   dateTo,
   transactions,
@@ -64,8 +74,7 @@ export function AccountRegister({
   onDateRangeChange,
   onEditTransaction,
   onEditTransfer,
-  onSetTransactionCleared,
-  onSetTransferCleared,
+  onSetEntryCleared,
 }: AccountRegisterProps) {
   const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [reconciling, setReconciling] = useState(reconcileInitially)
@@ -74,9 +83,15 @@ export function AccountRegister({
   const [rangeDraft, setRangeDraft] = useState({ dateFrom, dateTo })
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
   const [exportState, setExportState] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle')
+  const [reviewState, setReviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+  const [loadedReview, setLoadedReview] = useState<LoadedUnclearedReview | null>(null)
+  const [reviewReloadNonce, setReviewReloadNonce] = useState(0)
   const unclearedFilterRef = useRef<HTMLInputElement>(null)
   const exportRequestIdRef = useRef(0)
   const exportControllerRef = useRef<AbortController | null>(null)
+  const reviewRequestIdRef = useRef(0)
+  const reviewControllerRef = useRef<AbortController | null>(null)
+  const handledReviewReloadNonceRef = useRef(0)
   const transactionsById = useMemo(
     () => new Map(transactions.map((transaction) => [transaction.id, transaction])),
     [transactions],
@@ -89,11 +104,21 @@ export function AccountRegister({
     && register.dateFrom === dateFrom
     && register.dateTo === dateTo
   const rangeRegister = rangeReady ? register : null
-  const clearedBalance = rangeRegister?.clearedEndingBalanceMinor
   const validRange = isValidCalendarDate(rangeDraft.dateFrom)
     && isValidCalendarDate(rangeDraft.dateTo)
     && rangeDraft.dateFrom <= rangeDraft.dateTo
   const rangeChanged = rangeDraft.dateFrom !== dateFrom || rangeDraft.dateTo !== dateTo
+  const reviewContext = accountUnclearedReviewContext({
+    accountId,
+    dateFrom,
+    dateTo,
+    draftDateFrom: rangeDraft.dateFrom,
+    draftDateTo: rangeDraft.dateTo,
+    available: canExport,
+    snapshotVersion,
+  })
+  const reviewContextRef = useRef(reviewContext)
+  const completeReview = loadedReview?.context === reviewContext ? loadedReview.data : null
   const exporting = exportState === 'preparing'
   const exportAvailable = accountRegisterExportCanStart({
     canExport,
@@ -110,6 +135,8 @@ export function AccountRegister({
     canExport ? 'online' : 'unavailable',
   ].join(':')
   const exportContextRef = useRef(exportContext)
+  const cutoffBalances = completeReview ?? rangeRegister
+  const clearedBalance = cutoffBalances?.clearedEndingBalanceMinor
   const exportStatus = exportState === 'preparing'
     ? t('exportCsvPreparing')
     : exportState === 'ready'
@@ -139,23 +166,111 @@ export function AccountRegister({
       exportControllerRef.current = null
     }
   }, [exportContext])
+  useLayoutEffect(() => {
+    reviewContextRef.current = reviewContext
+    const resetReview = window.setTimeout(() => {
+      reviewRequestIdRef.current += 1
+      reviewControllerRef.current?.abort()
+      reviewControllerRef.current = null
+      setLoadedReview(null)
+      setReviewState('idle')
+    }, 0)
+    return () => {
+      window.clearTimeout(resetReview)
+      reviewRequestIdRef.current += 1
+      reviewControllerRef.current?.abort()
+      reviewControllerRef.current = null
+    }
+  }, [reviewContext])
   const cancelExport = () => {
     exportRequestIdRef.current += 1
     exportControllerRef.current?.abort()
     exportControllerRef.current = null
     setExportState('idle')
   }
+  const cancelCompleteReview = () => {
+    reviewRequestIdRef.current += 1
+    reviewControllerRef.current?.abort()
+    reviewControllerRef.current = null
+    setLoadedReview(null)
+    setReviewState('idle')
+  }
   const toggleReconciliation = () => {
     const next = !reconciling
+    if (!next) cancelCompleteReview()
     setReconciling(next)
     setShowUnclearedOnly(next)
+  }
+  const closeRegister = () => {
+    cancelCompleteReview()
+    onClose()
   }
   const applyDateRange = () => {
     if (!validRange || !rangeChanged || saving) return
     if (rangeDraft.dateTo !== dateTo) setStatementValue('')
     cancelExport()
+    cancelCompleteReview()
     onDateRangeChange(rangeDraft.dateFrom, rangeDraft.dateTo)
   }
+  const loadCompleteReview = useCallback(async () => {
+    if (!canExport || !rangeReady || rangeChanged || saving || reviewState === 'loading') return
+    const requestId = ++reviewRequestIdRef.current
+    reviewControllerRef.current?.abort()
+    const controller = new AbortController()
+    reviewControllerRef.current = controller
+    const requestContext = reviewContext
+    setLoadedReview(null)
+    setReviewState('loading')
+    try {
+      const payload = await api<unknown>('/api/accounts/register/uncleared', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, dateTo }),
+        signal: controller.signal,
+      })
+      if (!accountUnclearedReviewIsCurrent({
+        requestId,
+        activeRequestId: reviewRequestIdRef.current,
+        requestContext,
+        activeContext: reviewContextRef.current,
+        aborted: controller.signal.aborted,
+      })) return
+      const review = parseAccountUnclearedReview(payload, { accountId, dateTo })
+      if (!review) throw new Error('Incomplete uncleared account review')
+      setLoadedReview({ context: requestContext, data: review })
+      setReviewState('ready')
+    } catch {
+      if (!accountUnclearedReviewIsCurrent({
+        requestId,
+        activeRequestId: reviewRequestIdRef.current,
+        requestContext,
+        activeContext: reviewContextRef.current,
+        aborted: controller.signal.aborted,
+      })) return
+      setLoadedReview(null)
+      setReviewState('error')
+    } finally {
+      if (requestId === reviewRequestIdRef.current) reviewControllerRef.current = null
+    }
+  }, [accountId, canExport, dateTo, rangeChanged, rangeReady, reviewContext, reviewState, saving])
+  useEffect(() => {
+    if (reviewReloadNonce === handledReviewReloadNonceRef.current
+      || reviewState !== 'idle'
+      || !canExport
+      || !rangeReady
+      || rangeChanged
+      || saving) return
+    handledReviewReloadNonceRef.current = reviewReloadNonce
+    void loadCompleteReview()
+  }, [
+    canExport,
+    loadCompleteReview,
+    rangeChanged,
+    rangeReady,
+    reviewReloadNonce,
+    reviewState,
+    saving,
+  ])
   const exportRegister = async () => {
     if (!exportAvailable || exporting) return
     const requestId = ++exportRequestIdRef.current
@@ -216,7 +331,7 @@ export function AccountRegister({
   if (loading || !register || accountSnapshotLoading) {
     return (
       <section className="account-register" aria-busy="true">
-        <button className="button button-secondary account-register-back" type="button" onClick={onClose} disabled={saving}>
+        <button className="button button-secondary account-register-back" type="button" onClick={closeRegister} disabled={saving}>
           <ArrowLeft aria-hidden="true" />
           {t('backToTransactions')}
         </button>
@@ -231,24 +346,36 @@ export function AccountRegister({
   const reconciliationAvailable = clearedBalance !== null && clearedBalance !== undefined
   const reconciliationOpen = reconciling
   const filterUncleared = reconciliationOpen && showUnclearedOnly
-  const entries = rangeRegister?.entries ?? []
-  const unclearedEntries = visibleAccountRegisterEntries(entries, true)
-  const visibleEntries = visibleAccountRegisterEntries(entries, filterUncleared)
-  const filteredEmpty = filterUncleared && entries.length > 0 && visibleEntries.length === 0
+  const rangeEntries = rangeRegister?.entries ?? []
+  const unclearedEntries = visibleAccountRegisterEntries(rangeEntries, true)
+  const visibleEntries = filterUncleared && completeReview
+    ? completeReview.entries
+    : visibleAccountRegisterEntries(rangeEntries, filterUncleared)
+  const filteredEmpty = filterUncleared && visibleEntries.length === 0
+  const unclearedCount = completeReview?.unclearedCount ?? rangeRegister?.unclearedCount ?? 0
   const setEntryCleared = async (
-    entryId: string,
+    entry: AccountRegisterData['entries'][number],
     cleared: boolean,
-    transaction?: Transaction,
-    transfer?: AccountTransfer,
   ) => {
-    if (saving || updatingEntryId !== null) return
-    setUpdatingEntryId(entryId)
+    if (saving
+      || updatingEntryId !== null
+      || entry.kind === 'opening'
+      || !entry.sourceId
+      || !entry.updatedAt) return
+    const reloadCompleteReview = completeReview !== null
+    setUpdatingEntryId(entry.entryId)
     try {
-      const updated = transaction
-        ? await onSetTransactionCleared(transaction, cleared)
-        : transfer
-          ? await onSetTransferCleared(transfer, register.accountId, cleared)
-          : false
+      const updated = await onSetEntryCleared({
+        accountId: register.accountId,
+        kind: entry.kind,
+        sourceId: entry.sourceId,
+        updatedAt: entry.updatedAt,
+        cleared,
+      })
+      if (reloadCompleteReview) {
+        cancelCompleteReview()
+        if (updated) setReviewReloadNonce((current) => current + 1)
+      }
       if (updated && cleared) {
         requestAnimationFrame(() => {
           const filter = unclearedFilterRef.current
@@ -262,7 +389,7 @@ export function AccountRegister({
 
   return (
     <section className="account-register" aria-labelledby="account-register-title">
-      <button className="button button-secondary account-register-back" type="button" onClick={onClose} disabled={saving}>
+      <button className="button button-secondary account-register-back" type="button" onClick={closeRegister} disabled={saving}>
         <ArrowLeft aria-hidden="true" />
         {t('backToTransactions')}
       </button>
@@ -367,6 +494,7 @@ export function AccountRegister({
                 value={rangeDraft.dateFrom}
                 onChange={(event) => {
                   cancelExport()
+                  cancelCompleteReview()
                   setRangeDraft((current) => ({
                     ...current,
                     dateFrom: event.target.value,
@@ -382,6 +510,7 @@ export function AccountRegister({
                 onChange={(event) => {
                   const nextDateTo = event.target.value
                   cancelExport()
+                  cancelCompleteReview()
                   setRangeDraft((current) => ({ ...current, dateTo: nextDateTo }))
                   if (nextDateTo !== dateTo) setStatementValue('')
                 }}
@@ -403,15 +532,15 @@ export function AccountRegister({
               <dl className="account-reconciliation-balances">
                 <div>
                   <dt>{t('recordedBalance')}</dt>
-                  <dd>{formatMoney(rangeRegister.endingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.endingBalanceMinor ?? 0)}</dd>
                 </div>
                 <div>
                   <dt>{t('clearedBalance')}</dt>
-                  <dd>{formatMoney(rangeRegister.clearedEndingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.clearedEndingBalanceMinor ?? 0)}</dd>
                 </div>
                 <div>
                   <dt>{t('unclearedBalance')}</dt>
-                  <dd>{formatMoney(rangeRegister.unclearedEndingBalanceMinor ?? 0)}</dd>
+                  <dd>{formatMoney(cutoffBalances?.unclearedEndingBalanceMinor ?? 0)}</dd>
                 </div>
               </dl>
               <div className="statement-comparison">
@@ -440,20 +569,63 @@ export function AccountRegister({
                 </div>
               </div>
               <div className="account-reconciliation-review">
-                <p id="account-reconciliation-review" aria-live="polite">
-                  {t(
-                    rangeRegister.entryCount > rangeRegister.entries.length
-                      || (rangeRegister.unclearedCount ?? 0) > unclearedEntries.length
-                      ? 'reconciliationReviewHelpLimited'
-                      : 'reconciliationReviewHelp',
-                    {
-                      count: rangeRegister.unclearedCount ?? 0,
-                      loaded: rangeRegister.entries.length,
-                      total: rangeRegister.entryCount,
-                      visible: visibleEntries.length,
-                    },
-                  )}
-                </p>
+                <div className="account-reconciliation-review-copy">
+                  <p id="account-reconciliation-review" aria-live="polite">
+                    {completeReview
+                      ? t('reconciliationReviewComplete', {
+                          count: unclearedCount,
+                          date: formatDate(completeReview.dateTo),
+                        })
+                      : t(
+                          rangeRegister.unclearedCount === null
+                            || rangeRegister.entryCount > rangeRegister.entries.length
+                            || (rangeRegister.unclearedCount ?? 0) > unclearedEntries.length
+                            ? 'reconciliationReviewHelpLimited'
+                            : 'reconciliationReviewHelp',
+                          {
+                            count: rangeRegister.unclearedCount ?? 0,
+                            loaded: rangeRegister.entries.length,
+                            total: rangeRegister.entryCount,
+                            visible: visibleEntries.length,
+                          },
+                        )}
+                  </p>
+                  {completeReview
+                    || reviewState === 'loading'
+                    || reviewState === 'error'
+                    || rangeRegister.unclearedCount === null
+                    || rangeRegister.entryCount > rangeRegister.entries.length
+                    || (rangeRegister.unclearedCount ?? 0) > unclearedEntries.length ? (
+                      <div className="account-reconciliation-complete-review">
+                        <p id="account-reconciliation-complete-review-privacy">
+                          {t('completeUnclearedReviewPrivacy')}
+                        </p>
+                        <button
+                          className="button button-secondary"
+                          type="button"
+                          disabled={!canExport || !rangeReady || rangeChanged || saving || reviewState === 'loading'}
+                          aria-busy={reviewState === 'loading'}
+                          aria-describedby="account-reconciliation-complete-review-privacy account-reconciliation-complete-review-status"
+                          onClick={() => void loadCompleteReview()}
+                        >
+                          {t(reviewState === 'loading'
+                            ? 'loadingCompleteUnclearedReview'
+                            : reviewState === 'error'
+                              ? 'retryCompleteUnclearedReview'
+                              : completeReview
+                                ? 'reloadCompleteUnclearedReview'
+                                : 'loadCompleteUnclearedReview')}
+                        </button>
+                        <span
+                          id="account-reconciliation-complete-review-status"
+                          className={reviewState === 'error' ? 'is-error' : ''}
+                          role="status"
+                        >
+                          {reviewState === 'error' ? t('completeUnclearedReviewFailed') : ''}
+                        </span>
+                      </div>
+                    ) : null}
+                </div>
                 <label className="account-reconciliation-filter">
                   <input
                     ref={unclearedFilterRef}
@@ -475,9 +647,9 @@ export function AccountRegister({
         </section>
       ) : null}
 
-      {rangeRegister?.availableFrom ? (
+      {cutoffBalances?.availableFrom ? (
         <p className="account-register-boundary">
-          {t('accountRegisterAvailableFrom', { date: formatDate(rangeRegister.availableFrom) })}
+          {t('accountRegisterAvailableFrom', { date: formatDate(cutoffBalances.availableFrom) })}
         </p>
       ) : null}
 
@@ -487,8 +659,14 @@ export function AccountRegister({
         </p>
       ) : visibleEntries.length === 0 ? (
         <div className="account-register-empty" id="account-register-results">
-          <strong>{t(filteredEmpty ? 'noUnclearedRegisterEntries' : 'accountRegisterEmpty')}</strong>
-          <span>{t(filteredEmpty ? 'noUnclearedRegisterEntriesHelp' : 'accountRegisterEmptyHelp')}</span>
+          <strong>{t(filteredEmpty
+            ? completeReview ? 'noUnclearedReviewEntries' : 'noUnclearedRegisterEntries'
+            : 'accountRegisterEmpty')}
+          </strong>
+          <span>{t(filteredEmpty
+            ? completeReview ? 'noUnclearedReviewEntriesHelp' : 'noUnclearedRegisterEntriesHelp'
+            : 'accountRegisterEmptyHelp')}
+          </span>
         </div>
       ) : (
         <ul className="account-register-list" id="account-register-results" aria-label={t('accountRegisterList')}>
@@ -516,6 +694,9 @@ export function AccountRegister({
                   })
                 : entry.payee || categoryName
             const editable = Boolean(transaction || transfer)
+            const canClear = entry.kind !== 'opening'
+              && entry.cleared !== null
+              && Boolean(entry.sourceId && entry.updatedAt)
             const amountSign = entry.amountMinor > 0 ? '+' : entry.amountMinor < 0 ? '−' : ''
             const Icon = entry.kind === 'opening'
               ? Landmark
@@ -548,56 +729,51 @@ export function AccountRegister({
             return (
               <li key={entry.entryId}>
                 {editable ? (
-                  <>
-                    <button
-                      className={`account-register-row${entry.cleared === false ? ' is-uncleared' : ''}`}
-                      type="button"
-                      disabled={saving}
-                      onClick={() => transaction
-                        ? onEditTransaction(transaction)
-                        : transfer && onEditTransfer(transfer)}
-                    >
-                      <span className="sr-only">{t('edit')}</span>
-                      {content}
-                    </button>
-                    {entry.cleared !== null ? (
-                      <button
-                        className={`account-register-clearing-toggle ${entry.cleared ? 'is-cleared' : 'is-uncleared'}`}
-                        type="button"
-                        disabled={saving}
-                        aria-busy={updatingEntryId === entry.entryId}
-                        aria-label={t(entry.cleared
-                          ? 'markRegisterEntryUncleared'
-                          : 'markRegisterEntryCleared')}
-                        title={t(entry.cleared
-                          ? 'markRegisterEntryUncleared'
-                          : 'markRegisterEntryCleared')}
-                        onClick={() => void setEntryCleared(
-                          entry.entryId,
-                          !entry.cleared,
-                          transaction,
-                          transfer,
-                        )}
-                      >
-                        {updatingEntryId === entry.entryId
-                          ? <LoaderCircle className="spin" aria-hidden="true" />
-                          : entry.cleared
-                            ? <CircleCheck aria-hidden="true" />
-                            : <Circle aria-hidden="true" />}
-                        <span>{t(entry.cleared ? 'cleared' : 'uncleared')}</span>
-                      </button>
-                    ) : null}
-                  </>
+                  <button
+                    className={`account-register-row${entry.cleared === false ? ' is-uncleared' : ''}`}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => transaction
+                      ? onEditTransaction(transaction)
+                      : transfer && onEditTransfer(transfer)}
+                  >
+                    <span className="sr-only">{t('edit')}</span>
+                    {content}
+                  </button>
                 ) : (
                   <div className="account-register-row">{content}</div>
                 )}
+                {canClear ? (
+                  <button
+                    className={`account-register-clearing-toggle ${entry.cleared ? 'is-cleared' : 'is-uncleared'}`}
+                    type="button"
+                    disabled={saving || updatingEntryId !== null || reviewState === 'loading'}
+                    aria-busy={updatingEntryId === entry.entryId}
+                    aria-label={t(entry.cleared
+                      ? 'markRegisterEntryUncleared'
+                      : 'markRegisterEntryCleared')}
+                    title={t(entry.cleared
+                      ? 'markRegisterEntryUncleared'
+                      : 'markRegisterEntryCleared')}
+                    onClick={() => void setEntryCleared(entry, !entry.cleared)}
+                  >
+                    {updatingEntryId === entry.entryId
+                      ? <LoaderCircle className="spin" aria-hidden="true" />
+                      : entry.cleared
+                        ? <CircleCheck aria-hidden="true" />
+                        : <Circle aria-hidden="true" />}
+                    <span>{t(entry.cleared ? 'cleared' : 'uncleared')}</span>
+                  </button>
+                ) : null}
               </li>
             )
           })}
         </ul>
       )}
 
-      {rangeRegister && rangeRegister.entryCount > rangeRegister.entries.length ? (
+      {rangeRegister
+        && !(filterUncleared && completeReview)
+        && rangeRegister.entryCount > rangeRegister.entries.length ? (
         <p className="account-register-limit">
           {t('accountRegisterLimit', {
             shown: rangeRegister.entries.length,

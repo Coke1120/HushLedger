@@ -4,6 +4,7 @@ import {
   createTransactionAction,
   deleteAccountTransferAction,
   deleteTransactionAction,
+  setAccountRegisterEntryClearingAction,
   setTransactionsCategoryAction,
   setTransactionsClearingAction,
   updateAccountTransferAction,
@@ -27,6 +28,7 @@ import type {
   Account,
   AccountBalance,
   AccountRegister,
+  AccountRegisterClearingInput,
   AccountTransfer,
   AccountTransferInput,
   Category,
@@ -84,6 +86,7 @@ export function useMoneyData(
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<LocalizedMessage | null>(null)
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
+  const [snapshotVersion, setSnapshotVersion] = useState(0)
   const requestSequence = useRef(0)
   const submitting = useRef(false)
 
@@ -183,6 +186,7 @@ export function useMoneyData(
         if (sequence !== requestSequence.current) return false
         setLedgerCurrency(next.ledgerSettings.currency)
         setSnapshot(next)
+        setSnapshotVersion((current) => current + 1)
         setSource('live')
         setOnline(true)
         return true
@@ -372,6 +376,40 @@ export function useMoneyData(
     [refresh, setDemoSnapshot, source],
   )
 
+  const setAccountRegisterEntryClearing = useCallback(
+    async (input: AccountRegisterClearingInput) => {
+      if (submitting.current) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      try {
+        if (!navigator.onLine || source !== 'live') {
+          setSaveError(message('accountRegisterEntryClearingFailed'))
+          return false
+        }
+
+        await actionData(setAccountRegisterEntryClearingAction(input))
+        const refreshed = await refresh('error')
+        setActionMessage(message(
+          refreshed
+            ? 'accountRegisterEntryClearingUpdated'
+            : 'transactionSavedRefreshFailed',
+          refreshed ? { status: message(input.cleared ? 'cleared' : 'uncleared') } : undefined,
+        ))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'accountRegisterEntryClearingFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [refresh, source],
+  )
+
   const setSelectedTransactionsCategory = useCallback(
     async (transactions: Transaction[], targetCategoryId: number) => {
       if (submitting.current || transactions.length === 0) return false
@@ -539,6 +577,7 @@ export function useMoneyData(
     source,
     online,
     saving,
+    snapshotVersion,
     saveError: renderMessage(t, saveError),
     actionMessage: renderMessage(t, actionMessage),
     refresh,
@@ -546,6 +585,7 @@ export function useMoneyData(
     removeTransaction,
     setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
+    setAccountRegisterEntryClearing,
     saveAccountTransfer,
     removeAccountTransfer,
     clearActionMessage,

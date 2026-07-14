@@ -303,9 +303,13 @@ older points unavailable when the complete history is not knowable. The Overview
 **Compare statement** action opens that account's monthly register. Enter the
 month-end statement balance to see the exact difference from the cleared ledger,
 then use the status button beside each highlighted entry to match the statement.
-For transfers, only the side belonging to the displayed account changes. The
-statement value stays only on that screen and is never written to D1; row clicks
-still open the full editor when another field needs correction.
+When the selected period cannot prove that every uncleared item is visible, press
+**Load every uncleared entry** to explicitly retrieve the complete private snapshot
+through the statement close, including older out-of-period rows. It stays only in
+that open screen and is cleared when its account, dates, or mode changes. For
+transfers, only the side belonging to the displayed account changes. The statement
+value stays only on that screen and is never written to D1; loaded row clicks still
+open the full editor when another field needs correction.
 
 For updates, backups, recovery tests, and more advanced security options, use the
 [advanced Cloudflare deployment guide](CLOUDFLARE_SETUP.md).

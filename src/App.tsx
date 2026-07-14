@@ -38,10 +38,6 @@ import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
 import {
-  transactionInputWithClearingStatus,
-  transferInputWithClearingStatus,
-} from './lib/reconciliation'
-import {
   addSavedTransactionView,
   applySavedTransactionViewsStorageChange,
   forgetSavedTransactionViews,
@@ -152,6 +148,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     refresh: refreshMoneyData,
     removeTransaction,
     removeAccountTransfer,
+    setAccountRegisterEntryClearing,
     setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
     saveAccountTransfer,
@@ -223,21 +220,6 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     async (input: AccountTransferInput) => saveAccountTransfer(input, editingTransfer ?? undefined),
     [editingTransfer, saveAccountTransfer],
   )
-  const setRegisterTransactionCleared = useCallback(
-    async (transaction: Transaction, cleared: boolean) => saveMoneyTransaction(
-      transactionInputWithClearingStatus(transaction, cleared),
-      transaction,
-    ),
-    [saveMoneyTransaction],
-  )
-  const setRegisterTransferCleared = useCallback(
-    async (transfer: AccountTransfer, accountId: number, cleared: boolean) => saveAccountTransfer(
-      transferInputWithClearingStatus(transfer, accountId, cleared),
-      transfer,
-    ),
-    [saveAccountTransfer],
-  )
-
   const changeView = useCallback((nextView: AppView) => {
     if (ledgerInteractionLocked) return
     if (nextView !== 'transactions') setRegisterAccountId(null)
@@ -811,6 +793,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 accountId={registerAccountId}
                 register={data.accountRegister}
                 canExport={data.source === 'live' && data.online}
+                snapshotVersion={data.snapshotVersion}
                 dateFrom={effectiveRegisterDateRange.from}
                 dateTo={effectiveRegisterDateRange.to}
                 transactions={data.transactions}
@@ -822,8 +805,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onDateRangeChange={changeRegisterDateRange}
                 onEditTransaction={openTransaction}
                 onEditTransfer={openTransferDialog}
-                onSetTransactionCleared={setRegisterTransactionCleared}
-                onSetTransferCleared={setRegisterTransferCleared}
+                onSetEntryCleared={setAccountRegisterEntryClearing}
               />
             ) : view === 'transactions' ? (
               <AccountTransferList

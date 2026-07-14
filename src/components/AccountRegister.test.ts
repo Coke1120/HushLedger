@@ -31,6 +31,7 @@ function renderRegister(
   canExport = true,
   dateFrom = register.dateFrom,
   dateTo = register.dateTo,
+  registerData = register,
 ) {
   const context: I18nContextValue = {
     locale: 'en',
@@ -57,8 +58,9 @@ function renderRegister(
     { value: context },
     createElement(AccountRegister, {
       accountId,
-      register,
+      register: registerData,
       canExport,
+      snapshotVersion: 1,
       dateFrom,
       dateTo,
       transactions: [],
@@ -70,8 +72,7 @@ function renderRegister(
       onDateRangeChange: () => undefined,
       onEditTransaction: () => undefined,
       onEditTransfer: () => undefined,
-      onSetTransactionCleared: async () => true,
-      onSetTransferCleared: async () => true,
+      onSetEntryCleared: async () => true,
     }),
   ))
 }
@@ -94,6 +95,10 @@ describe('statement-period reconciliation', () => {
 
     assert.match(markup, /Ledger queries send the selected account and period to the same-origin HushLedger API/)
     assert.match(markup, /plaintext and includes exact amounts even when screen privacy is on/)
+    assert.match(markup, /Only after you press the button, this browser sends the account ID and close date/)
+    assert.match(markup, /same-origin private HushLedger API/)
+    assert.match(markup, /returns exact out-of-period uncleared rows to this screen’s temporary memory/)
+    assert.match(markup, /not saved in browser storage or sent to a third party/)
     assert.match(markup, /type="password"/)
     assert.match(markup, /autoComplete="off"/)
     assert.doesNotMatch(markup, /HK\$980\.00|HK\$990\.00|-HK\$10\.00/)
@@ -123,6 +128,58 @@ describe('statement-period reconciliation', () => {
     assert.match(unavailableMarkup, /account-register-export"[^>]*disabled/)
     assert.match(staleRangeMarkup, /account-register-export"[^>]*disabled/)
     assert.match(unavailableMarkup, /Connect to the private ledger before exporting this register/)
+  })
+
+  it('requires an explicit request before offering the complete out-of-period review', () => {
+    const markup = renderRegister(false)
+
+    assert.match(markup, /older or out-of-period uncleared entr(?:y|ies) may not be loaded/i)
+    assert.match(markup, />Load every uncleared entry</)
+    assert.match(markup, /account-reconciliation-complete-review-privacy/)
+    assert.match(
+      translate('en', 'reconciliationReviewComplete', { count: 2, date: 'July 12' }),
+      /Complete snapshot through July 12: all 2 uncleared entries are loaded/,
+    )
+    assert.match(
+      translate('en', 'reconciliationReviewComplete', { count: 1, date: 'July 12' }),
+      /Complete snapshot through July 12: the one uncleared entry is loaded/,
+    )
+    assert.match(
+      translate('en', 'completeUnclearedReviewFailed'),
+      /limited loaded range remains in use; try again/,
+    )
+  })
+
+  it('keeps an uncapped review row clearable when its full editor record is not loaded', () => {
+    const entry = {
+      entryId: 'transaction:txn-old',
+      sourceId: 'txn-old',
+      kind: 'transaction' as const,
+      updatedAt: '2026-07-14T08:00:00.000Z',
+      occurredOn: '2026-06-20',
+      amountMinor: -1_000,
+      runningBalanceMinor: 99_000,
+      cleared: false,
+      payee: 'Old entry',
+      note: '',
+      categoryName: 'Food',
+      categoryLocalizationKey: null,
+      counterpartyAccountName: null,
+      counterpartyAccountLocalizationKey: null,
+      transferDirection: null,
+    }
+    const markup = renderRegister(
+      false,
+      register.accountId,
+      true,
+      register.dateFrom,
+      register.dateTo,
+      { ...register, entryCount: 1, entries: [entry] },
+    )
+
+    assert.match(markup, /Old entry/)
+    assert.match(markup, /aria-label="Mark this entry cleared"/)
+    assert.doesNotMatch(markup, /<span class="sr-only">Edit<\/span>/)
   })
 
 })

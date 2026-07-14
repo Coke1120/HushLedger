@@ -31,6 +31,7 @@ const calendarDateSchema = z
   .refine(isValidCalendarDate, '交易日期必須是有效的 YYYY-MM-DD 日期')
 
 export const transactionIdSchema = z.string().uuid('交易 ID 必須是 UUID')
+export const MAX_TRANSACTION_BATCH_REQUEST_BYTES = 32 * 1024
 
 const transactionFieldsSchema = z.object({
   type: transactionTypeSchema,
@@ -84,6 +85,16 @@ export const transactionClearingBatchSchema = z
   .object({
     cleared: z.boolean(),
     transactions: transactionVersionBatchSchema,
+  })
+  .strict()
+
+export const accountRegisterClearingSchema = z
+  .object({
+    accountId: z.number().int().positive(),
+    kind: z.enum(['transaction', 'transfer']),
+    sourceId: transactionIdSchema,
+    updatedAt: z.string().datetime({ offset: true }),
+    cleared: z.boolean(),
   })
   .strict()
 
@@ -221,6 +232,7 @@ export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 export type TransactionCategoryBatchInput = z.infer<typeof transactionCategoryBatchSchema>
 export type TransactionClearingBatchInput = z.infer<typeof transactionClearingBatchSchema>
+export type AccountRegisterClearingInput = z.infer<typeof accountRegisterClearingSchema>
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
 export type AccountTransferUpdateInput = z.infer<typeof accountTransferUpdateSchema>
@@ -703,6 +715,7 @@ export type AccountRegisterEntry = {
   entryId: string
   sourceId: string | null
   kind: 'opening' | 'transaction' | 'transfer'
+  updatedAt: string | null
   occurredOn: string
   amountMinor: number
   runningBalanceMinor: number
@@ -714,6 +727,27 @@ export type AccountRegisterEntry = {
   counterpartyAccountName: string | null
   counterpartyAccountLocalizationKey: AccountLocalizationKey | null
   transferDirection: 'in' | 'out' | null
+}
+
+export type AccountUnclearedReviewEntry = AccountRegisterEntry & {
+  sourceId: string
+  kind: 'transaction' | 'transfer'
+  updatedAt: string
+  cleared: false
+}
+
+export type AccountUnclearedReview = {
+  complete: true
+  accountId: number
+  accountName: string
+  accountLocalizationKey: AccountLocalizationKey | null
+  dateTo: string
+  availableFrom: string | null
+  endingBalanceMinor: number | null
+  clearedEndingBalanceMinor: number | null
+  unclearedEndingBalanceMinor: number | null
+  unclearedCount: number
+  entries: AccountUnclearedReviewEntry[]
 }
 
 export type AccountRegister = {

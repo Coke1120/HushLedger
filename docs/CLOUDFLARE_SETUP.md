@@ -217,8 +217,13 @@ Account opening balances and their dates are part of the account rows in this
 backup. After migration `0012`, verify one account-balance panel against a known
 statement in the test deployment. **Compare statement** opens the account's
 monthly register so uncleared entries can be reviewed beside the exact difference.
-The statement value itself is not stored; only an opening balance or posting-status
-change deliberately saved through its editor is persisted.
+If the selected period or 200-row screen cap cannot contain every uncleared item,
+use the explicit **Load every uncleared entry** action to retrieve a private,
+uncapped snapshot through the statement close. This can expose older out-of-period
+financial details in the current screen, but it is not stored in browser storage or
+sent to a third party. The statement value itself is not stored; only an opening
+balance or an account-bound posting-status change deliberately saved by the user is
+persisted.
 
 Create an encrypted, off-platform backup before migrations and on a regular
 schedule. This database-level SQL export remains the recovery path for backups

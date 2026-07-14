@@ -1,4 +1,7 @@
-import { transactionCategoryBatchSchema } from '../../../../lib/schema'
+import {
+  MAX_TRANSACTION_BATCH_REQUEST_BYTES,
+  transactionCategoryBatchSchema,
+} from '../../../../lib/schema'
 import { getDatabase } from '../../../../server/db'
 import {
   apiNotFound,
@@ -15,10 +18,10 @@ import { setTransactionsCategory } from '../../../../server/money'
 export const dynamic = 'force-dynamic'
 
 export const PATCH = apiRoute(async (request) => {
-  const guarded = guardMutationRequest(request)
+  const guarded = guardMutationRequest(request, MAX_TRANSACTION_BATCH_REQUEST_BYTES)
   if (guarded) return guarded
 
-  const body = await readApiJson(request)
+  const body = await readApiJson(request, MAX_TRANSACTION_BATCH_REQUEST_BYTES)
   if (!body.ok) return body.response
   const parsed = transactionCategoryBatchSchema.safeParse(body.data)
   if (!parsed.success) {

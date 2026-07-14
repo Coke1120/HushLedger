@@ -3005,6 +3005,100 @@ async function verifyWorkerApi() {
     cappedRegister.payload.data.entries[0].runningBalanceMinor,
     bulkAccountBalance.recordedBalance,
   )
+  const cappedRegisterTransactions = cappedRegister.payload.data.entries.map((entry) => ({
+    id: entry.sourceId,
+    updatedAt: entry.updatedAt,
+  }))
+  assert.equal(cappedRegisterTransactions.length, 200)
+  assert(cappedRegister.payload.data.entries.every((entry) => (
+    entry.kind === 'transaction'
+    && entry.cleared === true
+    && typeof entry.sourceId === 'string'
+    && typeof entry.updatedAt === 'string'
+  )))
+  const markedBulkUncleared = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: { cleared: false, transactions: cappedRegisterTransactions },
+  })
+  assert.equal(markedBulkUncleared.response.status, 200, JSON.stringify(markedBulkUncleared.payload))
+  assert.equal(markedBulkUncleared.payload.data.updated, 200)
+  const extraBulkUnclearedBody = {
+    id: '58000000-0000-4000-8000-000000000001',
+    type: 'income',
+    amountMinor: 777,
+    currency: account.currency,
+    accountId: 1,
+    categoryId: incomeCategory.id,
+    occurredOn: today,
+    cleared: false,
+    payee: 'Complete outstanding review probe',
+    note: '',
+  }
+  const extraBulkUncleared = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: extraBulkUnclearedBody,
+  })
+  assert.equal(extraBulkUncleared.response.status, 201, JSON.stringify(extraBulkUncleared.payload))
+  const completeBulkUnclearedReview = await api(
+    baseUrl,
+    '/api/accounts/register/uncleared',
+    {
+      method: 'POST',
+      body: { accountId: 1, dateTo: cappedRegister.payload.data.dateTo },
+    },
+  )
+  assert.equal(
+    completeBulkUnclearedReview.response.status,
+    200,
+    JSON.stringify(completeBulkUnclearedReview.payload),
+  )
+  assert.equal(completeBulkUnclearedReview.payload.data.complete, true)
+  assert.equal(
+    completeBulkUnclearedReview.payload.data.unclearedCount,
+    bulkAccountBalance.unclearedCount + 201,
+  )
+  assert.equal(
+    completeBulkUnclearedReview.payload.data.entries.length,
+    completeBulkUnclearedReview.payload.data.unclearedCount,
+  )
+  assert(completeBulkUnclearedReview.payload.data.entries.length > 200)
+  assert(completeBulkUnclearedReview.payload.data.entries.every(({ cleared }) => cleared === false))
+  const completeBulkReviewEntries = new Map(
+    completeBulkUnclearedReview.payload.data.entries.map((entry) => [entry.sourceId, entry]),
+  )
+  assert(cappedRegisterTransactions.every(({ id }) => completeBulkReviewEntries.has(id)))
+  assert(completeBulkReviewEntries.has(extraBulkUnclearedBody.id))
+  const restoredBulkCleared = await api(baseUrl, '/api/transactions/clearing', {
+    method: 'PATCH',
+    body: {
+      cleared: true,
+      transactions: cappedRegisterTransactions.map(({ id }) => ({
+        id,
+        updatedAt: completeBulkReviewEntries.get(id).updatedAt,
+      })),
+    },
+  })
+  assert.equal(restoredBulkCleared.response.status, 200, JSON.stringify(restoredBulkCleared.payload))
+  assert.equal(restoredBulkCleared.payload.data.updated, 200)
+  const deletedBulkUnclearedProbe = await api(
+    baseUrl,
+    `/api/transactions/${extraBulkUnclearedBody.id}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: completeBulkReviewEntries.get(extraBulkUnclearedBody.id).updatedAt },
+    },
+  )
+  assert.equal(deletedBulkUnclearedProbe.response.status, 200)
+  const balancesAfterBulkUnclearedReview = await api(
+    baseUrl,
+    `/api/accounts/balances?month=${month}`,
+  )
+  assert.equal(balancesAfterBulkUnclearedReview.response.status, 200)
+  assert.equal(
+    balancesAfterBulkUnclearedReview.payload.data.find(({ accountId }) => accountId === 1)
+      .unclearedCount,
+    bulkAccountBalance.unclearedCount,
+  )
   const accountRegisterExportBody = { month, accountId: 1 }
   const oldestBulkTransactionId = '30000000-0000-4000-8000-000000000001'
   assert.equal(
@@ -3479,7 +3573,8 @@ async function verifyWorkerApi() {
 
   const statementDateFrom = `${shiftCalendarMonth(month, -1)}-13`
   const statementCutoff = `${month}-12`
-  const statementBeforeOpening = `${shiftCalendarMonth(month, -1)}-12`
+  const statementOpeningOn = `${shiftCalendarMonth(month, -1)}-01`
+  const statementBeforeOpening = shiftCalendarDay(statementOpeningOn, -1)
   const statementAfterCutoff = `${month}-13`
   const statementAccountResult = await api(baseUrl, '/api/accounts', {
     method: 'POST',
@@ -3487,7 +3582,7 @@ async function verifyWorkerApi() {
       name: 'Statement cycle checking',
       type: 'bank',
       openingBalanceMinor: 200_000,
-      openingBalanceOn: statementDateFrom,
+      openingBalanceOn: statementOpeningOn,
     },
   })
   assert.equal(statementAccountResult.response.status, 201, JSON.stringify(statementAccountResult.payload))
@@ -3524,7 +3619,7 @@ async function verifyWorkerApi() {
       currency: statementAccount.currency,
       accountId: statementAccount.id,
       categoryId: expenseCategory.id,
-      occurredOn: shiftCalendarDay(statementDateFrom, 10),
+      occurredOn: shiftCalendarDay(statementDateFrom, -1),
       cleared: false,
       payee: 'Prior-month outstanding expense',
       note: '',
@@ -3579,7 +3674,7 @@ async function verifyWorkerApi() {
     toAccountId: transferDestination.id,
     occurredOn: statementCutoff,
     fromCleared: false,
-    toCleared: true,
+    toCleared: false,
     note: '@Cutoff-day mixed-clearing transfer',
   }
   const statementTransfer = await api(baseUrl, '/api/transfers', {
@@ -3594,18 +3689,20 @@ async function verifyWorkerApi() {
   assert.match(statementRegister.response.headers.get('cache-control') ?? '', /private, no-store/)
   assert.equal(statementRegister.payload.data.dateFrom, statementDateFrom)
   assert.equal(statementRegister.payload.data.dateTo, statementCutoff)
-  assert.equal(statementRegister.payload.data.startingBalanceMinor, 200_000)
+  assert.equal(statementRegister.payload.data.startingBalanceMinor, 197_000)
   assert.equal(statementRegister.payload.data.endingBalanceMinor, 188_000)
   assert.equal(statementRegister.payload.data.clearedEndingBalanceMinor, 190_000)
   assert.equal(statementRegister.payload.data.unclearedEndingBalanceMinor, -2_000)
   assert.equal(statementRegister.payload.data.unclearedCount, 3)
-  assert.equal(statementRegister.payload.data.entryCount, 5)
-  assert.equal(statementRegister.payload.data.entries.length, 5)
+  assert.equal(statementRegister.payload.data.entryCount, 4)
+  assert.equal(statementRegister.payload.data.entries.length, 4)
   assert.equal(statementRegister.payload.data.entries[0].occurredOn, statementCutoff)
   assert.equal(statementRegister.payload.data.entries[0].runningBalanceMinor, 188_000)
   assert.equal(
     statementRegister.payload.data.entries.some(({ sourceId }) => (
-      sourceId === statementTransactionBodies[0].id || sourceId === statementTransactionBodies[5].id
+      sourceId === statementTransactionBodies[0].id
+      || sourceId === statementTransactionBodies[2].id
+      || sourceId === statementTransactionBodies[5].id
     )),
     false,
   )
@@ -3617,6 +3714,75 @@ async function verifyWorkerApi() {
   assert.equal(statementRegisterTransfer.cleared, false)
   assert.equal(statementRegisterTransfer.transferDirection, 'out')
   assert.equal(statementRegisterTransfer.counterpartyAccountName, transferDestination.name)
+  assert.equal(typeof statementRegisterTransfer.updatedAt, 'string')
+
+  const statementUnclearedReviewBody = {
+    accountId: statementAccount.id,
+    dateTo: statementCutoff,
+  }
+  const statementUnclearedReview = await api(
+    baseUrl,
+    '/api/accounts/register/uncleared',
+    { method: 'POST', body: statementUnclearedReviewBody },
+  )
+  assert.equal(
+    statementUnclearedReview.response.status,
+    200,
+    JSON.stringify(statementUnclearedReview.payload),
+  )
+  assert.equal(
+    statementUnclearedReview.response.url,
+    `${baseUrl}/api/accounts/register/uncleared`,
+  )
+  assert.match(
+    statementUnclearedReview.response.headers.get('cache-control') ?? '',
+    /private, no-store/,
+  )
+  assert.equal(statementUnclearedReview.payload.data.complete, true)
+  assert.equal(statementUnclearedReview.payload.data.accountId, statementAccount.id)
+  assert.equal(statementUnclearedReview.payload.data.accountName, statementAccount.name)
+  assert.equal(statementUnclearedReview.payload.data.dateTo, statementCutoff)
+  assert.equal(statementUnclearedReview.payload.data.availableFrom, statementOpeningOn)
+  assert.equal(statementUnclearedReview.payload.data.endingBalanceMinor, 188_000)
+  assert.equal(statementUnclearedReview.payload.data.clearedEndingBalanceMinor, 190_000)
+  assert.equal(statementUnclearedReview.payload.data.unclearedEndingBalanceMinor, -2_000)
+  assert.equal(statementUnclearedReview.payload.data.unclearedCount, 3)
+  assert.equal(statementUnclearedReview.payload.data.entries.length, 3)
+  assert.equal(
+    new Set(statementUnclearedReview.payload.data.entries.map(({ entryId }) => entryId)).size,
+    3,
+  )
+  assert(
+    statementUnclearedReview.payload.data.entries.every((entry) => (
+      entry.cleared === false
+      && typeof entry.updatedAt === 'string'
+      && entry.occurredOn >= statementOpeningOn
+      && entry.occurredOn <= statementCutoff
+    )),
+  )
+  assert.deepEqual(
+    new Set(statementUnclearedReview.payload.data.entries.map(({ sourceId }) => sourceId)),
+    new Set([
+      statementTransactionBodies[2].id,
+      statementTransactionBodies[4].id,
+      statementTransferBody.id,
+    ]),
+  )
+  const statementReviewEntriesBySource = new Map(
+    statementUnclearedReview.payload.data.entries.map((entry) => [entry.sourceId, entry]),
+  )
+  assert.equal(
+    statementReviewEntriesBySource.get(statementTransactionBodies[2].id)?.runningBalanceMinor,
+    197_000,
+  )
+  assert.equal(
+    statementReviewEntriesBySource.get(statementTransactionBodies[4].id)?.runningBalanceMinor,
+    192_000,
+  )
+  assert.equal(
+    statementReviewEntriesBySource.get(statementTransferBody.id)?.runningBalanceMinor,
+    188_000,
+  )
 
   const accountRegisterRevisionProbe = await downloadLedgerBackup(baseUrl)
   assert.equal(
@@ -3679,10 +3845,10 @@ async function verifyWorkerApi() {
     '',
     statementAccount.currency,
     '',
-    '2000.00',
+    '1970.00',
   ])
   const statementActivityRows = statementAccountRegisterRows.slice(1)
-  assert.equal(statementActivityRows.length, 5)
+  assert.equal(statementActivityRows.length, 4)
   assert.deepEqual(
     statementActivityRows.map(([date]) => date),
     statementActivityRows.map(([date]) => date).toSorted(),
@@ -3690,11 +3856,11 @@ async function verifyWorkerApi() {
   assert.deepEqual(
     new Set(statementActivityRows.map((row) => row[14])),
     new Set([
-      ...statementTransactionBodies.slice(1, 5).map(({ id }) => id),
+      ...[1, 3, 4].map((index) => statementTransactionBodies[index].id),
       statementTransferBody.id,
     ]),
   )
-  let statementRunningBalance = 2_000
+  let statementRunningBalance = 1_970
   for (const row of statementActivityRows) {
     assert.match(row[2], /^-?\d+\.\d{2}$/)
     statementRunningBalance += Number(row[2])
@@ -3746,7 +3912,7 @@ async function verifyWorkerApi() {
   assert.equal(statementTransactionsQuery.response.status, 200)
   assert.deepEqual(
     new Set(statementTransactionsQuery.payload.data.transactions.map(({ id }) => id)),
-    new Set(statementTransactionBodies.slice(1, 5).map(({ id }) => id)),
+    new Set([1, 3, 4].map((index) => statementTransactionBodies[index].id)),
   )
   const statementTransfersQuery = await api(baseUrl, `/api/transfers?${statementQuery}`)
   assert.equal(statementTransfersQuery.response.status, 200)
@@ -3758,7 +3924,7 @@ async function verifyWorkerApi() {
   )
   assert.equal(rangeIncludingOpening.response.status, 200)
   assert.equal(rangeIncludingOpening.payload.data.startingBalanceMinor, null)
-  assert.equal(rangeIncludingOpening.payload.data.availableFrom, statementDateFrom)
+  assert.equal(rangeIncludingOpening.payload.data.availableFrom, statementOpeningOn)
   assert.equal(rangeIncludingOpening.payload.data.entryCount, 6)
   assert.equal(
     rangeIncludingOpening.payload.data.entries.at(-1).kind,
@@ -3767,7 +3933,7 @@ async function verifyWorkerApi() {
   assert.equal(rangeIncludingOpening.payload.data.entries.at(-1).amountMinor, 200_000)
   const rangeBeforeOpening = await api(
     baseUrl,
-    `/api/accounts/register?dateFrom=${shiftCalendarMonth(month, -1)}-01&dateTo=${statementBeforeOpening}&accountId=${statementAccount.id}`,
+    `/api/accounts/register?dateFrom=${shiftCalendarMonth(month, -2)}-01&dateTo=${statementBeforeOpening}&accountId=${statementAccount.id}`,
   )
   assert.equal(rangeBeforeOpening.response.status, 200)
   assert.equal(rangeBeforeOpening.payload.data.endingBalanceMinor, null)
@@ -3792,56 +3958,212 @@ async function verifyWorkerApi() {
   )
   assert.equal(missingStatementAccount.response.status, 404)
 
-  const clearedStatementTransfer = await api(baseUrl, `/api/transfers/${statementTransferBody.id}`, {
-    method: 'PUT',
+  const reviewBeforeOpening = await api(baseUrl, '/api/accounts/register/uncleared', {
+    method: 'POST',
+    body: { accountId: statementAccount.id, dateTo: statementBeforeOpening },
+  })
+  assert.equal(reviewBeforeOpening.response.status, 200)
+  assert.equal(reviewBeforeOpening.payload.data.complete, true)
+  assert.equal(reviewBeforeOpening.payload.data.availableFrom, statementOpeningOn)
+  assert.equal(reviewBeforeOpening.payload.data.endingBalanceMinor, null)
+  assert.equal(reviewBeforeOpening.payload.data.clearedEndingBalanceMinor, null)
+  assert.equal(reviewBeforeOpening.payload.data.unclearedEndingBalanceMinor, null)
+  assert.equal(reviewBeforeOpening.payload.data.unclearedCount, 0)
+  assert.deepEqual(reviewBeforeOpening.payload.data.entries, [])
+
+  const missingUnclearedReview = await api(baseUrl, '/api/accounts/register/uncleared', {
+    method: 'POST',
+    body: { accountId: 999999, dateTo: statementCutoff },
+  })
+  assert.equal(missingUnclearedReview.response.status, 404)
+  assert.equal(missingUnclearedReview.payload.error.code, 'ACCOUNT_NOT_FOUND')
+  const invalidUnclearedReview = await api(baseUrl, '/api/accounts/register/uncleared', {
+    method: 'POST',
+    body: { ...statementUnclearedReviewBody, privateMemo: 'must be rejected' },
+  })
+  assert.equal(invalidUnclearedReview.response.status, 400)
+  assert.equal(invalidUnclearedReview.payload.error.code, 'INVALID_QUERY')
+  const crossOriginUnclearedReview = await api(baseUrl, '/api/accounts/register/uncleared', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: statementUnclearedReviewBody,
+  })
+  assert.equal(crossOriginUnclearedReview.response.status, 403)
+  assert.equal(crossOriginUnclearedReview.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const unclearedReviewNavigation = await api(baseUrl, '/api/accounts/register/uncleared')
+  assert.equal(unclearedReviewNavigation.response.status, 404)
+  const wrongMediaTypeUnclearedReview = await fetch(
+    `${baseUrl}/api/accounts/register/uncleared`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: baseUrl },
+      body: JSON.stringify(statementUnclearedReviewBody),
+    },
+  )
+  assert.equal(wrongMediaTypeUnclearedReview.status, 415)
+  assert.equal(
+    (await wrongMediaTypeUnclearedReview.json()).error.code,
+    'UNSUPPORTED_MEDIA_TYPE',
+  )
+
+  const reviewTransferEntry = statementReviewEntriesBySource.get(statementTransferBody.id)
+  const reviewTransactionEntry = statementReviewEntriesBySource.get(statementTransactionBodies[2].id)
+  assert(reviewTransferEntry)
+  assert(reviewTransactionEntry)
+  const mismatchedReviewClearing = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
     body: {
-      amountMinor: statementTransferBody.amountMinor,
-      currency: statementTransferBody.currency,
-      fromAccountId: statementTransferBody.fromAccountId,
-      toAccountId: statementTransferBody.toAccountId,
-      occurredOn: statementTransferBody.occurredOn,
-      fromCleared: true,
-      toCleared: true,
-      note: statementTransferBody.note,
-      updatedAt: statementTransfer.payload.data.updatedAt,
+      accountId: unrelatedTransferAccount.id,
+      kind: reviewTransferEntry.kind,
+      sourceId: reviewTransferEntry.sourceId,
+      updatedAt: reviewTransferEntry.updatedAt,
+      cleared: true,
     },
   })
-  assert.equal(clearedStatementTransfer.response.status, 200)
+  assert.equal(mismatchedReviewClearing.response.status, 400)
+  assert.equal(
+    mismatchedReviewClearing.payload.error.code,
+    'REGISTER_ENTRY_ACCOUNT_MISMATCH',
+  )
+  const missingReviewClearing = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
+    body: {
+      accountId: statementAccount.id,
+      kind: 'transaction',
+      sourceId: '59000000-0000-4000-8000-000000999999',
+      updatedAt: reviewTransactionEntry.updatedAt,
+      cleared: true,
+    },
+  })
+  assert.equal(missingReviewClearing.response.status, 404)
+  assert.equal(missingReviewClearing.payload.error.code, 'REGISTER_ENTRY_NOT_FOUND')
+  const crossOriginReviewClearing = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
+    origin: 'https://attacker.invalid',
+    body: {
+      accountId: statementAccount.id,
+      kind: reviewTransactionEntry.kind,
+      sourceId: reviewTransactionEntry.sourceId,
+      updatedAt: reviewTransactionEntry.updatedAt,
+      cleared: true,
+    },
+  })
+  assert.equal(crossOriginReviewClearing.response.status, 403)
+  assert.equal(crossOriginReviewClearing.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const clearingNavigation = await api(baseUrl, '/api/accounts/register/clearing')
+  assert.equal(clearingNavigation.response.status, 404)
+
+  const clearedStatementTransfer = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
+    body: {
+      accountId: statementAccount.id,
+      kind: reviewTransferEntry.kind,
+      sourceId: reviewTransferEntry.sourceId,
+      updatedAt: reviewTransferEntry.updatedAt,
+      cleared: true,
+    },
+  })
+  assert.equal(
+    clearedStatementTransfer.response.status,
+    200,
+    JSON.stringify(clearedStatementTransfer.payload),
+  )
+  const clearedStatementTransferSource = await api(
+    baseUrl,
+    `/api/transfers/${statementTransferBody.id}`,
+  )
+  assert.equal(clearedStatementTransferSource.response.status, 200)
+  assert.equal(clearedStatementTransferSource.payload.data.fromCleared, true)
+  assert.equal(clearedStatementTransferSource.payload.data.toCleared, false)
+  assert.notEqual(
+    clearedStatementTransferSource.payload.data.updatedAt,
+    reviewTransferEntry.updatedAt,
+  )
+  const staleReviewTransferClearing = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
+    body: {
+      accountId: statementAccount.id,
+      kind: reviewTransferEntry.kind,
+      sourceId: reviewTransferEntry.sourceId,
+      updatedAt: reviewTransferEntry.updatedAt,
+      cleared: true,
+    },
+  })
+  assert.equal(staleReviewTransferClearing.response.status, 409)
+  assert.equal(
+    staleReviewTransferClearing.payload.error.code,
+    'REGISTER_ENTRY_VERSION_CONFLICT',
+  )
   const reconciledTransferRegister = await api(baseUrl, `/api/accounts/register?${statementQuery}`)
   assert.equal(reconciledTransferRegister.payload.data.endingBalanceMinor, 188_000)
   assert.equal(reconciledTransferRegister.payload.data.clearedEndingBalanceMinor, 186_000)
   assert.equal(reconciledTransferRegister.payload.data.unclearedEndingBalanceMinor, 2_000)
   assert.equal(reconciledTransferRegister.payload.data.unclearedCount, 2)
-
-  const outstandingTransaction = statementTransactions[2].payload.data
-  const clearedOutstandingTransaction = await api(
-    baseUrl,
-    `/api/transactions/${outstandingTransaction.id}`,
-    {
-      method: 'PUT',
-      body: {
-        type: outstandingTransaction.type,
-        amountMinor: outstandingTransaction.amountMinor,
-        currency: outstandingTransaction.currency,
-        accountId: outstandingTransaction.accountId,
-        categoryId: outstandingTransaction.categoryId,
-        occurredOn: outstandingTransaction.occurredOn,
-        cleared: true,
-        payee: outstandingTransaction.payee,
-        note: outstandingTransaction.note,
-        updatedAt: outstandingTransaction.updatedAt,
-      },
-    },
+  const reviewAfterTransferClearing = await api(baseUrl, '/api/accounts/register/uncleared', {
+    method: 'POST',
+    body: statementUnclearedReviewBody,
+  })
+  assert.equal(reviewAfterTransferClearing.response.status, 200)
+  assert.equal(reviewAfterTransferClearing.payload.data.unclearedCount, 2)
+  assert.equal(reviewAfterTransferClearing.payload.data.entries.length, 2)
+  assert.equal(reviewAfterTransferClearing.payload.data.clearedEndingBalanceMinor, 186_000)
+  assert.equal(reviewAfterTransferClearing.payload.data.unclearedEndingBalanceMinor, 2_000)
+  assert.equal(
+    reviewAfterTransferClearing.payload.data.entries.some(
+      ({ sourceId }) => sourceId === statementTransferBody.id,
+    ),
+    false,
   )
-  assert.equal(clearedOutstandingTransaction.response.status, 200)
+
+  const clearedOutstandingTransaction = await api(baseUrl, '/api/accounts/register/clearing', {
+    method: 'PATCH',
+    body: {
+      accountId: statementAccount.id,
+      kind: reviewTransactionEntry.kind,
+      sourceId: reviewTransactionEntry.sourceId,
+      updatedAt: reviewTransactionEntry.updatedAt,
+      cleared: true,
+    },
+  })
+  assert.equal(
+    clearedOutstandingTransaction.response.status,
+    200,
+    JSON.stringify(clearedOutstandingTransaction.payload),
+  )
+  const clearedOutstandingTransactionSource = await api(
+    baseUrl,
+    `/api/transactions/${reviewTransactionEntry.sourceId}`,
+  )
+  assert.equal(clearedOutstandingTransactionSource.response.status, 200)
+  assert.equal(clearedOutstandingTransactionSource.payload.data.cleared, true)
+  assert.notEqual(
+    clearedOutstandingTransactionSource.payload.data.updatedAt,
+    reviewTransactionEntry.updatedAt,
+  )
   const reconciledTransactionRegister = await api(baseUrl, `/api/accounts/register?${statementQuery}`)
   assert.equal(reconciledTransactionRegister.payload.data.endingBalanceMinor, 188_000)
   assert.equal(reconciledTransactionRegister.payload.data.clearedEndingBalanceMinor, 183_000)
   assert.equal(reconciledTransactionRegister.payload.data.unclearedEndingBalanceMinor, 5_000)
   assert.equal(reconciledTransactionRegister.payload.data.unclearedCount, 1)
+  const reviewAfterTransactionClearing = await api(
+    baseUrl,
+    '/api/accounts/register/uncleared',
+    { method: 'POST', body: statementUnclearedReviewBody },
+  )
+  assert.equal(reviewAfterTransactionClearing.response.status, 200)
+  assert.equal(reviewAfterTransactionClearing.payload.data.unclearedCount, 1)
+  assert.equal(reviewAfterTransactionClearing.payload.data.entries.length, 1)
+  assert.equal(
+    reviewAfterTransactionClearing.payload.data.entries[0].sourceId,
+    statementTransactionBodies[4].id,
+  )
+  assert.equal(
+    reviewAfterTransactionClearing.payload.data.entries[0].runningBalanceMinor,
+    192_000,
+  )
 
   const statementTransactionsForCleanup = statementTransactions.map(({ payload }) => payload.data)
-  statementTransactionsForCleanup[2] = clearedOutstandingTransaction.payload.data
+  statementTransactionsForCleanup[2] = clearedOutstandingTransactionSource.payload.data
   const deletedStatementTransactions = await Promise.all(statementTransactionsForCleanup.map(
     ({ id, updatedAt }) => api(baseUrl, `/api/transactions/${id}`, {
       method: 'DELETE',
@@ -3851,7 +4173,7 @@ async function verifyWorkerApi() {
   assert(deletedStatementTransactions.every(({ response }) => response.status === 200))
   const deletedStatementTransfer = await api(baseUrl, `/api/transfers/${statementTransferBody.id}`, {
     method: 'DELETE',
-    body: { updatedAt: clearedStatementTransfer.payload.data.updatedAt },
+    body: { updatedAt: clearedStatementTransferSource.payload.data.updatedAt },
   })
   assert.equal(deletedStatementTransfer.response.status, 200)
   const zeroedStatementAccount = await api(baseUrl, `/api/accounts/${statementAccount.id}`, {
