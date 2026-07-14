@@ -38,13 +38,27 @@ export function exactTransactionTotals(
 export const formatMoney = (minor: number, currency: string = DEFAULT_CURRENCY, locale = 'zh-Hant') => {
   if (!Number.isSafeInteger(minor)) throw new Error('Amount exceeds the safe integer range')
 
-  return new Intl.NumberFormat(locale, {
+  const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     currencyDisplay: 'symbol',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(minor / 100)
+  })
+  const exactMinor = BigInt(minor)
+  const magnitudeMinor = exactMinor < 0n ? -exactMinor : exactMinor
+  const magnitudeMajor = magnitudeMinor / 100n
+  const fraction = formatter.formatToParts(100n + (magnitudeMinor % 100n))
+    .filter((part) => part.type === 'integer')
+    .map((part) => part.value)
+    .join('')
+    .slice(-2)
+  let signedMajor: number | bigint = magnitudeMajor
+  if (minor < 0 || Object.is(minor, -0)) signedMajor = magnitudeMajor === 0n ? -0 : -magnitudeMajor
+
+  return formatter.formatToParts(signedMajor)
+    .map((part) => part.type === 'fraction' ? fraction : part.value)
+    .join('')
 }
 
 export function formatAmountInput(minor: number, locale = 'en') {

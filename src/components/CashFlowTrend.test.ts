@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nContext, type I18nContextValue } from '../i18n/context'
 import { translate, type Locale } from '../i18n/core'
+import type { SupportedCurrency } from '../lib/currency'
 import { formatMonthLabel } from '../lib/date'
 import { formatMoneyForDisplay } from '../lib/privacy'
 import type { Summary } from '../lib/schema'
@@ -35,16 +36,17 @@ function renderCashFlowTrend(
   loading = false,
   locale: Locale = 'en',
   currentMonth = '2026-07',
+  ledgerCurrency: SupportedCurrency = 'HKD',
 ) {
   const context: I18nContextValue = {
     locale,
     setLocale: () => undefined,
-    ledgerCurrency: 'HKD',
+    ledgerCurrency,
     setLedgerCurrency: () => undefined,
     privacyMode,
     setPrivacyMode: () => undefined,
     t: (key, values) => translate(locale, key, values),
-    formatMoney: (minor, currency = 'HKD') => formatMoneyForDisplay(
+    formatMoney: (minor, currency = ledgerCurrency) => formatMoneyForDisplay(
       minor,
       currency,
       locale,
@@ -94,12 +96,40 @@ describe('selected-month recorded cash-flow comparison', () => {
     assert.doesNotMatch(markup, /\+HK\$0\.00|better|worse|good|bad|saved/i)
   })
 
+  it('keeps a safe-integer boundary difference exact on screen', () => {
+    const markup = renderCashFlowTrend({
+      ...summary,
+      cashFlowTrend: [
+        { month: '2026-06', incomeMinor: 0, expenseMinor: 0, netMinor: 0, transactionCount: 0 },
+        {
+          month: '2026-07',
+          incomeMinor: Number.MAX_SAFE_INTEGER,
+          expenseMinor: 0,
+          netMinor: Number.MAX_SAFE_INTEGER,
+          transactionCount: 1,
+        },
+      ],
+    })
+
+    assert.equal(markup.match(/\+HK\$90,071,992,547,409\.91/g)?.length, 2)
+    assert.doesNotMatch(markup, /90,071,992,547,409\.90/)
+  })
+
   it('hides direction and magnitude in privacy mode', () => {
     const markup = renderCashFlowTrend(summary, true)
 
     assert.equal(markup.match(/HK\$••••/g)?.length, 3)
     assert.doesNotMatch(markup, /\+HK\$|150\.00|125\.00|25\.00/)
     assert.match(markup, /recorded changes are hidden/i)
+  })
+
+  it('uses the selected ledger currency for visible differences and private masks', () => {
+    const visibleMarkup = renderCashFlowTrend(summary, false, false, 'en', '2026-07', 'USD')
+    const privateMarkup = renderCashFlowTrend(summary, true, false, 'en', '2026-07', 'USD')
+
+    assert.match(visibleMarkup, /<dt>Income<\/dt><dd[^>]*>\+\$150\.00<\/dd>/)
+    assert.equal(privateMarkup.match(/\$••••/g)?.length, 3)
+    assert.doesNotMatch(privateMarkup, /HK\$|150\.00|125\.00|25\.00/)
   })
 
   it('keeps unavailable differences structurally hidden in privacy mode', () => {
@@ -110,6 +140,7 @@ describe('selected-month recorded cash-flow comparison', () => {
         : point),
     }, true)
 
+    assert.equal(markup, renderCashFlowTrend(summary, true))
     assert.equal(markup.match(/HK\$••••/g)?.length, 3)
     assert.doesNotMatch(markup, /Cannot calculate safely|150\.00|25\.00|\+HK\$/)
   })

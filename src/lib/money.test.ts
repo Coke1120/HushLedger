@@ -53,6 +53,16 @@ describe('two-decimal money helpers', () => {
     assert.equal(formatMoney(12_345, 'USD', 'en'), '$123.45')
   })
 
+  it('preserves every minor unit at the safe-integer formatting boundary', () => {
+    assert.equal(formatMoney(Number.MAX_SAFE_INTEGER, 'HKD', 'en'), 'HK$90,071,992,547,409.91')
+    const frenchHkd = formatMoney(Number.MAX_SAFE_INTEGER, 'HKD', 'fr')
+    assert.match(frenchHkd, /90\s071\s992\s547\s409,91/)
+    assert.match(frenchHkd, /HKD|HK\$|\$HK/)
+    assert.equal(formatMoney(Number.MAX_SAFE_INTEGER, 'USD', 'en'), '$90,071,992,547,409.91')
+    assert.equal(formatMoney(-Number.MAX_SAFE_INTEGER, 'USD', 'en'), '-$90,071,992,547,409.91')
+    assert.equal(formatMoney(-5, 'USD', 'en'), '-$0.05')
+  })
+
   for (const [value, expected] of [
     ['123.45', 12_345],
     ['123', 12_300],
