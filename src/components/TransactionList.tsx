@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
+import { MAX_TRANSACTION_BATCH_SIZE } from '../lib/schema'
 import type { Category, Transaction } from '../lib/schema'
 import { transactionTagsFromNote } from '../lib/transactionTags'
 
@@ -86,7 +87,9 @@ export function TransactionList({
   }
 
   const selectedTransactions = transactions.filter(({ id }) => selectedIds.has(id))
-  const allSelected = selectedTransactions.length === transactions.length
+  const selectAllCandidates = transactions.slice(0, MAX_TRANSACTION_BATCH_SIZE)
+  const allSelected = selectAllCandidates.every(({ id }) => selectedIds.has(id))
+  const selectionLimitReached = selectedIds.size >= MAX_TRANSACTION_BATCH_SIZE
   const busy = saving || applying
   const selectedType = selectedTransactions.length > 0
     && selectedTransactions.every(({ type }) => type === selectedTransactions[0]?.type)
@@ -141,17 +144,26 @@ export function TransactionList({
                   { count: selectedTransactions.length },
                 )}
               </span>
+              {transactions.length > MAX_TRANSACTION_BATCH_SIZE ? (
+                <span className="transaction-selection-limit" id="transaction-selection-limit">
+                  {t('transactionSelectionLimit', { count: MAX_TRANSACTION_BATCH_SIZE })}
+                </span>
+              ) : null}
               <div className="transaction-bulk-buttons">
                 <button
                   className="button button-secondary"
                   type="button"
                   disabled={busy}
                   onClick={() => setSelectedIds(
-                    allSelected ? new Set() : new Set(transactions.map(({ id }) => id)),
+                    allSelected ? new Set() : new Set(selectAllCandidates.map(({ id }) => id)),
                   )}
                 >
                   <ListChecks aria-hidden="true" />
-                  {t(allSelected ? 'clearTransactionSelection' : 'selectAllShownTransactions')}
+                  {t(allSelected
+                    ? 'clearTransactionSelection'
+                    : transactions.length > MAX_TRANSACTION_BATCH_SIZE
+                      ? 'selectFirstTransactions'
+                      : 'selectAllShownTransactions', { count: MAX_TRANSACTION_BATCH_SIZE })}
                 </button>
                 <div className="transaction-bulk-category">
                   <label>
@@ -228,34 +240,37 @@ export function TransactionList({
         </div>
       ) : null}
       <ul className={`transaction-list${selecting ? ' is-selecting' : ''}`} aria-label={t('transactionList')}>
-      {transactions.map((transaction) => {
-        const Icon = iconMap[transaction.categoryIcon] ?? CircleEllipsis
-        const categoryName = localizeEntityName(transaction.categoryName, transaction.categoryLocalizationKey)
-        const accountName = localizeEntityName(transaction.accountName, transaction.accountLocalizationKey)
-        const title = transaction.payee || categoryName
-        const generatedLabel = t('generatedByRule', { name: transaction.recurringRuleName ?? t('unnamedRule') })
-        const tags = transactionTagsFromNote(transaction.note)
-        const selected = selectedIds.has(transaction.id)
-        return (
-          <li className="transaction-list-item" key={transaction.id}>
-            <button
-              className={`transaction-row${selected ? ' is-selected' : ''}`}
-              type="button"
-              aria-label={selecting ? t(selected ? 'deselectTransaction' : 'selectTransaction', { name: title }) : undefined}
-              aria-pressed={selecting ? selected : undefined}
-              onClick={() => {
-                if (!selecting) {
-                  onEdit(transaction)
-                  return
-                }
-                setSelectedIds((current) => {
-                  const next = new Set(current)
-                  if (next.has(transaction.id)) next.delete(transaction.id)
-                  else next.add(transaction.id)
-                  return next
-                })
-              }}
-            >
+        {transactions.map((transaction) => {
+          const Icon = iconMap[transaction.categoryIcon] ?? CircleEllipsis
+          const categoryName = localizeEntityName(transaction.categoryName, transaction.categoryLocalizationKey)
+          const accountName = localizeEntityName(transaction.accountName, transaction.accountLocalizationKey)
+          const title = transaction.payee || categoryName
+          const generatedLabel = t('generatedByRule', { name: transaction.recurringRuleName ?? t('unnamedRule') })
+          const tags = transactionTagsFromNote(transaction.note)
+          const selected = selectedIds.has(transaction.id)
+          const selectionBlocked = selecting && !selected && selectionLimitReached
+          return (
+            <li className="transaction-list-item" key={transaction.id}>
+              <button
+                className={`transaction-row${selected ? ' is-selected' : ''}`}
+                type="button"
+                aria-label={selecting ? t(selected ? 'deselectTransaction' : 'selectTransaction', { name: title }) : undefined}
+                aria-pressed={selecting ? selected : undefined}
+                aria-disabled={selectionBlocked || undefined}
+                aria-describedby={selectionBlocked ? 'transaction-selection-limit' : undefined}
+                onClick={() => {
+                  if (!selecting) {
+                    onEdit(transaction)
+                    return
+                  }
+                  setSelectedIds((current) => {
+                    const next = new Set(current)
+                    if (next.has(transaction.id)) next.delete(transaction.id)
+                    else if (next.size < MAX_TRANSACTION_BATCH_SIZE) next.add(transaction.id)
+                    return next
+                  })
+                }}
+              >
               {selecting ? null : <span className="sr-only">{t('edit')}</span>}
               {selecting ? (
                 <span className={`transaction-selection-indicator${selected ? ' is-selected' : ''}`} aria-hidden="true">
@@ -299,29 +314,29 @@ export function TransactionList({
                 {transaction.type === 'income' ? '+' : '−'}
                 {formatMoney(transaction.amountMinor, transaction.currency)}
               </strong>
-            </button>
-            {!selecting && tags.length > 0 ? (
-              <div className="transaction-tags" aria-label={t('transactionTags')}>
-                {tags.map((tag) => {
-                  const selected = tag === tagFilter
-                  return (
-                    <button
-                      className={selected ? 'is-active' : undefined}
-                      type="button"
-                      key={tag}
-                      aria-pressed={selected}
-                      aria-label={t(selected ? 'removeTagFilter' : 'filterByTag', { tag })}
-                      onClick={() => onTagSelect(selected ? null : tag)}
-                    >
-                      {tag}
-                    </button>
-                  )
-                })}
-              </div>
-            ) : null}
-          </li>
-        )
-      })}
+              </button>
+              {!selecting && tags.length > 0 ? (
+                <div className="transaction-tags" aria-label={t('transactionTags')}>
+                  {tags.map((tag) => {
+                    const selected = tag === tagFilter
+                    return (
+                      <button
+                        className={selected ? 'is-active' : undefined}
+                        type="button"
+                        key={tag}
+                        aria-pressed={selected}
+                        aria-label={t(selected ? 'removeTagFilter' : 'filterByTag', { tag })}
+                        onClick={() => onTagSelect(selected ? null : tag)}
+                      >
+                        {tag}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </li>
+          )
+        })}
       </ul>
     </>
   )

@@ -28,6 +28,7 @@ import {
   transactionClearingBatchSchema,
   transactionDuplicateCheckSchema,
   transactionInputSchema,
+  transactionPageQuerySchema,
   transactionQuerySchema,
   transactionUpdateSchema,
 } from './schema'
@@ -318,6 +319,19 @@ describe('transaction validation', () => {
 })
 
 describe('transaction query validation', () => {
+  const pageCursor = {
+    version: 1,
+    revision: 42,
+    queryKey: '{"month":"2026-07","scope":"month"}',
+    sort: 'date_desc',
+    payeeBlank: 0,
+    amountMinor: 38_640,
+    occurredOn: '2026-07-11',
+    payee: 'Supermarket',
+    createdAt: '2026-07-11T10:30:00.000Z',
+    id: '019f5087-229b-7ce3-a76f-95c833dcf253',
+  } as const
+
   it('accepts filters plus a strict transaction order', () => {
     assert.deepEqual(
       transactionQuerySchema.parse({
@@ -375,6 +389,62 @@ describe('transaction query validation', () => {
     ] as const) {
       assert.equal(transactionQuerySchema.safeParse(query).success, false)
     }
+  })
+
+  it('accepts only a strict continuation cursor for the selected order', () => {
+    assert.deepEqual(transactionPageQuerySchema.parse({
+      month: '2026-07',
+      cursor: pageCursor,
+    }), {
+      month: '2026-07',
+      scope: 'month',
+      cursor: pageCursor,
+    })
+    for (const sort of [
+      'date_desc',
+      'date_asc',
+      'amount_desc',
+      'amount_asc',
+      'payee_asc',
+      'payee_desc',
+    ] as const) {
+      assert.equal(transactionPageQuerySchema.safeParse({
+        month: '2026-07',
+        sort,
+        cursor: { ...pageCursor, sort },
+      }).success, true)
+    }
+
+    for (const cursor of [
+      { ...pageCursor, version: 2 },
+      { ...pageCursor, revision: 0 },
+      { ...pageCursor, revision: Number.MAX_SAFE_INTEGER + 1 },
+      { ...pageCursor, queryKey: '' },
+      { ...pageCursor, payeeBlank: 2 },
+      { ...pageCursor, amountMinor: 0 },
+      { ...pageCursor, occurredOn: '2026-02-29' },
+      { ...pageCursor, payee: 'x'.repeat(81) },
+      { ...pageCursor, createdAt: '2026-07-11' },
+      { ...pageCursor, id: 'not-a-uuid' },
+      { ...pageCursor, privateMemo: 'never accept' },
+    ]) {
+      assert.equal(transactionPageQuerySchema.safeParse({
+        month: '2026-07',
+        cursor,
+      }).success, false)
+    }
+  })
+
+  it('rejects cursor reuse under another order and keeps export filters cursor-free', () => {
+    assert.equal(transactionPageQuerySchema.safeParse({
+      month: '2026-07',
+      sort: 'amount_desc',
+      cursor: pageCursor,
+    }).success, false)
+    assert.equal(transactionQuerySchema.safeParse({
+      month: '2026-07',
+      cursor: pageCursor,
+    }).success, false)
   })
 
   for (const [index, query] of [

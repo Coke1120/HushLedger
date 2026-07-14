@@ -4241,6 +4241,111 @@ async function verifyWorkerApi() {
   assert.match(privateQuery.response.headers.get('cache-control') ?? '', /private.*no-store/)
   assert.equal(privateQuery.payload.data.transactions.length, 200)
   assert.deepEqual(privateQuery.payload.data.summary, completeFilterSummary.payload.data)
+  const privateCursor = privateQuery.payload.data.nextCursor
+  assert(privateCursor)
+  const privateContinuation = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, cursor: privateCursor },
+  })
+  assert.equal(privateContinuation.response.status, 200)
+  assert.equal(privateContinuation.response.url, `${baseUrl}/api/transactions/query`)
+  assert.match(privateContinuation.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  assert.equal(privateContinuation.payload.data.transactions.length, 5)
+  assert.equal(privateContinuation.payload.data.nextCursor, null)
+  assert.equal('summary' in privateContinuation.payload.data, false)
+  assert.equal(new Set([
+    ...privateQuery.payload.data.transactions,
+    ...privateContinuation.payload.data.transactions,
+  ].map(({ id }) => id)).size, 205)
+
+  for (const sort of [
+    'date_desc',
+    'date_asc',
+    'amount_desc',
+    'amount_asc',
+    'payee_asc',
+    'payee_desc',
+  ]) {
+    const firstPage = await api(baseUrl, '/api/transactions/query', {
+      method: 'POST',
+      body: { ...privateFilterBody, sort },
+    })
+    assert.equal(firstPage.response.status, 200)
+    assert.equal(firstPage.payload.data.transactions.length, 200)
+    assert.equal(firstPage.payload.data.summary.transactionCount, 205)
+    assert(firstPage.payload.data.nextCursor)
+    const secondPage = await api(baseUrl, '/api/transactions/query', {
+      method: 'POST',
+      body: { ...privateFilterBody, sort, cursor: firstPage.payload.data.nextCursor },
+    })
+    assert.equal(secondPage.response.status, 200)
+    assert.equal(secondPage.payload.data.transactions.length, 5)
+    assert.equal(secondPage.payload.data.nextCursor, null)
+    const ids = [...firstPage.payload.data.transactions, ...secondPage.payload.data.transactions]
+      .map(({ id }) => id)
+    assert.equal(new Set(ids).size, 205)
+    const indexes = Array.from({ length: 205 }, (_, index) => index + 1)
+    if (sort === 'date_desc' || sort === 'amount_desc' || sort.startsWith('payee_')) {
+      indexes.reverse()
+    }
+    assert.deepEqual(
+      ids,
+      indexes.map((index) => `30000000-0000-4000-8000-${String(index).padStart(12, '0')}`),
+    )
+  }
+
+  const mismatchedPrivateCursor = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, type: 'income', cursor: privateCursor },
+  })
+  assert.equal(mismatchedPrivateCursor.response.status, 400)
+  assert.equal(mismatchedPrivateCursor.payload.error.code, 'INVALID_CURSOR')
+  const wrongSortPrivateCursor = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, sort: 'amount_desc', cursor: privateCursor },
+  })
+  assert.equal(wrongSortPrivateCursor.response.status, 400)
+  assert.equal(wrongSortPrivateCursor.payload.error.code, 'INVALID_QUERY')
+  const extraFieldPrivateCursor = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, cursor: { ...privateCursor, privateMemo: 'never accept' } },
+  })
+  assert.equal(extraFieldPrivateCursor.response.status, 400)
+  assert.equal(extraFieldPrivateCursor.payload.error.code, 'INVALID_QUERY')
+
+  const cursorRevisionProbeBody = {
+    id: '60000000-0000-4000-8000-000000000004',
+    type: 'expense',
+    amountMinor: 1,
+    currency: 'HKD',
+    accountId: 1,
+    categoryId: 3,
+    occurredOn: today,
+    cleared: false,
+    payee: 'pagination revision probe',
+    note: '',
+  }
+  const cursorRevisionProbe = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: cursorRevisionProbeBody,
+  })
+  assert.equal(cursorRevisionProbe.response.status, 201)
+  const stalePrivateCursor = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { ...privateFilterBody, cursor: privateCursor },
+  })
+  assert.equal(stalePrivateCursor.response.status, 409)
+  assert.equal(stalePrivateCursor.payload.error.code, 'TRANSACTION_CURSOR_STALE')
+  assert.match(stalePrivateCursor.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  const deletedCursorRevisionProbe = await api(
+    baseUrl,
+    `/api/transactions/${cursorRevisionProbeBody.id}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: cursorRevisionProbe.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedCursorRevisionProbe.response.status, 200)
 
   const exactAmountFilterBody = { ...privateFilterBody, amountMinor: 225 }
   const exactAmountPrivateQuery = await api(baseUrl, '/api/transactions/query', {
@@ -4349,6 +4454,12 @@ async function verifyWorkerApi() {
   })
   assert.equal(invalidPrivateExport.response.status, 400)
   assert.equal(invalidPrivateExport.payload.error.code, 'INVALID_QUERY')
+  const cursorPrivateExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: { ...privateFilterBody, cursor: privateCursor },
+  })
+  assert.equal(cursorPrivateExport.response.status, 400)
+  assert.equal(cursorPrivateExport.payload.error.code, 'INVALID_QUERY')
 
   const navigationCsvExport = await api(
     baseUrl,
@@ -4408,6 +4519,24 @@ async function verifyWorkerApi() {
   )
   assert.equal(exactPayeeRows.response.status, 200)
   assert.equal(exactPayeeRows.payload.data.length, 200)
+  const exactPayeePrivatePage = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: { month, payee: ' EXPORT BULK ' },
+  })
+  assert.equal(exactPayeePrivatePage.response.status, 200)
+  assert.equal(exactPayeePrivatePage.payload.data.transactions.length, 200)
+  assert(exactPayeePrivatePage.payload.data.nextCursor)
+  const exactPayeePrivateContinuation = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: {
+      month,
+      payee: ' EXPORT BULK ',
+      cursor: exactPayeePrivatePage.payload.data.nextCursor,
+    },
+  })
+  assert.equal(exactPayeePrivateContinuation.response.status, 200)
+  assert.equal(exactPayeePrivateContinuation.payload.data.transactions.length, 5)
+  assert.equal(exactPayeePrivateContinuation.payload.data.nextCursor, null)
   const exactPayeeSummary = await api(
     baseUrl,
     `/api/transactions/summary?month=${month}&payee=%20EXPORT%20BULK%20`,

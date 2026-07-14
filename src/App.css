@@ -2049,6 +2049,12 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.transaction-selection-limit {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .transaction-bulk-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -2085,6 +2091,28 @@ textarea:focus-visible {
 .transaction-bulk-toolbar svg {
   width: 17px;
   height: 17px;
+}
+
+.transaction-load-more {
+  display: flex;
+  padding: 16px 24px 20px;
+  gap: 8px;
+  align-items: center;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.transaction-load-more p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.transaction-load-more p:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .account-transfers {
@@ -2796,6 +2824,11 @@ button.account-register-row:focus-visible {
 
 .transaction-row.is-selected {
   background: var(--income-soft);
+}
+
+.transaction-row[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.64;
 }
 
 .transaction-row:focus-visible {

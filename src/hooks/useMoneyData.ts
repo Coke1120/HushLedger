@@ -11,7 +11,7 @@ import {
   updateTransactionAction,
 } from '../app/actions'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
-import { api } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import type { LedgerCurrencySettings } from '../lib/currency'
 import {
   addDemo,
@@ -38,11 +38,17 @@ import type {
   Transaction,
   TransactionClearingStatus,
   TransactionDateScope,
-  TransactionFilterSummary,
   TransactionInput,
+  TransactionPageCursor,
   TransactionSort,
   TransactionType,
 } from '../lib/schema'
+import {
+  isValidInitialTransactionPage,
+  mergeTransactionContinuation,
+  type InitialTransactionPage,
+  type TransactionContinuationPage,
+} from '../lib/transactionPagination'
 import { transactionQueryFromFilters } from '../lib/transactionQuery'
 import { actionData } from './actionResult'
 import { subscribeToForegroundRefresh } from './foregroundRefresh'
@@ -52,10 +58,25 @@ export type RefreshFailureMode = 'demo' | 'error' | 'preserve'
 
 type Snapshot = DemoSnapshot
 
-type TransactionQueryResult = {
-  transactions: Transaction[]
-  summary: TransactionFilterSummary
+type TransactionQueryResult = InitialTransactionPage
+
+type TransactionContinuationResult = TransactionContinuationPage
+
+type TransactionPageState = {
+  nextCursor: TransactionPageCursor | null
+  loading: boolean
+  error: LocalizedMessage | null
+  loadedMore: boolean
+  refreshRequired: boolean
 }
+
+const emptyTransactionPage = (): TransactionPageState => ({
+  nextCursor: null,
+  loading: false,
+  error: null,
+  loadedMore: false,
+  refreshRequired: false,
+})
 
 export function useMoneyData(
   month: string,
@@ -86,28 +107,35 @@ export function useMoneyData(
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<LocalizedMessage | null>(null)
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
+  const [transactionPage, setTransactionPage] = useState<TransactionPageState>(emptyTransactionPage)
   const [snapshotVersion, setSnapshotVersion] = useState(0)
   const requestSequence = useRef(0)
   const submitting = useRef(false)
+  const loadingMore = useRef(false)
+  const recoveringTransactionPage = useRef(false)
 
-  const fetchSnapshot = useCallback(async (): Promise<Snapshot> => {
+  const transactionQuery = useMemo(() => transactionQueryFromFilters({
+    month,
+    scope,
+    dateFrom,
+    dateTo,
+    type,
+    status,
+    accountId: registerAccountId ?? accountId,
+    categoryId,
+    amountMinor,
+    payee,
+    search,
+    tag,
+    duplicatesOnly,
+    sort,
+  }), [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
+
+  const fetchSnapshot = useCallback(async (): Promise<{
+    snapshot: Snapshot
+    nextCursor: TransactionPageCursor | null
+  }> => {
     const effectiveAccountId = registerAccountId ?? accountId
-    const transactionQuery = transactionQueryFromFilters({
-      month,
-      scope,
-      dateFrom,
-      dateTo,
-      type,
-      status,
-      accountId: effectiveAccountId,
-      categoryId,
-      amountMinor,
-      payee,
-      search,
-      tag,
-      duplicatesOnly,
-      sort,
-    })
     const transferQuery = registerAccountId === null
       ? new URLSearchParams({ month })
       : new URLSearchParams({ dateFrom, dateTo })
@@ -144,21 +172,27 @@ export function useMoneyData(
       api<EmergencyFundGoal | null>('/api/emergency-fund-goal'),
       api<LedgerCurrencySettings>('/api/ledger-settings'),
     ])
-    return {
-      reportMonth: month,
-      transactions: transactionResult.transactions,
-      accountTransfers,
-      accountBalances,
-      accountRegister,
-      netWorthTrend,
-      transactionFilterSummary: transactionResult.summary,
-      summary,
-      accounts,
-      categories,
-      emergencyFundGoal,
-      ledgerSettings,
+    if (!isValidInitialTransactionPage(transactionResult)) {
+      throw new Error('Transaction page response is inconsistent')
     }
-  }, [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
+    return {
+      snapshot: {
+        reportMonth: month,
+        transactions: transactionResult.transactions,
+        accountTransfers,
+        accountBalances,
+        accountRegister,
+        netWorthTrend,
+        transactionFilterSummary: transactionResult.summary,
+        summary,
+        accounts,
+        categories,
+        emergencyFundGoal,
+        ledgerSettings,
+      },
+      nextCursor: transactionResult.nextCursor,
+    }
+  }, [accountId, dateFrom, dateTo, month, registerAccountId, transactionQuery])
 
   const setDemoSnapshot = useCallback(() => {
     setSnapshot((current) => buildDemoSnapshot(
@@ -170,6 +204,7 @@ export function useMoneyData(
   const refresh = useCallback(
     async (failureMode: RefreshFailureMode = 'demo') => {
       const sequence = ++requestSequence.current
+      setTransactionPage(emptyTransactionPage())
       if (failureMode !== 'preserve') setSaveError(null)
 
       if (!navigator.onLine) {
@@ -184,8 +219,15 @@ export function useMoneyData(
       try {
         const next = await fetchSnapshot()
         if (sequence !== requestSequence.current) return false
-        setLedgerCurrency(next.ledgerSettings.currency)
-        setSnapshot(next)
+        setLedgerCurrency(next.snapshot.ledgerSettings.currency)
+        setSnapshot(next.snapshot)
+        setTransactionPage({
+          nextCursor: next.nextCursor,
+          loading: false,
+          error: null,
+          loadedMore: false,
+          refreshRequired: false,
+        })
         setSnapshotVersion((current) => current + 1)
         setSource('live')
         setOnline(true)
@@ -222,6 +264,7 @@ export function useMoneyData(
     }
     const handleOffline = () => {
       requestSequence.current += 1
+      setTransactionPage(emptyTransactionPage())
       setOnline(false)
       setDemoSnapshot()
       setSource('demo')
@@ -233,6 +276,98 @@ export function useMoneyData(
       window.removeEventListener('offline', handleOffline)
     }
   }, [refresh, setDemoSnapshot])
+
+  const recoverTransactionPage = useCallback(async () => {
+    if (recoveringTransactionPage.current) return false
+    recoveringTransactionPage.current = true
+    try {
+      const refreshPromise = refresh('preserve')
+      const recoverySequence = requestSequence.current
+      setTransactionPage((current) => ({
+        ...current,
+        loading: true,
+        error: null,
+        refreshRequired: true,
+      }))
+      const refreshed = await refreshPromise
+      if (requestSequence.current !== recoverySequence) return false
+      setTransactionPage((current) => ({
+        ...current,
+        loading: false,
+        error: message(refreshed ? 'transactionPageChanged' : 'transactionLoadMoreFailed'),
+        refreshRequired: !refreshed,
+      }))
+      return refreshed
+    } finally {
+      recoveringTransactionPage.current = false
+    }
+  }, [refresh])
+
+  const loadMoreTransactions = useCallback(async () => {
+    const cursor = transactionPage.nextCursor
+    if (
+      !cursor
+      || transactionPage.loading
+      || loadingMore.current
+      || submitting.current
+      || source !== 'live'
+      || !online
+    ) return false
+
+    const sequence = requestSequence.current
+    const currentTransactions = snapshot.transactions
+    const total = snapshot.transactionFilterSummary.transactionCount
+    loadingMore.current = true
+    setTransactionPage((current) => (
+      current.nextCursor === cursor
+        ? { ...current, loading: true, error: null, refreshRequired: false }
+        : current
+    ))
+
+    try {
+      const page = await api<TransactionContinuationResult>('/api/transactions/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...transactionQuery, cursor }),
+      })
+      if (sequence !== requestSequence.current) return false
+
+      const merged = mergeTransactionContinuation(currentTransactions, total, cursor, page)
+      if (merged.kind === 'invalid') {
+        await recoverTransactionPage()
+        return false
+      }
+
+      setSnapshot((current) => ({ ...current, transactions: merged.transactions }))
+      setTransactionPage({
+        nextCursor: merged.nextCursor,
+        loading: false,
+        error: null,
+        loadedMore: true,
+        refreshRequired: false,
+      })
+      return true
+    } catch (error) {
+      if (sequence !== requestSequence.current) return false
+      if (error instanceof ApiError && error.code === 'TRANSACTION_CURSOR_STALE') {
+        await recoverTransactionPage()
+        return false
+      }
+      setTransactionPage((current) => (
+        current.nextCursor === cursor
+          ? {
+              ...current,
+              loading: false,
+              error: message('transactionLoadMoreFailed'),
+              refreshRequired: false,
+            }
+          : current
+      ))
+      return false
+    } finally {
+      loadingMore.current = false
+    }
+  }, [online, recoverTransactionPage, snapshot.transactionFilterSummary.transactionCount, snapshot.transactions, source, transactionPage.loading, transactionPage.nextCursor, transactionQuery])
 
   const saveTransaction = useCallback(
     async (input: TransactionInput, original?: Transaction) => {
@@ -578,9 +713,16 @@ export function useMoneyData(
     online,
     saving,
     snapshotVersion,
+    transactionPageHasMore: source === 'live' && transactionPage.nextCursor !== null,
+    transactionPageLoading: transactionPage.loading,
+    transactionPageError: renderMessage(t, transactionPage.error),
+    transactionPageLoadedMore: transactionPage.loadedMore,
+    transactionPageRefreshRequired: transactionPage.refreshRequired,
     saveError: renderMessage(t, saveError),
     actionMessage: renderMessage(t, actionMessage),
     refresh,
+    loadMoreTransactions,
+    retryTransactionPageRefresh: recoverTransactionPage,
     saveTransaction,
     removeTransaction,
     setSelectedTransactionsCategory,

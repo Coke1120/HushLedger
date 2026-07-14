@@ -112,24 +112,26 @@ knowledge and explains every command and dashboard click.
   changes in another tab, the preserved draft keeps its opening currency and
   cannot be saved until the form is reopened against the new ledger state.
 - Stack search, exact amount, income/expense, cleared/uncleared, account, category,
-  and exact possible-duplicate filters across the 200 most recent matching
-  transactions. An invalid amount draft never removes an already-applied exact
-  filter or broadens the result.
+  and exact possible-duplicate filters across matching transactions. The first
+  200 rows in the selected order load privately, and an explicit control loads
+  the next 200 without putting filters or cursor data in the URL or browser
+  storage. An invalid amount draft never removes an already-applied exact filter
+  or broadens the result.
   Review the selected month, the seven Hong Kong calendar dates ending when the
   page loaded, one-click 12 complete calendar months through the selected month,
   an inclusive custom date range, or all history without changing the monthly
   overview, balances, transfers, plans, or forecasts. Both quick reviews become
   visible fixed inclusive ranges; the 12-month range becomes custom if later
   month navigation would otherwise move it. Inactive references remain available
-  for historical review, and the result limit is disclosed explicitly.
+  for historical review, and the loaded count is disclosed explicitly.
   Duplicate review is read-only and marks candidates instead of deleting either
   entry.
 - Order a transaction review by newest or oldest date, largest or smallest
   amount, or payee name. The order is strictly validated and also applies to the
   complete CSV export; blank payees remain last.
 - Review the exact match count, income, expense, and net amount for the current
-  transaction filters. These totals cover every match, not only the 200 rows kept
-  in the interactive list.
+  transaction filters. These totals cover every match, not only the rows currently
+  loaded in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
   their selected-month, fixed custom-range, or all-history scope plus type,
   clearing, account, category, exact payee, exact amount, search, tag,
@@ -143,7 +145,7 @@ knowledge and explains every command and dashboard click.
   directly, even when a complete uncleared review has loaded an older row whose
   full editor record is outside the current screen data. Loaded editor rows still
   open the full editor.
-- Explicitly select any of the 200 visible ledger rows to mark them cleared or
+- Explicitly select up to 200 visible ledger rows to mark them cleared or
   uncleared together, or move a same-type selection to another active category.
   Each change is all-or-none: if any selected row has changed in another session,
   HushLedger leaves the complete selection untouched. Hidden matches are never
@@ -625,7 +627,7 @@ configured Cron schedule, reference-data lifecycle and safety guards,
 recurring-rule CRUD, race-safe idempotency, and history preservation. It proves
 that transfers leave total net worth unchanged, incomplete opening-balance
 history is exposed, and neither filtered transaction CSV nor account-register
-CSV export is truncated by the interactive 200-row limit. It
+CSV export is truncated by the interactive 200-row page size. It
 also starts local Next.js with a fake
 OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
@@ -766,11 +768,17 @@ disabling the last active choice, a choice used by an active recurring transacti
 rule, or either account used by an active scheduled transfer.
 
 Transactions default to newest-first and accept only the documented date,
-amount, or payee ordering values. A response contains at most 200 transactions.
-When more rows match, the UI states exactly
-how many are visible out of the complete result. The adjacent filtered summary
-uses a separate order-independent aggregate query over every match, so its count,
-income, expense, and signed net are not truncated by the list limit. Monthly and
+amount, or payee ordering values. A private query response contains at most 200
+transactions and an optional continuation cursor held only in current React
+memory. The cursor is bound to the parsed filters, exact ordering tuple, and the
+trigger-maintained D1 ledger revision; a changed ledger rejects continuation and
+refreshes page one instead of mixing snapshots. The UI states exactly how many
+rows are loaded out of the complete result and loads another page only after an
+explicit action. The cursor is a private-UI consistency guard, not an authorization
+token; Cloudflare Access and the same-origin boundary remain authoritative. The
+first-page filtered summary uses a separate order-independent
+aggregate query over every match, so its count, income, expense, and signed net
+are not truncated by the page size. Monthly and
 filtered reports fail closed if otherwise-valid entries would combine beyond
 JavaScript's exact safe-integer range; HushLedger never returns a rounded money
 total as if it were exact. The optional `status` filter is shared by the aggregate

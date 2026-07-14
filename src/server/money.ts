@@ -17,6 +17,7 @@ import {
   type RecurringTransferForecastRule,
 } from '../lib/recurringForecast'
 import { buildMonthlySpendingTrend } from '../lib/spendingTrend'
+import { TRANSACTION_PAGE_SIZE } from '../lib/schema'
 import type {
   Account,
   AccountBalance,
@@ -34,6 +35,8 @@ import type {
   TransactionClearingBatchInput,
   TransactionFilterSummary,
   TransactionInput,
+  TransactionPageCursor,
+  TransactionPageQuery,
   TransactionQuery,
   TransactionSort,
   TransactionUpdateInput,
@@ -54,6 +57,7 @@ type TransactionRow = {
   occurredOn: string
   cleared: number
   payee: string
+  payeeBlank: 0 | 1
   note: string
   accountName: string
   accountLocalizationKey: AccountLocalizationKey | null
@@ -90,6 +94,11 @@ export type TransactionView = Omit<Transaction, 'recurringRuleId' | 'recurringRu
   recurringRuleId: string | null
   recurringRuleName: string | null
   recurrenceDueOn: string | null
+}
+
+export type TransactionPage = {
+  transactions: TransactionView[]
+  nextCursor: TransactionPageCursor | null
 }
 
 export type CreateTransactionResult =
@@ -135,6 +144,7 @@ const transactionSelect = `
     t.occurred_on AS occurredOn,
     t.cleared,
     t.payee,
+    (trim(t.payee) = '') AS payeeBlank,
     t.note,
     a.name AS accountName,
     a.localization_key AS accountLocalizationKey,
@@ -374,14 +384,140 @@ export async function listTransactions(
   database: D1Database,
   query: TransactionQuery,
 ): Promise<TransactionView[]> {
-  return selectTransactions(database, query, true)
+  return selectTransactions(database, query, TRANSACTION_PAGE_SIZE)
 }
 
 export async function listTransactionsForExport(
   database: D1Database,
   query: TransactionQuery,
 ): Promise<TransactionView[]> {
-  return selectTransactions(database, query, false)
+  return selectTransactions(database, query, null)
+}
+
+export async function readLedgerRevision(database: D1Database) {
+  const row = await database.prepare('SELECT revision FROM ledger_state WHERE id = 1')
+    .first<{ revision: number }>()
+  if (!row || !Number.isSafeInteger(row.revision) || row.revision < 1) {
+    throw new Error('Ledger revision is missing or unsafe')
+  }
+  return row.revision
+}
+
+export function transactionPageQueryKey(query: TransactionPageQuery) {
+  const filters = { ...query }
+  delete filters.cursor
+  const sort = filters.sort ?? 'date_desc'
+  delete filters.sort
+  return JSON.stringify({ ...filters, sort })
+}
+
+export async function listTransactionPage(
+  database: D1Database,
+  query: TransactionPageQuery,
+  revision: number,
+): Promise<TransactionPage> {
+  if (!Number.isSafeInteger(revision) || revision < 1) {
+    throw new Error('Transaction page revision is unsafe')
+  }
+  const queryKey = transactionPageQueryKey(query)
+  if (query.cursor && (
+    query.cursor.revision !== revision
+    || query.cursor.queryKey !== queryKey
+  )) {
+    throw new Error('Transaction cursor does not match its snapshot or query')
+  }
+
+  const rows = await selectTransactionRows(
+    database,
+    query,
+    TRANSACTION_PAGE_SIZE + 1,
+    query.cursor ?? null,
+  )
+  const pageRows = rows.slice(0, TRANSACTION_PAGE_SIZE)
+  const lastRow = pageRows.at(-1)
+  const nextCursor = rows.length > TRANSACTION_PAGE_SIZE && lastRow
+    ? transactionCursor(lastRow, query.sort ?? 'date_desc', revision, queryKey)
+    : null
+
+  return {
+    transactions: pageRows.map(transactionView),
+    nextCursor,
+  }
+}
+
+type TransactionCursorColumn = {
+  expression: string
+  direction: 'ASC' | 'DESC'
+  value: (cursor: TransactionPageCursor) => string | number
+}
+
+const baseDescendingColumns: readonly TransactionCursorColumn[] = [
+  { expression: 't.occurred_on', direction: 'DESC', value: (cursor) => cursor.occurredOn },
+  { expression: 't.created_at', direction: 'DESC', value: (cursor) => cursor.createdAt },
+  { expression: 't.id', direction: 'DESC', value: (cursor) => cursor.id },
+]
+
+const transactionSortColumns: Record<TransactionSort, readonly TransactionCursorColumn[]> = {
+  date_desc: baseDescendingColumns,
+  date_asc: [
+    { expression: 't.occurred_on', direction: 'ASC', value: (cursor) => cursor.occurredOn },
+    { expression: 't.created_at', direction: 'ASC', value: (cursor) => cursor.createdAt },
+    { expression: 't.id', direction: 'ASC', value: (cursor) => cursor.id },
+  ],
+  amount_desc: [
+    { expression: 't.amount_minor', direction: 'DESC', value: (cursor) => cursor.amountMinor },
+    ...baseDescendingColumns,
+  ],
+  amount_asc: [
+    { expression: 't.amount_minor', direction: 'ASC', value: (cursor) => cursor.amountMinor },
+    ...baseDescendingColumns,
+  ],
+  payee_asc: [
+    { expression: "(trim(t.payee) = '')", direction: 'ASC', value: (cursor) => cursor.payeeBlank },
+    { expression: 't.payee COLLATE NOCASE', direction: 'ASC', value: (cursor) => cursor.payee },
+    ...baseDescendingColumns,
+  ],
+  payee_desc: [
+    { expression: "(trim(t.payee) = '')", direction: 'ASC', value: (cursor) => cursor.payeeBlank },
+    { expression: 't.payee COLLATE NOCASE', direction: 'DESC', value: (cursor) => cursor.payee },
+    ...baseDescendingColumns,
+  ],
+}
+
+function transactionCursor(
+  row: TransactionRow,
+  sort: TransactionSort,
+  revision: number,
+  queryKey: string,
+): TransactionPageCursor {
+  return {
+    version: 1,
+    revision,
+    queryKey,
+    sort,
+    payeeBlank: row.payeeBlank,
+    amountMinor: row.amountMinor,
+    occurredOn: row.occurredOn,
+    payee: row.payee,
+    createdAt: row.createdAt,
+    id: row.id,
+  }
+}
+
+function transactionCursorWhere(cursor: TransactionPageCursor) {
+  const columns = transactionSortColumns[cursor.sort]
+  const values: Array<string | number> = []
+  const alternatives = columns.map((column, index) => {
+    const conditions: string[] = []
+    for (const prior of columns.slice(0, index)) {
+      conditions.push(`${prior.expression} = ?`)
+      values.push(prior.value(cursor))
+    }
+    conditions.push(`${column.expression} ${column.direction === 'ASC' ? '>' : '<'} ?`)
+    values.push(column.value(cursor))
+    return `(${conditions.join(' AND ')})`
+  })
+  return { clause: alternatives.join(' OR '), values }
 }
 
 function transactionQueryWhere(query: TransactionQuery) {
@@ -471,7 +607,7 @@ export async function summarizeTransactions(
   if (query.payee) {
     // ponytail: D1 has no Unicode case folding; scan the already-filtered personal ledger.
     // Add an indexed normalized payee key if this becomes a measured bottleneck.
-    const transactions = await selectTransactions(database, query, false)
+    const transactions = await selectTransactions(database, query, null)
     return { transactionCount: transactions.length, ...exactTransactionTotals(transactions) }
   }
 
@@ -503,34 +639,42 @@ export async function summarizeTransactions(
 async function selectTransactions(
   database: D1Database,
   query: TransactionQuery,
-  limited: boolean,
+  limit: number | null,
 ): Promise<TransactionView[]> {
+  return (await selectTransactionRows(database, query, limit, null)).map(transactionView)
+}
+
+async function selectTransactionRows(
+  database: D1Database,
+  query: TransactionQuery | TransactionPageQuery,
+  limit: number | null,
+  cursor: TransactionPageCursor | null,
+): Promise<TransactionRow[]> {
   const { clause, values } = transactionQueryWhere(query)
   const normalizedPayee = query.payee ? normalizePayee(query.payee) : null
-  const orderBy: Record<TransactionSort, string> = {
-    date_desc: 't.occurred_on DESC, t.created_at DESC, t.id DESC',
-    date_asc: 't.occurred_on ASC, t.created_at ASC, t.id ASC',
-    amount_desc: 't.amount_minor DESC, t.occurred_on DESC, t.created_at DESC, t.id DESC',
-    amount_asc: 't.amount_minor ASC, t.occurred_on DESC, t.created_at DESC, t.id DESC',
-    payee_asc: "(trim(t.payee) = '') ASC, t.payee COLLATE NOCASE ASC, t.occurred_on DESC, t.created_at DESC, t.id DESC",
-    payee_desc: "(trim(t.payee) = '') ASC, t.payee COLLATE NOCASE DESC, t.occurred_on DESC, t.created_at DESC, t.id DESC",
-  }
+  const sort = query.sort ?? 'date_desc'
+  const cursorWhere = cursor ? transactionCursorWhere(cursor) : null
+  const bindings = [...values, ...(cursorWhere?.values ?? [])]
+  const sqlLimit = limit !== null && normalizedPayee === null
+  if (sqlLimit) bindings.push(limit)
 
   const result = await database.prepare(`
     ${transactionSelect}
-    WHERE ${clause}
-    ORDER BY ${orderBy[query.sort ?? 'date_desc']}
-    ${limited && normalizedPayee === null ? 'LIMIT 200' : ''}
+    WHERE (${clause})
+      ${cursorWhere ? `AND (${cursorWhere.clause})` : ''}
+    ORDER BY ${transactionSortColumns[sort]
+      .map(({ expression, direction }) => `${expression} ${direction}`)
+      .join(', ')}
+    ${sqlLimit ? 'LIMIT ?' : ''}
   `)
-    .bind(...values)
+    .bind(...bindings)
     .all<TransactionRow>()
 
-  const transactions = result.results
-    .map(transactionView)
-    .filter((transaction) => (
-      normalizedPayee === null || normalizePayee(transaction.payee) === normalizedPayee
+  const rows = result.results
+    .filter((row) => (
+      normalizedPayee === null || normalizePayee(row.payee) === normalizedPayee
     ))
-  return limited ? transactions.slice(0, 200) : transactions
+  return limit === null ? rows : rows.slice(0, limit)
 }
 
 export async function createTransaction(
@@ -1107,7 +1251,11 @@ export async function getTransaction(database: D1Database, id: string) {
 }
 
 function transactionView(row: TransactionRow): TransactionView {
-  return { ...row, cleared: row.cleared === 1 }
+  const { payeeBlank, ...transaction } = row
+  if (payeeBlank !== 0 && payeeBlank !== 1) {
+    throw new Error('Transaction payee sort rank is invalid')
+  }
+  return { ...transaction, cleared: row.cleared === 1 }
 }
 
 function matchesInput(transaction: TransactionView, input: TransactionInput) {

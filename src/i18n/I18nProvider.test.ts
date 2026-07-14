@@ -53,6 +53,7 @@ describe('message catalogs', () => {
 
   it('uses locale-aware singular messages', () => {
     assert.equal(translate('en', 'transactionCount', { count: 1 }), '1 transaction')
+    assert.equal(translate('en', 'loadMoreTransactions', { count: 1 }), 'Load 1 more transaction')
     assert.equal(translate('fr', 'recurringRuleCount', { count: 1 }), '1 règle')
     assert.equal(translate('fr', 'recurringRuleCount', { count: 0 }), '0 règles')
     assert.equal(

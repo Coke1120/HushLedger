@@ -62,11 +62,12 @@ not operate an independent database server or a multi-user identity system.
   transfer amounts outside exact income, expense, net, and weekly cash-flow
   totals; keep every forecast separate from recorded or available balance, and
   direct the user to the provider statement for the actual date and amount.
-- Browse the latest 200 matching transactions for the selected month, a one-click
-  fixed range of 12 complete calendar months through it, any other inclusive
-  fixed date range, or all history; the UI explicitly discloses the cap when it
-  is reached. Widening the transaction date scope does not change monthly reports
-  or account math.
+- Browse matching transactions for the selected month, a one-click fixed range
+  of 12 complete calendar months through it, any other inclusive fixed date
+  range, or all history. Load the first 200 in the selected order, disclose the
+  complete count, and explicitly load subsequent 200-row pages from a volatile,
+  revision-bound cursor. Widening the transaction date scope does not change
+  monthly reports or account math.
 - Search payee, note, account, or category.
 - Find transactions by one exact positive amount in the ledger currency. Parse the
   draft locally, fail closed on invalid input, and apply the same server predicate
@@ -83,7 +84,7 @@ not operate an independent database server or a multi-user identity system.
 - Order the current transaction scope by date, amount, or payee in either
   direction while keeping the default newest-first overview and blank payees last.
 - Show exact count, income, expense, and signed net for every transaction matching
-  the current filters, independently of the interactive 200-row display cap.
+  the current filters, independently of the interactive 200-row page size.
 - Save up to eight validated, named date-scope, filter, and ordering combinations
   in the current browser and reapply them without storing a particular month,
   transaction rows, or cloud metadata. A saved exact-amount criterion is a
@@ -325,7 +326,7 @@ GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
 GET    /api/payee-suggestions
-POST   /api/transactions/query  (primary private body query; ordered 200 plus uncapped aggregate)
+POST   /api/transactions/query  (private ordered page, first-page aggregate, revision-bound continuation)
 GET    /api/transactions?...  (legacy URL-query compatibility; ordered 200)
 GET    /api/transactions/summary?...  (legacy URL-query compatibility; uncapped aggregate)
 POST   /api/transactions

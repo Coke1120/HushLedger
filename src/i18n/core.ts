@@ -49,6 +49,7 @@ const entityMessageKeys: Readonly<Record<string, MessageKey>> = {
 
 const singularMessageKeys: Partial<Record<MessageKey, MessageKey>> = {
   transactionCount: 'transactionCountOne',
+  loadMoreTransactions: 'loadMoreTransactionsOne',
   unclearedCount: 'unclearedCountOne',
   recurringRuleCount: 'recurringRuleCountOne',
   generatedCount: 'generatedCountOne',

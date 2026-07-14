@@ -31,6 +31,8 @@ const calendarDateSchema = z
   .refine(isValidCalendarDate, '交易日期必須是有效的 YYYY-MM-DD 日期')
 
 export const transactionIdSchema = z.string().uuid('交易 ID 必須是 UUID')
+export const MAX_TRANSACTION_BATCH_SIZE = 200
+export const TRANSACTION_PAGE_SIZE = 200
 export const MAX_TRANSACTION_BATCH_REQUEST_BYTES = 32 * 1024
 
 const transactionFieldsSchema = z.object({
@@ -66,7 +68,7 @@ const transactionVersionSchema = z
 const transactionVersionBatchSchema = z
   .array(transactionVersionSchema)
   .min(1)
-  .max(200)
+  .max(MAX_TRANSACTION_BATCH_SIZE)
   .superRefine((transactions, context) => {
     const ids = new Set<string>()
     transactions.forEach((transaction, index) => {
@@ -204,30 +206,68 @@ export const transactionQueryFieldsSchema = z
   })
   .strict()
 
-export const transactionQuerySchema = transactionQueryFieldsSchema
-  .superRefine((query, context) => {
-    if (query.scope === 'range') {
-      if (!query.dateFrom) {
-        context.addIssue({ code: 'custom', path: ['dateFrom'], message: '自訂日期範圍需要開始日期' })
-      }
-      if (!query.dateTo) {
-        context.addIssue({ code: 'custom', path: ['dateTo'], message: '自訂日期範圍需要結束日期' })
-      }
-      if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
-        context.addIssue({ code: 'custom', path: ['dateTo'], message: '結束日期不得早於開始日期' })
-      }
-      return
-    }
+type TransactionQueryFields = z.infer<typeof transactionQueryFieldsSchema>
 
-    if (query.dateFrom !== undefined) {
-      context.addIssue({ code: 'custom', path: ['dateFrom'], message: '此日期範圍不接受開始日期' })
+function validateTransactionQueryRange(
+  query: TransactionQueryFields,
+  context: z.RefinementCtx,
+) {
+  if (query.scope === 'range') {
+    if (!query.dateFrom) {
+      context.addIssue({ code: 'custom', path: ['dateFrom'], message: '自訂日期範圍需要開始日期' })
     }
-    if (query.dateTo !== undefined) {
-      context.addIssue({ code: 'custom', path: ['dateTo'], message: '此日期範圍不接受結束日期' })
+    if (!query.dateTo) {
+      context.addIssue({ code: 'custom', path: ['dateTo'], message: '自訂日期範圍需要結束日期' })
+    }
+    if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
+      context.addIssue({ code: 'custom', path: ['dateTo'], message: '結束日期不得早於開始日期' })
+    }
+    return
+  }
+
+  if (query.dateFrom !== undefined) {
+    context.addIssue({ code: 'custom', path: ['dateFrom'], message: '此日期範圍不接受開始日期' })
+  }
+  if (query.dateTo !== undefined) {
+    context.addIssue({ code: 'custom', path: ['dateTo'], message: '此日期範圍不接受結束日期' })
+  }
+}
+
+export const transactionQuerySchema = transactionQueryFieldsSchema
+  .superRefine(validateTransactionQueryRange)
+
+export const transactionPageCursorSchema = z
+  .object({
+    version: z.literal(1),
+    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    queryKey: z.string().min(1).max(1024),
+    sort: transactionSortSchema,
+    payeeBlank: z.union([z.literal(0), z.literal(1)]),
+    amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    occurredOn: calendarDateSchema,
+    payee: z.string().max(80),
+    createdAt: z.string().datetime({ offset: true }),
+    id: transactionIdSchema,
+  })
+  .strict()
+
+export const transactionPageQuerySchema = transactionQueryFieldsSchema
+  .extend({ cursor: transactionPageCursorSchema.optional() })
+  .strict()
+  .superRefine((query, context) => {
+    validateTransactionQueryRange(query, context)
+    if (query.cursor && query.cursor.sort !== (query.sort ?? 'date_desc')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['cursor', 'sort'],
+        message: '續載游標必須使用相同排序',
+      })
     }
   })
 
 export type TransactionQuery = z.infer<typeof transactionQuerySchema>
+export type TransactionPageCursor = z.infer<typeof transactionPageCursorSchema>
+export type TransactionPageQuery = z.infer<typeof transactionPageQuerySchema>
 export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 export type TransactionCategoryBatchInput = z.infer<typeof transactionCategoryBatchSchema>

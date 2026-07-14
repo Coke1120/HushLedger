@@ -1,4 +1,4 @@
-import { transactionQuerySchema } from '../../../../lib/schema'
+import { transactionPageQuerySchema } from '../../../../lib/schema'
 import { getDatabase } from '../../../../server/db'
 import {
   apiNotFound,
@@ -9,7 +9,12 @@ import {
   readApiJson,
   sanitizeValidationIssues,
 } from '../../../../server/http'
-import { listTransactions, summarizeTransactions } from '../../../../server/money'
+import {
+  listTransactionPage,
+  readLedgerRevision,
+  summarizeTransactions,
+  transactionPageQueryKey,
+} from '../../../../server/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +25,7 @@ export const POST = apiRoute(async (request) => {
   const body = await readApiJson(request)
   if (!body.ok) return body.response
 
-  const parsed = transactionQuerySchema.safeParse(body.data)
+  const parsed = transactionPageQuerySchema.safeParse(body.data)
   if (!parsed.success) {
     return jsonError(
       400,
@@ -31,11 +36,28 @@ export const POST = apiRoute(async (request) => {
   }
 
   const database = await getDatabase()
-  const [transactions, summary] = await Promise.all([
-    listTransactions(database, parsed.data),
-    summarizeTransactions(database, parsed.data),
-  ])
-  return jsonSuccess({ transactions, summary })
+  const cursor = parsed.data.cursor
+  if (cursor && cursor.queryKey !== transactionPageQueryKey(parsed.data)) {
+    return jsonError(400, 'INVALID_CURSOR', '交易續載游標不符合目前篩選條件')
+  }
+
+  for (let attempt = 0; attempt < (cursor ? 1 : 2); attempt += 1) {
+    const revision = await readLedgerRevision(database)
+    if (cursor && cursor.revision !== revision) {
+      return jsonError(409, 'TRANSACTION_CURSOR_STALE', '帳本已變更，請從最新交易重新載入')
+    }
+
+    const [page, summary] = await Promise.all([
+      listTransactionPage(database, parsed.data, revision),
+      cursor ? Promise.resolve(null) : summarizeTransactions(database, parsed.data),
+    ])
+    if (await readLedgerRevision(database) === revision) {
+      return jsonSuccess(summary ? { ...page, summary } : page)
+    }
+    if (cursor) break
+  }
+
+  return jsonError(409, 'TRANSACTION_CURSOR_STALE', '帳本在載入期間已變更，請再試一次')
 })
 
 export const HEAD = apiNotFound

@@ -37,6 +37,7 @@ import { useI18n } from './i18n'
 import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
+import { TRANSACTION_PAGE_SIZE } from './lib/schema'
 import {
   addSavedTransactionView,
   applySavedTransactionViewsStorageChange,
@@ -110,6 +111,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiImportButtonRef = useRef<HTMLButtonElement>(null)
   const importPanelRef = useRef<HTMLElement>(null)
+  const transactionLoadStatusRef = useRef<HTMLParagraphElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
   const selectedMonthDateRange = inclusiveMonthRangeDates(month)
@@ -546,6 +548,20 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     if (view === 'transactions' && importMode) importPanelRef.current?.focus()
   }, [importMode, view])
 
+  useEffect(() => {
+    if (
+      data.transactionPageLoadedMore
+      && !data.transactionPageHasMore
+      && !data.transactionPageLoading
+    ) {
+      transactionLoadStatusRef.current?.focus({ preventScroll: true })
+    }
+  }, [
+    data.transactionPageHasMore,
+    data.transactionPageLoadedMore,
+    data.transactionPageLoading,
+  ])
+
   const viewTitle =
     view === 'overview'
       ? t('overview')
@@ -566,6 +582,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
           total: data.transactionFilterSummary.transactionCount,
         })
       : t('transactionCount', { count: data.transactionFilterSummary.transactionCount })
+  const transactionLoadMoreCount = Math.min(
+    TRANSACTION_PAGE_SIZE,
+    Math.max(0, data.transactionFilterSummary.transactionCount - data.transactions.length),
+  )
 
   return (
     <div className="app-shell">
@@ -817,35 +837,78 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               />
             ) : null}
             {registerAccountId === null ? (
-              <TransactionList
-                key={[
-                  month,
-                  transactionDateScope,
-                  transactionDateRange.from,
-                  transactionDateRange.to,
-                  view,
-                  filter,
-                  clearingFilter,
-                  accountFilterId,
-                  categoryFilterId,
-                  payeeFilter,
-                  deferredSearch,
-                  tagFilter,
-                  duplicatesOnly,
-                  transactionSort,
-                ].join('|')}
-                transactions={transactions}
-                categories={data.categories}
-                loading={loading}
-                tagFilter={tagFilter}
-                duplicateReview={duplicatesOnly}
-                allowBulkActions={view === 'transactions'}
-                saving={data.saving}
-                onEdit={openTransaction}
-                onTagSelect={changeTagFilter}
-                onSetCategory={setSelectedTransactionsCategory}
-                onSetClearing={setSelectedTransactionsClearing}
-              />
+              <>
+                <TransactionList
+                  key={[
+                    month,
+                    transactionDateScope,
+                    transactionDateRange.from,
+                    transactionDateRange.to,
+                    view,
+                    filter,
+                    clearingFilter,
+                    accountFilterId,
+                    categoryFilterId,
+                    payeeFilter,
+                    amountFilterMinor,
+                    deferredSearch,
+                    tagFilter,
+                    duplicatesOnly,
+                    transactionSort,
+                    data.snapshotVersion,
+                  ].join('|')}
+                  transactions={transactions}
+                  categories={data.categories}
+                  loading={loading}
+                  tagFilter={tagFilter}
+                  duplicateReview={duplicatesOnly}
+                  allowBulkActions={view === 'transactions'}
+                  saving={data.saving}
+                  onEdit={openTransaction}
+                  onTagSelect={changeTagFilter}
+                  onSetCategory={setSelectedTransactionsCategory}
+                  onSetClearing={setSelectedTransactionsClearing}
+                />
+                {view === 'transactions' && (
+                  data.transactionPageHasMore
+                  || data.transactionPageLoading
+                  || data.transactionPageError
+                  || data.transactionPageLoadedMore
+                  || data.transactionPageRefreshRequired
+                ) ? (
+                  <div className="transaction-load-more" aria-live="polite">
+                    {data.transactionPageHasMore ? (
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        disabled={ledgerInteractionLocked || data.transactionPageLoading}
+                        onClick={() => void data.loadMoreTransactions()}
+                      >
+                        {t(data.transactionPageLoading
+                          ? 'loadingMoreTransactions'
+                          : 'loadMoreTransactions', { count: transactionLoadMoreCount })}
+                      </button>
+                    ) : null}
+                    {data.transactionPageRefreshRequired ? (
+                      <button
+                        className="button button-secondary"
+                        type="button"
+                        disabled={ledgerInteractionLocked || data.transactionPageLoading}
+                        onClick={() => void data.retryTransactionPageRefresh()}
+                      >
+                        {t('retry')}
+                      </button>
+                    ) : null}
+                    {data.transactionPageError ? (
+                      <p role="status">{data.transactionPageError}</p>
+                    ) : !data.transactionPageHasMore && data.transactionPageLoadedMore ? (
+                      <p ref={transactionLoadStatusRef} role="status" tabIndex={-1}>
+                        {t('allMatchingTransactionsLoaded')}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </section>
         </div>
