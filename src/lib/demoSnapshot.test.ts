@@ -3,7 +3,7 @@ import { describe, it } from 'node:test'
 import { addDemo, deleteDemo, demoAccounts, demoTransactions } from './demo'
 import { buildDemoSnapshot } from './demoSnapshot'
 
-function snapshot(currency?: 'HKD' | 'USD', duplicatesOnly = false) {
+function snapshot(currency?: 'HKD' | 'USD', duplicatesOnly = false, amountMinor: number | null = null) {
   return buildDemoSnapshot(
     '2026-07',
     'all',
@@ -18,6 +18,7 @@ function snapshot(currency?: 'HKD' | 'USD', duplicatesOnly = false) {
     'month',
     '',
     '',
+    amountMinor,
     currency,
   )
 }
@@ -69,5 +70,17 @@ describe('demo snapshot currency', () => {
     } finally {
       deleteDemo(duplicate.id)
     }
+  })
+
+  it('keeps exact-amount list and summary filters aligned', () => {
+    const filtered = snapshot(undefined, false, 38_640)
+
+    assert.deepEqual(filtered.transactions.map(({ amountMinor }) => amountMinor), [38_640])
+    assert.deepEqual(filtered.transactionFilterSummary, {
+      transactionCount: 1,
+      income: 0,
+      expense: 38_640,
+      net: -38_640,
+    })
   })
 })

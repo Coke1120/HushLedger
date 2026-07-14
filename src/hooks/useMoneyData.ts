@@ -70,12 +70,13 @@ export function useMoneyData(
   dateFrom: string,
   dateTo: string,
   registerAccountId: number | null,
+  amountMinor: number | null = null,
 ) {
   const { setLedgerCurrency, t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
     buildDemoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo,
+      dateFrom, dateTo, amountMinor,
     )
   ))
   const [source, setSource] = useState<DataSource>('loading')
@@ -97,6 +98,7 @@ export function useMoneyData(
       status,
       accountId: effectiveAccountId,
       categoryId,
+      amountMinor,
       payee,
       search,
       tag,
@@ -153,14 +155,14 @@ export function useMoneyData(
       emergencyFundGoal,
       ledgerSettings,
     }
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
+  }, [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
   const setDemoSnapshot = useCallback(() => {
     setSnapshot((current) => buildDemoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo, current.ledgerSettings.currency,
+      dateFrom, dateTo, amountMinor, current.ledgerSettings.currency,
     ))
-  }, [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, sort, status, tag, type])
+  }, [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, sort, status, tag, type])
 
   const refresh = useCallback(
     async (failureMode: RefreshFailureMode = 'demo') => {
@@ -505,7 +507,7 @@ export function useMoneyData(
             ...snapshot,
             transactions: getDemoTransactions(
               month, type, search, t, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-              dateFrom, dateTo, payee, snapshot.ledgerSettings.currency,
+              dateFrom, dateTo, payee, snapshot.ledgerSettings.currency, amountMinor,
             ),
             transactionFilterSummary: summarizeDemoTransactions(
               month,
@@ -522,11 +524,12 @@ export function useMoneyData(
               dateTo,
               payee,
               snapshot.ledgerSettings.currency,
+              amountMinor,
             ),
             summary: demoSummary(month, t),
           }
         : snapshot,
-    [accountId, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, snapshot, sort, source, status, t, tag, type],
+    [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, snapshot, sort, source, status, t, tag, type],
   )
 
   const clearActionMessage = useCallback(() => setActionMessage(null), [])

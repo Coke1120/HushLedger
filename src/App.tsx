@@ -84,6 +84,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [payeeFilter, setPayeeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [amountFilterMinor, setAmountFilterMinor] = useState<number | null>(null)
   const [tagFilter, setTagFilter] = useState<string | null>(null)
   const [transactionSort, setTransactionSort] = useState<TransactionSort>('date_desc')
   const [transactionDateScope, setTransactionDateScope] = useState<TransactionDateScope>('month')
@@ -144,6 +145,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     effectiveTransactionDateRange.from,
     effectiveTransactionDateRange.to,
     registerAccountId,
+    registerAccountId === null ? amountFilterMinor : null,
   )
   const {
     clearActionMessage,
@@ -320,6 +322,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     const category = data.categories.find((item) => item.id === categoryId)
     if (!category) return
     setSearch('')
+    setAmountFilterMinor(null)
     setTransactionDateScope('month')
     setTagFilter(null)
     setDuplicatesOnly(false)
@@ -335,6 +338,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
 
   const openPayeeTransactions = useCallback((payee: string) => {
     setSearch('')
+    setAmountFilterMinor(null)
     setTransactionDateScope('month')
     setTagFilter(null)
     setDuplicatesOnly(false)
@@ -351,6 +355,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const openAccountRegister = useCallback((accountId: number, mode: 'review' | 'reconcile') => {
     if (!data.accounts.some((account) => account.id === accountId)) return
     setSearch('')
+    setAmountFilterMinor(null)
     setTransactionDateScope('month')
     setTagFilter(null)
     setFilter('all')
@@ -455,12 +460,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       categoryId: categoryFilterId,
       payee: payeeFilter,
       search: search.trim(),
+      amountMinor: amountFilterMinor,
       tag: tagFilter,
       duplicates: duplicatesOnly,
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, categoryFilterId, clearingFilter, duplicatesOnly, filter, payeeFilter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
+  }, [accountFilterId, amountFilterMinor, categoryFilterId, clearingFilter, duplicatesOnly, filter, payeeFilter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -483,6 +489,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setCategoryFilterId(categoryId)
     setPayeeFilter(savedView.payee)
     setSearch(savedView.search)
+    setAmountFilterMinor(savedView.amountMinor)
     setTagFilter(savedView.tag)
     setDuplicatesOnly(savedView.duplicates)
     setTransactionSort(savedView.sort)
@@ -498,6 +505,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setCategoryFilterId(null)
     setPayeeFilter(null)
     setSearch('')
+    setAmountFilterMinor(null)
     setTagFilter(null)
     setDuplicatesOnly(false)
     setTransactionSort('date_desc')
@@ -698,6 +706,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               </button>
               <TransactionToolbar
                 search={search}
+                amountFilterMinor={amountFilterMinor}
                 payeeFilter={payeeFilter}
                 tagFilter={tagFilter}
                 filter={filter}
@@ -717,6 +726,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 canExport={data.source === 'live' && data.online}
                 canImport={data.source === 'live' && data.online}
                 onSearchChange={setSearch}
+                onAmountFilterChange={setAmountFilterMinor}
                 onPayeeFilterChange={setPayeeFilter}
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
@@ -754,6 +764,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                       || categoryFilterId !== null
                       || payeeFilter !== null
                       || search.trim().length > 0
+                      || amountFilterMinor !== null
                       || tagFilter !== null
                       || duplicatesOnly
                       || transactionSort !== 'date_desc'

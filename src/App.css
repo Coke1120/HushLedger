@@ -1906,8 +1906,48 @@ textarea:focus-visible {
 }
 
 .transaction-reference-filter select:focus-visible,
-.transaction-custom-range input:focus-visible {
+.transaction-custom-range input:focus-visible,
+.transaction-amount-filter input:focus-visible {
   border-color: var(--focus);
+}
+
+.transaction-amount-filter {
+  display: grid;
+  min-width: 230px;
+  flex: 1 1 260px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.transaction-amount-filter label {
+  min-width: 0;
+}
+
+.transaction-amount-filter input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.transaction-amount-filter .button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.transaction-amount-filter-error {
+  min-height: 16px;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 650;
+  grid-column: 1 / -1;
 }
 
 .transaction-custom-range {
@@ -6357,7 +6397,8 @@ button.account-register-row:focus-visible {
 
   .transaction-date-scope,
   .transaction-sort-filter,
-  .transaction-custom-range {
+  .transaction-custom-range,
+  .transaction-amount-filter {
     grid-column: 1 / -1;
   }
 

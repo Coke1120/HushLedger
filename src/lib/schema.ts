@@ -184,6 +184,7 @@ export const transactionQueryFieldsSchema = z
     status: transactionClearingStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
+    amountMinor: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
     payee: z.string().trim().min(1).max(80).optional(),
     search: z.string().trim().min(1).max(80).optional(),
     tag: z.string().refine(isTransactionTagName, '標籤格式不正確').optional(),

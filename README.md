@@ -109,8 +109,10 @@ knowledge and explains every command and dashboard click.
   dialog; HushLedger does not persist them to browser storage. If the ledger
   changes in another tab, the preserved draft keeps its opening currency and
   cannot be saved until the form is reopened against the new ledger state.
-- Stack search, income/expense, cleared/uncleared, account, category, and exact
-  possible-duplicate filters across the 200 most recent matching transactions.
+- Stack search, exact amount, income/expense, cleared/uncleared, account, category,
+  and exact possible-duplicate filters across the 200 most recent matching
+  transactions. An invalid amount draft never removes an already-applied exact
+  filter or broadens the result.
   Review the selected month, the seven Hong Kong calendar dates ending when the
   page loaded, one-click 12 complete calendar months through the selected month,
   an inclusive custom date range, or all history without changing the monthly
@@ -128,10 +130,10 @@ knowledge and explains every command and dashboard click.
   in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
   their selected-month, fixed custom-range, or all-history scope plus type,
-  clearing, account, category, exact payee, search, tag, possible-duplicate, and ordering
-  criteria. Selected-month views follow the month navigator; custom ranges keep
-  their exact dates. Views contain review criteria only and do not sync to
-  Cloudflare.
+  clearing, account, category, exact payee, exact amount, search, tag,
+  possible-duplicate, and ordering criteria. Selected-month views follow the
+  month navigator; custom ranges keep their exact dates. Views contain review
+  criteria only and do not sync to Cloudflare.
 - Mark transactions as cleared when they appear at the bank. Manual, duplicated,
   and recurring entries begin uncleared for review; bank imports begin cleared,
   while HushLedger CSV and full-ledger backups preserve their recorded state. The
@@ -257,8 +259,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Named transaction views live only in browser storage. They include the bounded
   transaction date scope and ordering choice. A custom range stores its exact
   inclusive endpoints, while selected-month views exclude a particular month.
-  Views never contain transactions or amounts, are validated before reuse, and
-  are not included in CSV exports or full-ledger backups.
+  Views never contain transactions; an optional exact amount criterion is stored
+  as a validated minor-unit integer. Views are validated before reuse and are not
+  included in CSV exports or full-ledger backups.
 - Transaction queries default to the selected month. `scope=range` requires one
   valid, ordered `dateFrom`/`dateTo` pair and includes both endpoints;
   `scope=all` removes the date bound. Either wider scope affects only the
@@ -412,7 +415,8 @@ and recurring-rule names are always preserved exactly as entered.
 The eye button in the header and the matching Settings control enable screen
 privacy mode for the current tab. It replaces displayed amounts with a stable
 currency mask, removes spending-breakdown proportions, masks editable amount
-fields, and covers pasted bank text without hover-to-reveal behavior. It turns on
+fields and exact-amount filter descriptions, and covers pasted bank text without
+hover-to-reveal behavior. It turns on
 automatically when the tab is hidden or the app loses focus, then restores the
 user's prior choice on return. Reloading clears the manual choice. This is a visual screen-
 sharing aid only: it does not encrypt, delete, or alter D1 data, API responses, CSV

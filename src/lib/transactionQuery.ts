@@ -15,6 +15,7 @@ export type TransactionQueryFilters = {
   status: TransactionClearingStatus | 'all'
   accountId: number | null
   categoryId: number | null
+  amountMinor: number | null
   payee: string | null
   search: string
   tag: string | null
@@ -31,6 +32,7 @@ export function transactionQueryFromFilters({
   status,
   accountId,
   categoryId,
+  amountMinor,
   payee,
   search,
   tag,
@@ -46,6 +48,7 @@ export function transactionQueryFromFilters({
   if (status !== 'all') query.status = status
   if (accountId !== null) query.accountId = accountId
   if (categoryId !== null) query.categoryId = categoryId
+  if (amountMinor !== null) query.amountMinor = amountMinor
   if (payee !== null) query.payee = payee
   if (search.trim()) query.search = search.trim()
   if (tag) query.tag = tag.slice(1)

@@ -7,16 +7,20 @@ import { translate } from '../i18n/core'
 import { formatMoneyForDisplay } from '../lib/privacy'
 import { TransactionToolbar } from './TransactionToolbar'
 
-function renderToolbar(tagFilter: string | null) {
+function renderToolbar(
+  tagFilter: string | null,
+  options: { amountFilterMinor?: number | null; privacyMode?: boolean } = {},
+) {
+  const { amountFilterMinor = null, privacyMode = false } = options
   const context: I18nContextValue = {
     locale: 'en',
     setLocale: () => undefined,
     ledgerCurrency: 'HKD',
     setLedgerCurrency: () => undefined,
-    privacyMode: false,
+    privacyMode,
     setPrivacyMode: () => undefined,
     t: (key, values) => translate('en', key, values),
-    formatMoney: (minor, currency = 'HKD') => formatMoneyForDisplay(minor, currency, 'en', false),
+    formatMoney: (minor, currency = 'HKD') => formatMoneyForDisplay(minor, currency, 'en', privacyMode),
     formatMonth: (month) => month,
     formatDate: (date) => date,
     formatNumber: String,
@@ -29,6 +33,7 @@ function renderToolbar(tagFilter: string | null) {
     { value: context },
     createElement(TransactionToolbar, {
       search: '',
+      amountFilterMinor,
       payeeFilter: null,
       tagFilter,
       filter: 'all',
@@ -48,6 +53,7 @@ function renderToolbar(tagFilter: string | null) {
       canExport: false,
       canImport: false,
       onSearchChange: noop,
+      onAmountFilterChange: noop,
       onPayeeFilterChange: noop,
       onTagFilterChange: noop,
       onFilterChange: noop,
@@ -83,5 +89,17 @@ describe('follow-up transaction review', () => {
     assert.match(activeMarkup, /transaction-follow-up-filter is-active[^>]*aria-pressed="true"/)
     assert.match(activeMarkup, /transaction-tag-filter[^>]*aria-label="Remove the #follow-up filter"/)
     assert.match(activeMarkup, /<span>#follow-up<\/span>/)
+  })
+})
+
+describe('exact amount transaction filter', () => {
+  it('renders an explicit amount form and masks its draft in privacy mode', () => {
+    const visibleMarkup = renderToolbar(null, { amountFilterMinor: 12_345 })
+    const privateMarkup = renderToolbar(null, { amountFilterMinor: 12_345, privacyMode: true })
+
+    assert.match(visibleMarkup, /class="transaction-amount-filter"/)
+    assert.match(visibleMarkup, /type="text"[^>]*value="123\.45"/)
+    assert.match(visibleMarkup, />Apply amount</)
+    assert.match(privateMarkup, /type="password"[^>]*value="123\.45"/)
   })
 })

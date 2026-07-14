@@ -45,6 +45,7 @@ const savedTransactionViewSchema = z.object({
   categoryId: z.number().int().positive().nullable(),
   payee: z.string().trim().min(1).max(80).nullable().default(null),
   search: z.string().trim().max(80),
+  amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().default(null),
   tag: z.string()
     .refine((value) => value.startsWith('#') && isTransactionTagName(value.slice(1)))
     .nullable(),
@@ -78,6 +79,7 @@ const savedTransactionViewSchema = z.object({
   || view.categoryId !== null
   || view.payee !== null
   || view.search.length > 0
+  || view.amountMinor !== null
   || view.tag !== null
   || view.duplicates
   || view.sort !== 'date_desc'

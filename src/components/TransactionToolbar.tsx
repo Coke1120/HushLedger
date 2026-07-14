@@ -1,7 +1,8 @@
 import { AlertTriangle, Download, FileUp, Flag, Search, Sparkles, X } from 'lucide-react'
-import { useState, type RefObject } from 'react'
+import { useState, type FormEvent, type RefObject } from 'react'
 import { useI18n } from '../i18n'
 import { trailingSevenDayRange, trailingTwelveMonthRange } from '../lib/date'
+import { formatAmountInput, parseAmount } from '../lib/money'
 import type {
   Account,
   Category,
@@ -21,6 +22,7 @@ const followUpTag = '#follow-up'
 
 type TransactionToolbarProps = {
   search: string
+  amountFilterMinor: number | null
   payeeFilter: string | null
   tagFilter: string | null
   filter: TransactionFilter
@@ -40,6 +42,7 @@ type TransactionToolbarProps = {
   canExport: boolean
   canImport: boolean
   onSearchChange: (value: string) => void
+  onAmountFilterChange: (value: number | null) => void
   onPayeeFilterChange: (value: string | null) => void
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
@@ -62,6 +65,7 @@ type TransactionToolbarProps = {
 
 export function TransactionToolbar({
   search,
+  amountFilterMinor,
   payeeFilter,
   tagFilter,
   filter,
@@ -81,6 +85,7 @@ export function TransactionToolbar({
   canExport,
   canImport,
   onSearchChange,
+  onAmountFilterChange,
   onPayeeFilterChange,
   onTagFilterChange,
   onFilterChange,
@@ -100,7 +105,7 @@ export function TransactionToolbar({
   csvImportButtonRef,
   aiImportButtonRef,
 }: TransactionToolbarProps) {
-  const { localizeEntityName, t } = useI18n()
+  const { locale, localizeEntityName, t } = useI18n()
   const [exportState, setExportState] = useState<ExportState>('idle')
   const trailingSevenDays = trailingSevenDayRange(currentDate)
   const trailingTwelveMonths = trailingTwelveMonthRange(month)
@@ -131,6 +136,7 @@ export function TransactionToolbar({
     categoryId: categoryFilterId,
     payee: payeeFilter,
     search,
+    amountMinor: amountFilterMinor,
     tag: tagFilter,
     duplicatesOnly,
     sort: showSort ? sort : 'date_desc',
@@ -377,6 +383,11 @@ export function TransactionToolbar({
             })}
           </select>
         </label>
+        <TransactionAmountFilter
+          key={`${locale}:${amountFilterMinor ?? ''}`}
+          amountFilterMinor={amountFilterMinor}
+          onAmountFilterChange={onAmountFilterChange}
+        />
         {accountFilterId !== null || categoryFilterId !== null ? (
           <button
             className="transaction-filter-clear"
@@ -448,6 +459,62 @@ export function TransactionToolbar({
       </button>
     </div>
   )
+}
+
+function TransactionAmountFilter({
+  amountFilterMinor,
+  onAmountFilterChange,
+}: Pick<TransactionToolbarProps, 'amountFilterMinor' | 'onAmountFilterChange'>) {
+  const { locale, privacyMode, t } = useI18n()
+  const [draft, setDraft] = useState(() => (
+    amountFilterMinor === null ? '' : formatAmountInput(amountFilterMinor, locale)
+  ))
+  const [error, setError] = useState(false)
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    try {
+      onAmountFilterChange(parseAmountFilterDraft(draft, locale))
+      setError(false)
+    } catch {
+      setError(true)
+    }
+  }
+
+  return (
+    <form className="transaction-amount-filter" onSubmit={submit}>
+      <label>
+        <span className="sr-only">{t('exactAmountFilter')}</span>
+        <input
+          type={privacyMode ? 'password' : 'text'}
+          inputMode="decimal"
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            setError(false)
+          }}
+          placeholder={t('exactAmountFilter')}
+          aria-invalid={error}
+          aria-describedby={error ? 'transaction-amount-filter-error' : undefined}
+          autoComplete="off"
+          spellCheck={false}
+        />
+      </label>
+      <button className="button button-secondary" type="submit">
+        {t('applyAmountFilter')}
+      </button>
+      <span
+        id="transaction-amount-filter-error"
+        className="transaction-amount-filter-error"
+        role={error ? 'alert' : undefined}
+      >
+        {error ? t('invalidAmount') : ''}
+      </span>
+    </form>
+  )
+}
+
+function parseAmountFilterDraft(value: string, locale: string) {
+  return value.trim() ? parseAmount(value, locale) : null
 }
 
 function transactionExportFileName(contentDisposition: string | null) {

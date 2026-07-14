@@ -68,10 +68,13 @@ not operate an independent database server or a multi-user identity system.
   is reached. Widening the transaction date scope does not change monthly reports
   or account math.
 - Search payee, note, account, or category.
+- Find transactions by one exact positive amount in the ledger currency. Parse the
+  draft locally, fail closed on invalid input, and apply the same server predicate
+  to the capped list, complete aggregate, demo snapshot, and complete CSV export.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.
-- Stack income/expense, cleared/uncleared, account, category, and exact payee
-  filters; retain inactive references as historical filter choices and clear
+- Stack income/expense, cleared/uncleared, account, category, exact payee, and
+  exact amount filters; retain inactive references as historical filter choices and clear
   incompatible category filters when the selected transaction type changes.
 - Explicitly select shown transactions to change their clearing state together,
   or move a same-type selection to an active matching category. Bound each batch
@@ -83,7 +86,8 @@ not operate an independent database server or a multi-user identity system.
   the current filters, independently of the interactive 200-row display cap.
 - Save up to eight validated, named date-scope, filter, and ordering combinations
   in the current browser and reapply them without storing a particular month,
-  transaction amounts, or cloud metadata.
+  transaction rows, or cloud metadata. A saved exact-amount criterion is a
+  validated minor-unit integer and remains browser-local.
 - Export all transactions matching the selected date scope and filters as CSV
   without the interactive 200-row limit; keep disaster-recovery backups separate.
 - Export the complete selected account register as a separate reconciliation CSV,
@@ -483,7 +487,7 @@ reminder does not prove that a backup file was retained off-platform.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, recurring transaction/transfer rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  selected-month, fixed-range, or all-history account/category/payee/type/clearing/search filters,
+  selected-month, fixed-range, or all-history account/category/payee/type/clearing/search/exact-amount filters,
   conflict-safe bulk clearing and same-type recategorization,
   deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
   matching filtered transaction

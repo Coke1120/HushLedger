@@ -3920,6 +3920,32 @@ async function verifyWorkerApi() {
   assert.equal(privateQuery.payload.data.transactions.length, 200)
   assert.deepEqual(privateQuery.payload.data.summary, completeFilterSummary.payload.data)
 
+  const exactAmountFilterBody = { ...privateFilterBody, amountMinor: 225 }
+  const exactAmountPrivateQuery = await api(baseUrl, '/api/transactions/query', {
+    method: 'POST',
+    body: exactAmountFilterBody,
+  })
+  assert.equal(exactAmountPrivateQuery.response.status, 200)
+  assert.equal(exactAmountPrivateQuery.response.url, `${baseUrl}/api/transactions/query`)
+  assert.equal(exactAmountPrivateQuery.payload.data.transactions.length, 1)
+  assert.equal(exactAmountPrivateQuery.payload.data.transactions[0].amountMinor, 225)
+  assert.deepEqual(exactAmountPrivateQuery.payload.data.summary, {
+    transactionCount: 1,
+    income: 0,
+    expense: 225,
+    net: -225,
+  })
+
+  const exactAmountLegacyQuery = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&search=export%20bulk&amountMinor=225`,
+  )
+  assert.equal(exactAmountLegacyQuery.response.status, 200)
+  assert.deepEqual(
+    exactAmountLegacyQuery.payload.data.map(({ amountMinor }) => amountMinor),
+    [225],
+  )
+
   const crossOriginPrivateQuery = await api(baseUrl, '/api/transactions/query', {
     method: 'POST',
     origin: 'https://attacker.invalid',
@@ -3943,6 +3969,15 @@ async function verifyWorkerApi() {
   assert.equal(invalidPrivateQuery.response.status, 400)
   assert.equal(invalidPrivateQuery.payload.error.code, 'INVALID_QUERY')
 
+  for (const amountMinor of [0, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    const invalidAmountPrivateQuery = await api(baseUrl, '/api/transactions/query', {
+      method: 'POST',
+      body: { ...privateFilterBody, amountMinor },
+    })
+    assert.equal(invalidAmountPrivateQuery.response.status, 400)
+    assert.equal(invalidAmountPrivateQuery.payload.error.code, 'INVALID_QUERY')
+  }
+
   const privateCsvExport = await api(baseUrl, '/api/exports/transactions', {
     method: 'POST',
     body: privateFilterBody,
@@ -3960,6 +3995,15 @@ async function verifyWorkerApi() {
   assert(privateCsvExport.payload.startsWith('Date,Type,Amount,Currency'))
   assert.match(privateCsvExport.payload.split('\r\n', 1)[0], /Transaction ID$/)
   assert.equal(privateCsvExport.payload.trimEnd().split('\r\n').length - 1, 205)
+
+  const exactAmountPrivateCsvExport = await api(baseUrl, '/api/exports/transactions', {
+    method: 'POST',
+    body: exactAmountFilterBody,
+  })
+  assert.equal(exactAmountPrivateCsvExport.response.status, 200)
+  assert.equal(exactAmountPrivateCsvExport.response.url, `${baseUrl}/api/exports/transactions`)
+  assert.equal(exactAmountPrivateCsvExport.payload.trimEnd().split('\r\n').length - 1, 1)
+  assert.match(exactAmountPrivateCsvExport.payload, /,-2\.25,HKD,/)
 
   const crossOriginPrivateExport = await api(baseUrl, '/api/exports/transactions', {
     method: 'POST',

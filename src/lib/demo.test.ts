@@ -63,6 +63,44 @@ describe('localized demo data', () => {
     assert.equal(creditFood[0]?.categoryId, 3)
   })
 
+  it('filters and summarizes the exact unsigned amount across transaction types', () => {
+    const id = '5e000000-0000-4000-8000-000000000001'
+    const amountMinor = 38_640
+
+    try {
+      addDemo({
+        id,
+        type: 'income',
+        amountMinor,
+        currency: 'HKD',
+        accountId: 2,
+        categoryId: 1,
+        occurredOn: '2026-07-12',
+        cleared: true,
+        payee: 'Exact amount income',
+        note: '',
+      })
+
+      const rows = getDemoTransactions(
+        '2026-07', 'all', '', undefined, null, null, null, 'all', 'date_desc', false,
+        'month', null, null, null, null, amountMinor,
+      )
+      assert.deepEqual(new Set(rows.map(({ type }) => type)), new Set(['expense', 'income']))
+      assert.ok(rows.every((transaction) => transaction.amountMinor === amountMinor))
+      assert.deepEqual(summarizeDemoTransactions(
+        '2026-07', 'all', '', undefined, null, null, null, 'all', false,
+        'month', null, null, null, null, amountMinor,
+      ), {
+        transactionCount: 2,
+        income: amountMinor,
+        expense: amountMinor,
+        net: 0,
+      })
+    } finally {
+      deleteDemo(id)
+    }
+  })
+
   it('filters cleared and uncleared demo transactions independently', () => {
     const uncleared = getDemoTransactions(
       '2026-07',

@@ -412,6 +412,11 @@ function transactionQueryWhere(query: TransactionQuery) {
     values.push(query.categoryId)
   }
 
+  if (query.amountMinor) {
+    filters.push('t.amount_minor = ?')
+    values.push(query.amountMinor)
+  }
+
   if (query.payee) {
     filters.push("trim(t.payee) <> ''")
   }

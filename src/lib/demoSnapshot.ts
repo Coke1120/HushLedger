@@ -58,11 +58,12 @@ export function buildDemoSnapshot(
   scope: TransactionDateScope,
   dateFrom: string,
   dateTo: string,
+  amountMinor: number | null = null,
   ledgerCurrency: SupportedCurrency = DEFAULT_LEDGER_CURRENCY,
 ): DemoSnapshot {
   const transactions = getDemoTransactions(
     month, type, search, undefined, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
-    dateFrom, dateTo, payee, ledgerCurrency,
+    dateFrom, dateTo, payee, ledgerCurrency, amountMinor,
   )
 
   return {
@@ -87,6 +88,7 @@ export function buildDemoSnapshot(
       dateTo,
       payee,
       ledgerCurrency,
+      amountMinor,
     ),
     summary: demoSummary(month),
     accounts: demoAccounts.map((account) => ({ ...account, currency: ledgerCurrency })),

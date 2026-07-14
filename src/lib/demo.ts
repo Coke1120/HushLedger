@@ -287,6 +287,7 @@ function matchesQuery(
   dateFrom: string | null,
   dateTo: string | null,
   payee: string | null,
+  amountMinor: number | null,
 ) {
   const monthRange = scope === 'month' ? monthRangeDates(month) : null
   const matchesDate = monthRange
@@ -303,6 +304,7 @@ function matchesQuery(
     (type === 'all' || transaction.type === type) &&
     (accountId === null || transaction.accountId === accountId) &&
     (categoryId === null || transaction.categoryId === categoryId) &&
+    (amountMinor === null || transaction.amountMinor === amountMinor) &&
     matchesDemoPayee(transaction, payee) &&
     (status === 'all' || transaction.cleared === (status === 'cleared')) &&
     (tag === null || noteHasTransactionTag(transaction.note, tag)) &&
@@ -340,6 +342,7 @@ export function getDemoTransactions(
   dateTo: string | null = null,
   payee: string | null = null,
   currency: SupportedCurrency | null = null,
+  amountMinor: number | null = null,
 ) {
   const localized = demoTransactions.map((transaction) => {
     const localizedTransaction = localizeDemoTransaction(transaction, t)
@@ -350,7 +353,7 @@ export function getDemoTransactions(
   return localized
     .filter((transaction) => matchesQuery(
       transaction, month, type, search, accountId, categoryId, tag, status, scope, dateFrom, dateTo,
-      payee,
+      payee, amountMinor,
     ))
     .filter((transaction) => !duplicatesOnly || hasExactDuplicate(transaction, localized))
     .sort((left, right) => compareDemoTransactions(left, right, sort))
@@ -392,6 +395,7 @@ export function summarizeDemoTransactions(
   dateTo: string | null = null,
   payee: string | null = null,
   currency: SupportedCurrency | null = null,
+  amountMinor: number | null = null,
 ): TransactionFilterSummary {
   const rows = getDemoTransactions(
     month,
@@ -409,6 +413,7 @@ export function summarizeDemoTransactions(
     dateTo,
     payee,
     currency,
+    amountMinor,
   )
   return { transactionCount: rows.length, ...exactTransactionTotals(rows) }
 }

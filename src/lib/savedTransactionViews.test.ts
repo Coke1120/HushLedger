@@ -23,6 +23,7 @@ const validView: SavedTransactionView = {
   categoryId: null,
   payee: null,
   search: '',
+  amountMinor: null,
   tag: null,
   duplicates: false,
   sort: 'date_desc',
@@ -37,6 +38,7 @@ describe('saved transaction views', () => {
       dateFrom: legacyDateFrom,
       dateTo: legacyDateTo,
       payee: legacyPayee,
+      amountMinor: legacyAmountMinor,
       ...legacyView
     } = validView
     assert.equal(legacySort, 'date_desc')
@@ -45,6 +47,7 @@ describe('saved transaction views', () => {
     assert.equal(legacyDateFrom, null)
     assert.equal(legacyDateTo, null)
     assert.equal(legacyPayee, null)
+    assert.equal(legacyAmountMinor, null)
     const parsed = parseSavedTransactionViews(JSON.stringify([
       { ...legacyView, name: '  Uncleared card  ' },
       { ...validView, id: '86192038-dc31-4672-ab86-d750adee2095', name: 'UNCLEARED CARD' },
@@ -70,6 +73,11 @@ describe('saved transaction views', () => {
       'duplicate',
     )
     assert.equal(addSavedTransactionView([], { ...validView, tag: '#Trip,' }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], { ...validView, amountMinor: 0 }).kind, 'invalid')
+    assert.equal(addSavedTransactionView([], {
+      ...validView,
+      amountMinor: Number.MAX_SAFE_INTEGER + 1,
+    }).kind, 'invalid')
     assert.equal(addSavedTransactionView([], {
       ...validView,
       type: 'all',
@@ -125,6 +133,25 @@ describe('saved transaction views', () => {
       name: 'One too many',
     }).kind, 'limit')
     assert.equal(addSavedTransactionView([validView], { ...validView, name: 'Different name' }).kind, 'invalid')
+  })
+
+  it('keeps an exact amount filter and defaults legacy browser data to none', () => {
+    const { amountMinor: legacyAmountMinor, ...legacyView } = validView
+    const amountView = {
+      ...validView,
+      name: 'Exact charge',
+      type: 'all' as const,
+      status: 'all' as const,
+      accountId: null,
+      amountMinor: 12_345,
+    }
+
+    assert.equal(legacyAmountMinor, null)
+    assert.deepEqual(parseSavedTransactionViews(JSON.stringify([legacyView])), [validView])
+    assert.deepEqual(addSavedTransactionView([], amountView), {
+      kind: 'saved',
+      views: [amountView],
+    })
   })
 
   it('keeps complete static ranges and rejects ambiguous saved date state', () => {

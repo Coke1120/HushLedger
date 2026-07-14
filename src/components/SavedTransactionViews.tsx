@@ -37,7 +37,7 @@ export function SavedTransactionViews({
   onDelete,
   onReset,
 }: SavedTransactionViewsProps) {
-  const { localizeEntityName, t } = useI18n()
+  const { formatMoney, localizeEntityName, privacyMode, t } = useI18n()
   const [formOpen, setFormOpen] = useState(false)
   const [name, setName] = useState('')
   const [messageKey, setMessageKey] = useState<MessageKey | null>(null)
@@ -64,6 +64,11 @@ export function SavedTransactionViews({
     }
     if (view.payee) parts.push(t('savedViewPayee', { payee: view.payee }))
     if (view.search) parts.push(t('savedViewSearch', { search: view.search }))
+    if (view.amountMinor !== null) {
+      parts.push(t('savedViewExactAmount', {
+        amount: privacyMode ? t('sensitiveTextHidden') : formatMoney(view.amountMinor),
+      }))
+    }
     if (view.tag) parts.push(view.tag)
     if (view.duplicates) parts.push(t('savedViewPossibleDuplicates'))
     if (view.sort !== 'date_desc') parts.push(t(sortMessageKeys[view.sort]))
