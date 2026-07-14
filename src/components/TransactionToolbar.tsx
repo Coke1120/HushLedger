@@ -6,6 +6,7 @@ import { formatAmountInput, parseAmount } from '../lib/money'
 import type {
   Account,
   Category,
+  ImportReviewStatus,
   TransactionClearingStatus,
   TransactionDateScope,
   TransactionSort,
@@ -15,6 +16,7 @@ import { transactionQueryFromFilters } from '../lib/transactionQuery'
 
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
+export type TransactionImportReviewFilter = ImportReviewStatus | 'all'
 type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
 type TransactionDateScopeOption = TransactionDateScope | 'trailing7' | 'trailing12'
 
@@ -27,6 +29,7 @@ type TransactionToolbarProps = {
   tagFilter: string | null
   filter: TransactionFilter
   clearingFilter: TransactionClearingFilter
+  importReviewFilter: TransactionImportReviewFilter
   dateScope: TransactionDateScope
   dateFrom: string
   dateTo: string
@@ -47,6 +50,7 @@ type TransactionToolbarProps = {
   onTagFilterChange: (value: string | null) => void
   onFilterChange: (value: TransactionFilter) => void
   onClearingFilterChange: (value: TransactionClearingFilter) => void
+  onImportReviewFilterChange: (value: TransactionImportReviewFilter) => void
   onDateScopeChange: (value: TransactionDateScope) => void
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
@@ -70,6 +74,7 @@ export function TransactionToolbar({
   tagFilter,
   filter,
   clearingFilter,
+  importReviewFilter,
   dateScope,
   dateFrom,
   dateTo,
@@ -90,6 +95,7 @@ export function TransactionToolbar({
   onTagFilterChange,
   onFilterChange,
   onClearingFilterChange,
+  onImportReviewFilterChange,
   onDateScopeChange,
   onDateFromChange,
   onDateToChange,
@@ -132,6 +138,7 @@ export function TransactionToolbar({
     dateTo,
     type: filter,
     status: clearingFilter,
+    importReviewStatus: importReviewFilter,
     accountId: accountFilterId,
     categoryId: categoryFilterId,
     payee: payeeFilter,
@@ -346,6 +353,21 @@ export function TransactionToolbar({
             <option value="all">{t('allClearingStatuses')}</option>
             <option value="uncleared">{t('uncleared')}</option>
             <option value="cleared">{t('cleared')}</option>
+          </select>
+        </label>
+        <label className="transaction-reference-filter transaction-import-review-filter">
+          <span className="sr-only">{t('importReviewFilter')}</span>
+          <select
+            value={importReviewFilter}
+            onChange={(event) => onImportReviewFilterChange(
+              event.target.value as TransactionImportReviewFilter,
+            )}
+            title={t('importReviewFilterHelp')}
+          >
+            <option value="all">{t('allImportReviewStatuses')}</option>
+            <option value="unreviewed">{t('importReviewUnreviewed')}</option>
+            <option value="needs_follow_up">{t('importReviewNeedsFollowUp')}</option>
+            <option value="reviewed">{t('importReviewReviewed')}</option>
           </select>
         </label>
         <label className="transaction-reference-filter">

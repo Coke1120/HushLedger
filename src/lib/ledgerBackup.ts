@@ -5,6 +5,7 @@ import {
   type SupportedCurrency,
 } from './currency'
 import { isValidCalendarDate } from './date'
+import { importReviewStatusSchema } from './schema'
 
 export const LEDGER_BACKUP_FORMAT = 'hushledger-ledger-backup' as const
 export const LEDGER_BACKUP_VERSION = 1 as const
@@ -17,7 +18,8 @@ export const PRE_CURRENCY_LEDGER_SCHEMA_VERSION = 13 as const
 export const PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION = 14 as const
 export const PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION = 15 as const
 export const PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION = 16 as const
-export const LEDGER_SCHEMA_VERSION = 17 as const
+export const PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION = 17 as const
+export const LEDGER_SCHEMA_VERSION = 18 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -265,9 +267,15 @@ function validateRecurringTransactionFields(
   }
 }
 
+const preImportReviewLedgerBackupTransactionSchema = z.object({
+  ...ledgerBackupTransactionFields,
+  cleared: z.boolean(),
+}).strict().superRefine(validateRecurringTransactionFields)
+
 export const ledgerBackupTransactionSchema = z.object({
   ...ledgerBackupTransactionFields,
   cleared: z.boolean(),
+  importReviewStatus: importReviewStatusSchema.nullable(),
 }).strict().superRefine(validateRecurringTransactionFields)
 
 const previousLedgerBackupTransactionSchema = z
@@ -361,22 +369,26 @@ const preRecurringTransfersLedgerBackupDataSchema = z.object({
   accounts: z.array(ledgerBackupAccountSchema),
   categories: z.array(ledgerBackupCategorySchema),
   recurringRules: z.array(ledgerBackupRecurringRuleSchema),
-  transactions: z.array(ledgerBackupTransactionSchema),
+  transactions: z.array(preImportReviewLedgerBackupTransactionSchema),
   accountTransfers: z.array(preRecurringTransfersLedgerBackupAccountTransferSchema),
   emergencyFundGoals: z.array(ledgerBackupEmergencyFundGoalSchema).max(1),
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-export const ledgerBackupDataSchema = z.object({
+const preImportReviewLedgerBackupDataSchema = z.object({
   currency: supportedCurrencySchema,
   accounts: z.array(ledgerBackupAccountSchema),
   categories: z.array(ledgerBackupCategorySchema),
   recurringRules: z.array(ledgerBackupRecurringRuleSchema),
   recurringTransferRules: z.array(ledgerBackupRecurringTransferRuleSchema),
-  transactions: z.array(ledgerBackupTransactionSchema),
+  transactions: z.array(preImportReviewLedgerBackupTransactionSchema),
   accountTransfers: z.array(ledgerBackupAccountTransferSchema),
   emergencyFundGoals: z.array(ledgerBackupEmergencyFundGoalSchema).max(1),
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
+}).strict()
+
+export const ledgerBackupDataSchema = preImportReviewLedgerBackupDataSchema.extend({
+  transactions: z.array(ledgerBackupTransactionSchema),
 }).strict()
 
 const preScheduleEndLedgerBackupDataSchema = preRecurringTransfersLedgerBackupDataSchema.extend({
@@ -436,6 +448,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preImportReviewLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION),
+  data: preImportReviewLedgerBackupDataSchema,
+}).strict()
+
 const preRecurringTransfersLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION),
   data: preRecurringTransfersLedgerBackupDataSchema,
@@ -473,6 +490,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preImportReviewLedgerBackupPayloadSchema,
   preRecurringTransfersLedgerBackupPayloadSchema,
   preScheduleEndLedgerBackupPayloadSchema,
   preYearlyRecurringLedgerBackupPayloadSchema,
@@ -490,6 +508,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preImportReviewLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION),
+  data: preImportReviewLedgerBackupDataSchema,
 }).strict()
 
 const preRecurringTransfersLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -529,6 +552,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preImportReviewLedgerBackupSchema,
   preRecurringTransfersLedgerBackupSchema,
   preScheduleEndLedgerBackupSchema,
   preYearlyRecurringLedgerBackupSchema,
@@ -642,6 +666,16 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
+  const importedTransactionIds = new Set(
+    backup.data.transactionImportKeys.map(({ transactionId }) => transactionId),
+  )
+  const transactions = backup.data.transactions.map((transaction) => ({
+    ...transaction,
+    importReviewStatus: importedTransactionIds.has(transaction.id) ? 'unreviewed' as const : null,
+  }))
+  if (backup.schemaVersion === PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse({ ...backup.data, transactions })
+  }
   const recurringRules = backup.schemaVersion >= PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION
     ? backup.data.recurringRules
     : backup.data.recurringRules.map((rule) => ({ ...rule, scheduleEndsOn: null }))
@@ -657,6 +691,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
   if (backup.schemaVersion === PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION) {
     return ledgerBackupDataSchema.parse({
       ...backup.data,
+      transactions,
       recurringTransferRules: [],
       accountTransfers,
     })
@@ -664,6 +699,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
   if (backup.schemaVersion >= PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION) {
     return ledgerBackupDataSchema.parse({
       ...backup.data,
+      transactions,
       recurringRules,
       recurringTransferRules: [],
       accountTransfers,
@@ -689,8 +725,8 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
         monthlyPlanMinor: null,
       })),
     transactions: backup.schemaVersion === LEGACY_LEDGER_SCHEMA_VERSION
-      ? backup.data.transactions.map((transaction) => ({ ...transaction, cleared: true }))
-      : backup.data.transactions,
+      ? transactions.map((transaction) => ({ ...transaction, cleared: true }))
+      : transactions,
     emergencyFundGoals: backup.schemaVersion === PRE_CURRENCY_LEDGER_SCHEMA_VERSION
       ? backup.data.emergencyFundGoals
       : [],
@@ -720,6 +756,9 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   const categories = new Map(data.categories.map((category) => [category.id, category]))
   const rules = new Map(data.recurringRules.map((rule) => [rule.id, rule]))
   const transferRules = new Map(data.recurringTransferRules.map((rule) => [rule.id, rule]))
+  const importedTransactionIds = new Set(
+    data.transactionImportKeys.map(({ transactionId }) => transactionId),
+  )
 
   collectDuplicateIssues(data.accounts, (row) => String(row.id), 'accounts', 'id', issues)
   collectDuplicateIssues(data.accounts, (row) => row.name.toLowerCase(), 'accounts', 'name', issues)
@@ -845,6 +884,15 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
       issues.push({
         path: `data.transactions.${index}.recurringRuleId`,
         message: 'Referenced recurring rule is missing',
+      })
+    }
+    const hasImportKey = importedTransactionIds.has(transaction.id)
+    if (hasImportKey !== (transaction.importReviewStatus !== null)) {
+      issues.push({
+        path: `data.transactions.${index}.importReviewStatus`,
+        message: hasImportKey
+          ? 'Imported transaction is missing its review status'
+          : 'Review status requires a surviving transaction import key',
       })
     }
   })

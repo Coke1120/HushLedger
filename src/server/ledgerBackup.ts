@@ -178,6 +178,7 @@ const transactionQuery = `
     category_id AS categoryId,
     occurred_on AS occurredOn,
     cleared,
+    import_review_status AS importReviewStatus,
     payee,
     note,
     recurring_rule_id AS recurringRuleId,
@@ -351,7 +352,8 @@ const recurringTransferRuleInsert = `
 
 const transactionInsert = `
   INSERT INTO transactions(
-    id, type, amount_minor, currency, account_id, category_id, occurred_on, cleared, payee, note,
+    id, type, amount_minor, currency, account_id, category_id, occurred_on, cleared,
+    import_review_status, payee, note,
     recurring_rule_id, recurring_rule_name, recurrence_due_on, recurring_occurrence_key,
     created_at, updated_at
   )
@@ -364,6 +366,7 @@ const transactionInsert = `
     json_extract(value, '$.categoryId'),
     json_extract(value, '$.occurredOn'),
     json_extract(value, '$.cleared'),
+    json_extract(value, '$.importReviewStatus'),
     json_extract(value, '$.payee'),
     json_extract(value, '$.note'),
     json_extract(value, '$.recurringRuleId'),

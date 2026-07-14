@@ -20,7 +20,7 @@ import {
 import { useState } from 'react'
 import { useI18n } from '../i18n'
 import { MAX_TRANSACTION_BATCH_SIZE } from '../lib/schema'
-import type { Category, Transaction } from '../lib/schema'
+import type { Category, ImportReviewStatus, Transaction } from '../lib/schema'
 import { transactionTagsFromNote } from '../lib/transactionTags'
 
 const iconMap: Record<string, LucideIcon> = {
@@ -48,6 +48,68 @@ type TransactionListProps = {
   onTagSelect: (tag: string | null) => void
   onSetCategory: (transactions: Transaction[], categoryId: number) => Promise<boolean>
   onSetClearing: (transactions: Transaction[], cleared: boolean) => Promise<boolean>
+  onSetImportReviewStatus: (
+    transactions: Transaction[],
+    status: ImportReviewStatus,
+  ) => Promise<boolean>
+}
+
+function canSetImportReviewStatus(transactions: Transaction[]) {
+  return transactions.length > 0
+    && transactions.every(({ importReviewStatus }) => importReviewStatus != null)
+}
+
+type TransactionImportReviewBulkControlProps = {
+  transactions: Transaction[]
+  busy: boolean
+  status: ImportReviewStatus | null
+  onStatusChange: (status: ImportReviewStatus | null) => void
+  onApply: () => void
+}
+
+export function TransactionImportReviewBulkControl({
+  transactions,
+  busy,
+  status,
+  onStatusChange,
+  onApply,
+}: TransactionImportReviewBulkControlProps) {
+  const { t } = useI18n()
+  const changeAllowed = canSetImportReviewStatus(transactions)
+  const help = transactions.length > 0 && !changeAllowed
+    ? t('importReviewBulkManualBlocked')
+    : t('importReviewBulkHelp')
+
+  return (
+    <div className="transaction-bulk-import-review">
+      <label>
+        <span className="sr-only">{t('changeSelectedImportReviewStatus')}</span>
+        <select
+          value={status ?? ''}
+          onChange={(event) => onStatusChange(
+            event.target.value ? event.target.value as ImportReviewStatus : null,
+          )}
+          disabled={busy || !changeAllowed}
+          title={help}
+          aria-describedby="transaction-bulk-import-review-help"
+        >
+          <option value="">{t('changeSelectedImportReviewStatus')}</option>
+          <option value="unreviewed">{t('importReviewUnreviewed')}</option>
+          <option value="needs_follow_up">{t('importReviewNeedsFollowUp')}</option>
+          <option value="reviewed">{t('importReviewReviewed')}</option>
+        </select>
+      </label>
+      <button
+        className="button button-secondary"
+        type="button"
+        disabled={busy || !changeAllowed || status === null}
+        onClick={onApply}
+      >
+        {t('applyImportReviewStatus')}
+      </button>
+      <small id="transaction-bulk-import-review-help">{help}</small>
+    </div>
+  )
 }
 
 export function TransactionList({
@@ -62,11 +124,13 @@ export function TransactionList({
   onTagSelect,
   onSetCategory,
   onSetClearing,
+  onSetImportReviewStatus,
 }: TransactionListProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [bulkCategoryId, setBulkCategoryId] = useState<number | null>(null)
+  const [bulkImportReviewStatus, setBulkImportReviewStatus] = useState<ImportReviewStatus | null>(null)
   const [applying, setApplying] = useState(false)
 
   if (loading) {
@@ -99,11 +163,13 @@ export function TransactionList({
     ? categories.filter(({ isActive, type }) => isActive && type === selectedType)
     : []
   const selectedCategoryIsValid = availableCategories.some(({ id }) => id === bulkCategoryId)
+  const importReviewChangeAllowed = canSetImportReviewStatus(selectedTransactions)
 
   const finishSelecting = () => {
     setSelecting(false)
     setSelectedIds(new Set())
     setBulkCategoryId(null)
+    setBulkImportReviewStatus(null)
   }
 
   const applyClearing = async (cleared: boolean) => {
@@ -121,6 +187,18 @@ export function TransactionList({
     setApplying(true)
     try {
       if (await onSetCategory(selectedTransactions, bulkCategoryId)) finishSelecting()
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  const applyImportReviewStatus = async () => {
+    if (busy || !importReviewChangeAllowed || bulkImportReviewStatus === null) return
+    setApplying(true)
+    try {
+      if (await onSetImportReviewStatus(selectedTransactions, bulkImportReviewStatus)) {
+        finishSelecting()
+      }
     } finally {
       setApplying(false)
     }
@@ -199,6 +277,13 @@ export function TransactionList({
                     {t('applySelectedCategory')}
                   </button>
                 </div>
+                <TransactionImportReviewBulkControl
+                  transactions={selectedTransactions}
+                  busy={busy}
+                  status={bulkImportReviewStatus}
+                  onStatusChange={setBulkImportReviewStatus}
+                  onApply={() => void applyImportReviewStatus()}
+                />
                 <button
                   className="button button-secondary"
                   type="button"
@@ -306,6 +391,22 @@ export function TransactionList({
                   <span className={`transaction-clearing-status ${transaction.cleared ? 'is-cleared' : 'is-uncleared'}`}>
                     {t(transaction.cleared ? 'cleared' : 'uncleared')}
                   </span>
+                  {transaction.importReviewStatus ? (
+                    <span
+                      className={`transaction-import-review-status is-${transaction.importReviewStatus}`}
+                      title={t(transaction.importReviewStatus === 'unreviewed'
+                        ? 'importReviewUnreviewed'
+                        : transaction.importReviewStatus === 'needs_follow_up'
+                          ? 'importReviewNeedsFollowUp'
+                          : 'importReviewReviewed')}
+                    >
+                      {t(transaction.importReviewStatus === 'unreviewed'
+                        ? 'importedReviewUnreviewed'
+                        : transaction.importReviewStatus === 'needs_follow_up'
+                          ? 'importedReviewNeedsFollowUp'
+                          : 'importedReviewReviewed')}
+                    </span>
+                  ) : null}
                 </small>
               </span>
               <time dateTime={transaction.occurredOn}>{formatDate(transaction.occurredOn)}</time>

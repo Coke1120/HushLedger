@@ -199,7 +199,8 @@ export async function commitTransactionImport(
       occurred_on,
       cleared,
       payee,
-      note
+      note,
+      import_review_status
     )
     SELECT
       ?,
@@ -222,7 +223,8 @@ export async function commitTransactionImport(
       ?,
       ?,
       ?,
-      ?
+      ?,
+      'unreviewed'
     RETURNING id
   `)
   const insertImportKey = database.prepare(`
@@ -262,7 +264,12 @@ export async function commitTransactionImport(
     UPDATE transactions
     SET
       cleared = 1,
-      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      import_review_status = 'unreviewed',
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
     WHERE cleared = 0
       AND id = (
         SELECT transaction_id FROM transaction_import_keys WHERE import_key = ?

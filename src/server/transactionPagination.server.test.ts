@@ -102,6 +102,7 @@ if (!childRun) {
       recurring_rule_id TEXT,
       recurring_rule_name TEXT,
       recurrence_due_on TEXT,
+      import_review_status TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );

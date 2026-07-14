@@ -50,6 +50,13 @@ export function SavedTransactionViews({
     }
     if (view.type !== 'all') parts.push(t(view.type))
     if (view.status !== 'all') parts.push(t(view.status))
+    if (view.importReviewStatus !== 'all') {
+      parts.push(t(view.importReviewStatus === 'unreviewed'
+        ? 'importReviewUnreviewed'
+        : view.importReviewStatus === 'needs_follow_up'
+          ? 'importReviewNeedsFollowUp'
+          : 'importReviewReviewed'))
+    }
     if (view.accountId !== null) {
       const account = accounts.find(({ id }) => id === view.accountId)
       parts.push(account

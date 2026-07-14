@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  importReviewStatusSchema,
   transactionClearingStatusSchema,
   transactionDateScopeSchema,
   transactionSortSchema,
@@ -41,6 +42,7 @@ const savedTransactionViewSchema = z.object({
   dateTo: z.string().refine(isValidCalendarDate).nullable().default(null),
   type: transactionTypeSchema.or(z.literal('all')),
   status: transactionClearingStatusSchema.or(z.literal('all')),
+  importReviewStatus: importReviewStatusSchema.or(z.literal('all')).default('all'),
   accountId: z.number().int().positive().nullable(),
   categoryId: z.number().int().positive().nullable(),
   payee: z.string().trim().min(1).max(80).nullable().default(null),
@@ -75,6 +77,7 @@ const savedTransactionViewSchema = z.object({
   view.scope !== 'month'
   || view.type !== 'all'
   || view.status !== 'all'
+  || view.importReviewStatus !== 'all'
   || view.accountId !== null
   || view.categoryId !== null
   || view.payee !== null

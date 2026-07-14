@@ -19,6 +19,7 @@ const validView: SavedTransactionView = {
   dateTo: null,
   type: 'expense',
   status: 'uncleared',
+  importReviewStatus: 'all',
   accountId: 3,
   categoryId: null,
   payee: null,
@@ -82,6 +83,7 @@ describe('saved transaction views', () => {
       ...validView,
       type: 'all',
       status: 'all',
+      importReviewStatus: 'all',
       accountId: null,
       search: '',
     }).kind, 'invalid')
@@ -91,6 +93,7 @@ describe('saved transaction views', () => {
       scope: 'all',
       type: 'all',
       status: 'all',
+      importReviewStatus: 'all',
       accountId: null,
       categoryId: null,
       search: '',
@@ -103,6 +106,7 @@ describe('saved transaction views', () => {
       name: 'Largest first',
       type: 'all',
       status: 'all',
+      importReviewStatus: 'all',
       accountId: null,
       categoryId: null,
       search: '',
@@ -152,6 +156,29 @@ describe('saved transaction views', () => {
       kind: 'saved',
       views: [amountView],
     })
+  })
+
+  it('keeps an import-review filter and defaults older browser views to all', () => {
+    const { importReviewStatus: legacyImportReviewStatus, ...legacyView } = validView
+    const reviewView = {
+      ...validView,
+      name: 'Imported to review',
+      type: 'all' as const,
+      status: 'all' as const,
+      importReviewStatus: 'unreviewed' as const,
+      accountId: null,
+    }
+
+    assert.equal(legacyImportReviewStatus, 'all')
+    assert.deepEqual(parseSavedTransactionViews(JSON.stringify([legacyView])), [validView])
+    assert.deepEqual(addSavedTransactionView([], reviewView), {
+      kind: 'saved',
+      views: [reviewView],
+    })
+    assert.equal(addSavedTransactionView([], {
+      ...reviewView,
+      importReviewStatus: 'fraud',
+    }).kind, 'invalid')
   })
 
   it('keeps complete static ranges and rejects ambiguous saved date state', () => {

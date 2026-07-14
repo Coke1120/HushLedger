@@ -5,6 +5,7 @@ import {
   LEDGER_BACKUP_VERSION,
   LEGACY_LEDGER_SCHEMA_VERSION,
   LEDGER_SCHEMA_VERSION,
+  PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION,
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
@@ -150,6 +151,7 @@ function ledgerData(): LedgerBackupData {
       categoryId: 1,
       occurredOn: '2026-07-13',
       cleared: false,
+      importReviewStatus: 'reviewed',
       payee: 'Cafe',
       note: '',
       recurringRuleId: '20000000-0000-4000-8000-000000000001',
@@ -184,29 +186,40 @@ function ledgerData(): LedgerBackupData {
       updatedAt: timestamp,
     }],
     transactionImportKeys: [{
-      importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
-      transactionId: '10000000-0000-4000-8000-000000000099',
+      importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000001',
+      transactionId: '10000000-0000-4000-8000-000000000001',
       importedAt: timestamp,
     }],
   }
 }
 
-function ledgerDataBeforeRecurringTransfers(data: LedgerBackupData) {
+function ledgerDataBeforeImportReview(data: LedgerBackupData) {
   return {
-    currency: data.currency,
-    accounts: data.accounts,
-    categories: data.categories,
-    recurringRules: data.recurringRules,
-    transactions: data.transactions,
-    accountTransfers: data.accountTransfers.map(({
+    ...data,
+    transactions: data.transactions.map(({
+      importReviewStatus: _importReviewStatus,
+      ...transaction
+    }) => transaction),
+  }
+}
+
+function ledgerDataBeforeRecurringTransfers(data: LedgerBackupData) {
+  const beforeImportReview = ledgerDataBeforeImportReview(data)
+  return {
+    currency: beforeImportReview.currency,
+    accounts: beforeImportReview.accounts,
+    categories: beforeImportReview.categories,
+    recurringRules: beforeImportReview.recurringRules,
+    transactions: beforeImportReview.transactions,
+    accountTransfers: beforeImportReview.accountTransfers.map(({
       recurringTransferRuleId: _recurringTransferRuleId,
       recurringTransferRuleName: _recurringTransferRuleName,
       recurrenceDueOn: _recurrenceDueOn,
       recurringOccurrenceKey: _recurringOccurrenceKey,
       ...transfer
     }) => transfer),
-    emergencyFundGoals: data.emergencyFundGoals,
-    transactionImportKeys: data.transactionImportKeys,
+    emergencyFundGoals: beforeImportReview.emergencyFundGoals,
+    transactionImportKeys: beforeImportReview.transactionImportKeys,
   }
 }
 
@@ -381,6 +394,28 @@ describe('ledger backups', () => {
     assert.match(await digestLedgerData(data), /^[0-9a-f]{64}$/)
   })
 
+  it('requires review state to agree with surviving import provenance while allowing tombstones', () => {
+    const missingReviewState = ledgerData()
+    missingReviewState.transactions[0].importReviewStatus = null
+    assert(validateLedgerDataRelations(missingReviewState).some(
+      ({ message }) => message === 'Imported transaction is missing its review status',
+    ))
+
+    const inventedImportState = ledgerData()
+    inventedImportState.transactionImportKeys = []
+    assert(validateLedgerDataRelations(inventedImportState).some(
+      ({ message }) => message === 'Review status requires a surviving transaction import key',
+    ))
+
+    const deletedTransactionTombstone = ledgerData()
+    deletedTransactionTombstone.transactionImportKeys.push({
+      importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
+      transactionId: '10000000-0000-4000-8000-000000000099',
+      importedAt: timestamp,
+    })
+    assert.deepEqual(validateLedgerDataRelations(deletedTransactionTombstone), [])
+  })
+
   it('keeps the selected supported currency portable with the ledger', () => {
     const data = ledgerData()
     data.currency = 'USD'
@@ -463,6 +498,70 @@ describe('ledger backups', () => {
     }).success, true)
   })
 
+  it('keeps import review provenance nullable and limited to the three explicit states', () => {
+    const transaction = ledgerData().transactions[0]
+
+    assert.equal(ledgerBackupTransactionSchema.safeParse(transaction).success, true)
+    assert.equal(ledgerBackupTransactionSchema.safeParse({
+      ...transaction,
+      importReviewStatus: null,
+    }).success, true)
+    assert.equal(ledgerBackupTransactionSchema.safeParse({
+      ...transaction,
+      importReviewStatus: 'unreviewed',
+    }).success, true)
+    assert.equal(ledgerBackupTransactionSchema.safeParse({
+      ...transaction,
+      importReviewStatus: 'needs_follow_up',
+    }).success, true)
+    assert.equal(ledgerBackupTransactionSchema.safeParse({
+      ...transaction,
+      importReviewStatus: 'approved',
+    }).success, false)
+  })
+
+  it('upgrades schema 17 import-linked transactions as unreviewed without inventing reviewed state', async () => {
+    const current = ledgerData()
+    current.transactions.push({
+      ...current.transactions[0],
+      id: '10000000-0000-4000-8000-000000000002',
+      importReviewStatus: null,
+      recurringRuleId: null,
+      recurringRuleName: null,
+      recurrenceDueOn: null,
+      recurringOccurrenceKey: null,
+    })
+    current.transactionImportKeys.push({
+      importKey: 'csv:hushledger:id:10000000-0000-4000-8000-000000000099',
+      transactionId: '10000000-0000-4000-8000-000000000099',
+      importedAt: timestamp,
+    })
+    const previousData = ledgerDataBeforeImportReview(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_IMPORT_REVIEW_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assert.equal(upgraded.transactions[0]?.importReviewStatus, 'unreviewed')
+    assert.equal(upgraded.transactions[1]?.importReviewStatus, null)
+    assert.equal(upgraded.transactionImportKeys.length, 2)
+    assert.equal(
+      upgraded.transactions.some(({ importReviewStatus }) => importReviewStatus === 'reviewed'),
+      false,
+    )
+  })
+
   it('upgrades schema 16 without inventing transfer rules or provenance', async () => {
     const current = ledgerData()
     const previousData = ledgerDataBeforeRecurringTransfers(current)
@@ -483,6 +582,7 @@ describe('ledger backups', () => {
 
     const upgraded = upgradeLedgerBackupData(backup)
     assertNoInventedRecurringTransfers(upgraded, 1)
+    assert.equal(upgraded.transactions[0]?.importReviewStatus, 'unreviewed')
     assert.equal(upgraded.accountTransfers[0]?.fromCleared, true)
     assert.equal(upgraded.accountTransfers[0]?.toCleared, false)
     assert.equal(upgraded.accountTransfers[0]?.note, 'Cash withdrawal')
@@ -511,6 +611,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.recurringRules[0]?.frequency, 'yearly')
     assert.equal(upgraded.recurringRules[0]?.scheduleEndsOn, null)
     assertNoInventedRecurringTransfers(upgraded, 1)
+    assert.equal(upgraded.transactions[0]?.importReviewStatus, 'unreviewed')
   })
 
   it('upgrades schema 14 backups without changing their currency or recurring rules', async () => {
@@ -620,6 +721,7 @@ describe('ledger backups', () => {
     assert.deepEqual(upgraded.emergencyFundGoals, previousData.emergencyFundGoals)
     assert.equal(upgraded.accountTransfers.length, 1)
     assertNoInventedRecurringTransfers(upgraded, 1)
+    assert.equal(upgraded.transactions[0]?.importReviewStatus, 'unreviewed')
   })
 
   it('upgrades schema 12 backups without inventing an emergency fund goal', async () => {
@@ -742,7 +844,10 @@ describe('ledger backups', () => {
     const legacyData = {
       ...withoutTransfers,
       categories: current.categories.map(({ monthlyPlanMinor: _monthlyPlanMinor, ...category }) => category),
-      transactions: current.transactions.map(({ cleared: _cleared, ...transaction }) => transaction),
+      transactions: withoutTransfers.transactions.map(({
+        cleared: _cleared,
+        ...transaction
+      }) => transaction),
     }
     const legacyPayload = {
       format: LEDGER_BACKUP_FORMAT,
@@ -764,6 +869,7 @@ describe('ledger backups', () => {
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, true)
+    assert.equal(upgraded.transactions[0]?.importReviewStatus, 'unreviewed')
     assert.deepEqual(upgraded.accountTransfers, [])
     assertNoInventedRecurringTransfers(upgraded, 0)
   })

@@ -11,6 +11,12 @@ export const transactionTypeSchema = z.enum(['expense', 'income'])
 export type TransactionType = z.infer<typeof transactionTypeSchema>
 export const transactionClearingStatusSchema = z.enum(['cleared', 'uncleared'])
 export type TransactionClearingStatus = z.infer<typeof transactionClearingStatusSchema>
+export const importReviewStatusSchema = z.enum([
+  'unreviewed',
+  'reviewed',
+  'needs_follow_up',
+])
+export type ImportReviewStatus = z.infer<typeof importReviewStatusSchema>
 export const transactionSortSchema = z.enum([
   'date_desc',
   'date_asc',
@@ -107,6 +113,13 @@ export const transactionCategoryBatchSchema = z
   })
   .strict()
 
+export const transactionImportReviewBatchSchema = z
+  .object({
+    status: importReviewStatusSchema,
+    transactions: transactionVersionBatchSchema,
+  })
+  .strict()
+
 export const transactionDuplicateCheckSchema = transactionFieldsSchema
   .extend({ excludeId: transactionIdSchema.optional() })
   .strict()
@@ -195,6 +208,7 @@ export const transactionQueryFieldsSchema = z
     dateTo: calendarDateSchema.optional(),
     type: transactionTypeSchema.optional(),
     status: transactionClearingStatusSchema.optional(),
+    importReviewStatus: importReviewStatusSchema.optional(),
     accountId: z.coerce.number().int().positive().optional(),
     categoryId: z.coerce.number().int().positive().optional(),
     amountMinor: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
@@ -272,6 +286,7 @@ export type TransactionInput = z.infer<typeof transactionInputSchema>
 export type TransactionUpdateInput = z.infer<typeof transactionUpdateSchema>
 export type TransactionCategoryBatchInput = z.infer<typeof transactionCategoryBatchSchema>
 export type TransactionClearingBatchInput = z.infer<typeof transactionClearingBatchSchema>
+export type TransactionImportReviewBatchInput = z.infer<typeof transactionImportReviewBatchSchema>
 export type AccountRegisterClearingInput = z.infer<typeof accountRegisterClearingSchema>
 export type TransactionDuplicateCheckInput = z.infer<typeof transactionDuplicateCheckSchema>
 export type AccountTransferInput = z.infer<typeof accountTransferInputSchema>
@@ -441,6 +456,8 @@ export type Transaction = TransactionInput & {
   updatedAt: string
   recurringRuleId?: string | null
   recurringRuleName?: string | null
+  /** Omitted only when an older cached app shell reads a pre-review API response. */
+  importReviewStatus?: ImportReviewStatus | null
 }
 
 export type AccountTransfer = AccountTransferInput & {

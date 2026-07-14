@@ -73,13 +73,16 @@ not operate an independent database server or a multi-user identity system.
   to the capped list, complete aggregate, demo snapshot, and complete CSV export.
 - Organize notes with case-sensitive, whitespace-delimited `#tags`; select a tag
   from a transaction to apply an exact filter that also scopes CSV export.
-- Stack income/expense, cleared/uncleared, account, category, exact payee, and
-  exact amount filters; retain inactive references as historical filter choices and clear
-  incompatible category filters when the selected transaction type changes.
+- Stack income/expense, cleared/uncleared, structured import-checklist, account,
+  category, exact payee, and exact amount filters; retain inactive references as
+  historical filter choices and clear incompatible category filters when the
+  selected transaction type changes.
 - Explicitly select shown transactions to change their clearing state together,
-  or move a same-type selection to an active matching category. Bound each batch
-  to 200 conflict-tokened rows and leave every row untouched when any selected
-  version or target-category invariant fails.
+  move a same-type selection to an active matching category, or change the local
+  import-checklist state when every selected row is imported. Bound each batch to
+  200 conflict-tokened rows and leave every row untouched when any selected
+  version or target invariant fails. Disable the checklist action for a mixed
+  manual/import selection and explain why.
 - Order the current transaction scope by date, amount, or payee in either
   direction while keeping the default newest-first overview and blank payees last.
 - Show exact count, income, expense, and signed net for every transaction matching
@@ -87,9 +90,12 @@ not operate an independent database server or a multi-user identity system.
 - Save up to eight validated, named date-scope, filter, and ordering combinations
   in the current browser and reapply them without storing a particular month,
   transaction rows, or cloud metadata. A saved exact-amount criterion is a
-  validated minor-unit integer and remains browser-local.
+  validated minor-unit integer and remains browser-local. Legacy saved views
+  default the structured import-checklist criterion to all states.
 - Export all transactions matching the selected date scope and filters as CSV
-  without the interactive 200-row limit; keep disaster-recovery backups separate.
+  without the interactive 200-row limit; the checklist filter scopes rows without
+  adding a column or changing the ordinary CSV header. Keep disaster-recovery
+  backups separate.
 - Export the complete selected account register as a separate reconciliation CSV,
   including one explicit range-start balance snapshot when available, every
   transaction and selected-account transfer leg, clearing state, and the exact
@@ -99,6 +105,10 @@ not operate an independent database server or a multi-user identity system.
   date/description/amount fields, target account, and fallback categories before
   correcting individual row categories, rerunning duplicate preview, explicitly
   selecting rows, and transactionally committing at most 200 normalized rows.
+  Every committed or newly source-linked import starts unreviewed in a reversible
+  local checklist; the checklist is separate from clearing and free-text
+  `#follow-up`, and does not detect or determine fraud, authorization, or bank
+  confirmation.
 - Download a complete versioned JSON ledger, validate a restore without writing,
   compare replacement counts, and require a typed confirmation before one atomic
   replacement. Keep the latest backup-preparation and integrity-check dates in
@@ -209,6 +219,7 @@ account_id            active compatible account
 category_id           active matching category
 occurred_on           YYYY-MM-DD calendar date
 cleared               bank-posting review state
+import_review_status  nullable unreviewed | needs_follow_up | reviewed for imported rows
 payee                 optional custom text
 note                  optional custom text
 recurring_rule_id     nullable provenance
@@ -229,6 +240,12 @@ the count of exact matches across type, amount, currency, account, category,
 date, payee, and note. Editing excludes its own row and clearing status is
 deliberately ignored. A match warns but never blocks a legitimate identical
 transaction, and no ledger data leaves the Worker for this check.
+
+`import_review_status` is a reversible local checklist backed by the surviving
+import source key. Rows created manually or by recurrence begin with null unless
+a later import links them. It is not fraud detection, an authorization decision,
+or bank confirmation, and it remains independent of clearing and note text such
+as `#follow-up`.
 
 ### Accounts and categories
 
@@ -341,6 +358,7 @@ POST   /api/transactions
 POST   /api/transactions/duplicates  (exact match count only)
 PATCH  /api/transactions/category  (atomic same-type category update for 1-200 versioned rows)
 PATCH  /api/transactions/clearing  (atomic clearing update for 1-200 versioned rows)
+PATCH  /api/transactions/import-review  (atomic checklist update for 1-200 versioned imported rows)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id
@@ -405,7 +423,7 @@ the client-only uncleared filter, and cannot be imported as ordinary transaction
 Both CSV downloads are plaintext and keep exact amounts even while screen privacy
 is enabled; user-entered text is neutralized against spreadsheet formulas.
 
-The schema-17 ledger JSON format covers the ledger currency and eight collections:
+The schema-18 ledger JSON format covers the ledger currency and eight collections:
 accounts, categories, the emergency-fund checkpoint, recurring transaction rules,
 scheduled-transfer rules,
 transactions, account transfers, and import tombstones. It excludes browser
@@ -413,12 +431,14 @@ preferences and AI credentials. Its SHA-256
 checksum detects modification. Restore validates internal references, returns a
 no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-the currency and all eight collections. Schema-8 through schema-16 backups remain
+the currency and all eight collections. Schema-8 through schema-17 backups remain
 compatible; pre-schema-14 backups upgrade to HKD, and schema-8 through schema-12
-do not invent an emergency-fund checkpoint. Schema-14 through schema-17 restores
-preserve the selected currency and never convert amounts. Only schema 17 contains
-scheduled-transfer rules or generated-transfer provenance; older formats upgrade
-without inventing either. The in-app file limit is 7 MiB;
+do not invent an emergency-fund checkpoint. Schema-14 through schema-18 restores
+preserve the selected currency and never convert amounts. Only schemas 17–18
+contain scheduled-transfer rules or generated-transfer provenance. Schema 18
+preserves the structured import-review state; older formats reconstruct imported
+rows from surviving import keys as unreviewed and leave manual rows unassigned.
+The in-app file limit is 7 MiB;
 larger or database-level recovery uses Wrangler D1 export and restore. The browser
 stores only the most recent backup-preparation and integrity-check dates; this
 reminder does not prove that a backup file was retained off-platform.
@@ -492,12 +512,14 @@ reminder does not prove that a backup file was retained off-platform.
   optional single account-backed emergency-fund checkpoint and migration 0014's
   singleton ledger currency with database-enforced change locks, plus migration
   0015's yearly recurring-rule frequency constraint, migration 0016's inclusive
-  recurring end dates, and migration 0017's scheduled account transfers.
+  recurring end dates, migration 0017's scheduled account transfers, and migration
+  0018's nullable three-state checklist for imported transactions.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
   summary, recurring transaction/transfer rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
-  selected-month, fixed-range, or all-history account/category/payee/type/clearing/search/exact-amount filters,
-  conflict-safe bulk clearing and same-type recategorization,
+  selected-month, fixed-range, or all-history account/category/payee/type/clearing/
+  import-checklist/search/exact-amount filters, conflict-safe bulk clearing,
+  same-type recategorization, and imported-row checklist updates,
   deterministic date/amount/payee ordering, warning-only exact duplicate preflight,
   matching filtered transaction
   aggregate and ordered CSV export, with monthly and filtered money totals failing
@@ -510,8 +532,8 @@ reminder does not prove that a backup file was retained off-platform.
   generic bank CSV import, private payee memory,
   recurring transaction and scheduled-transfer management, language settings, and the pristine-ledger currency
   setting.
-- Versioned schema-17 currency-plus-eight-collection JSON backup with schema-8
-  through schema-16 compatibility, SHA-256 integrity checking, preview-only
+- Versioned schema-18 currency-plus-eight-collection JSON backup with schema-8
+  through schema-17 compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only

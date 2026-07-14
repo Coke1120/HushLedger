@@ -108,12 +108,12 @@ knowledge and explains every command and dashboard click.
   dialog; HushLedger does not persist them to browser storage. If the ledger
   changes in another tab, the preserved draft keeps its opening currency and
   cannot be saved until the form is reopened against the new ledger state.
-- Stack search, exact amount, income/expense, cleared/uncleared, account, category,
-  and exact possible-duplicate filters across matching transactions. The first
-  200 rows in the selected order load privately, and an explicit control loads
-  the next 200 without putting filters or cursor data in the URL or browser
-  storage. An invalid amount draft never removes an already-applied exact filter
-  or broadens the result.
+- Stack search, exact amount, income/expense, cleared/uncleared, the three-state
+  import checklist, account, category, and exact possible-duplicate filters
+  across matching transactions. The first 200 rows in the selected order load
+  privately, and an explicit control loads the next 200 without putting filters
+  or cursor data in the URL or browser storage. An invalid amount draft never
+  removes an already-applied exact filter or broadens the result.
   Review the selected month, the seven Hong Kong calendar dates ending when the
   page loaded, one-click 12 complete calendar months through the selected month,
   an inclusive custom date range, or all history without changing the monthly
@@ -131,7 +131,7 @@ knowledge and explains every command and dashboard click.
   loaded in the interactive list.
 - Save up to eight named transaction views in the current browser and reapply
   their selected-month, fixed custom-range, or all-history scope plus type,
-  clearing, account, category, exact payee, exact amount, search, tag,
+  clearing, import-checklist, account, category, exact payee, exact amount, search, tag,
   possible-duplicate, and ordering criteria. Selected-month views follow the
   month navigator; custom ranges keep their exact dates. Views contain review
   criteria only and do not sync to Cloudflare.
@@ -142,8 +142,15 @@ knowledge and explains every command and dashboard click.
   directly, even when a complete uncleared review has loaded an older row whose
   full editor record is outside the current screen data. Loaded editor rows still
   open the full editor.
+- Review every imported transaction with a reversible local checklist state:
+  unreviewed, needs follow-up, or reviewed. New and upgraded imports start
+  unreviewed. Transactions created manually or by recurrence have no state unless
+  a later import links them. This checklist is separate from clearing and
+  `#follow-up`, and does not detect or determine fraud, authorization, or bank
+  confirmation.
 - Explicitly select up to 200 visible ledger rows to mark them cleared or
-  uncleared together, or move a same-type selection to another active category.
+  uncleared together, move a same-type selection to another active category, or
+  change the import-checklist state when every selected row is imported.
   Each change is all-or-none: if any selected row has changed in another session,
   HushLedger leaves the complete selection untouched. Hidden matches are never
   included, mixed income/expense selections cannot be recategorized, and bulk
@@ -152,10 +159,11 @@ knowledge and explains every command and dashboard click.
   chips apply an exact filter, stack with the other ledger filters, and carry
   through to the complete CSV export without adding a separate metadata store.
   The `#follow-up` shortcut retrieves items you marked for personal review; it
-  does not classify fraud.
+  does not classify fraud and remains independent of the structured import checklist.
 - Export every transaction matching the current date scope and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
-  user-entered spreadsheet formulas neutralized.
+  user-entered spreadsheet formulas neutralized. The checklist filter scopes the
+  exported rows without adding a column or changing the ordinary CSV header.
 - Export a separate, oldest-first account-register CSV for the selected inclusive
   date range. It includes an explicit available range-start balance, transactions,
   the selected account's signed transfer legs, clearing state, and exact running
@@ -166,6 +174,8 @@ knowledge and explains every command and dashboard click.
   fallback categories in the browser. Bank imports can reuse the latest active
   category for an exact payee and income/expense match, then correct any row's
   category before a fresh duplicate check. New rows are selected automatically.
+  Every committed import row enters the local checklist as unreviewed, including
+  a uniquely matched uncleared transaction that receives an import source key.
   A cleared row that uniquely matches one otherwise identical
   uncleared ledger entry links its source and clears that entry instead of adding
   a duplicate; ambiguous matches stay unselected. Import tombstones stop the same
@@ -274,8 +284,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
   transaction date scope and ordering choice. A custom range stores its exact
   inclusive endpoints, while selected-month views exclude a particular month.
   Views never contain transactions; an optional exact amount criterion is stored
-  as a validated minor-unit integer. Views are validated before reuse and are not
-  included in CSV exports or full-ledger backups.
+  as a validated minor-unit integer. Legacy saved views default the structured
+  import-checklist filter to all states. Views are validated before reuse and are
+  not included in CSV exports or full-ledger backups.
 - Transaction queries default to the selected month. `scope=range` requires one
   valid, ordered `dateFrom`/`dateTo` pair and includes both endpoints;
   `scope=all` removes the date bound. Either wider scope affects only the
@@ -486,16 +497,18 @@ warns the user to clear the site's browser data before reloading or reusing save
 views.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 17 and accepts schemas 8 through 17. Schema 8 through schema 16
+writes schema 18 and accepts schemas 8 through 18. Schema 8 through schema 17
 backups upgrade in memory; schema 8 through schema 13 default the ledger currency
 to HKD, while schema 8 through schema 12 also upgrade without inventing an
 emergency-fund checkpoint. Their existing version-specific defaults for clearing
 state, monthly plans, transfers, and opening balances still apply. Schema-14 through
-schema-17 restores carry their currency with the rest of the ledger instead of
-converting any amount. Only schemas 15–17 can contain yearly recurring transaction
-rules, only schemas 16–17 can store their end dates, and only schema 17 stores
-scheduled-transfer rules and generated-transfer provenance. Older backups upgrade
-without inventing either. For a
+schema-18 restores carry their currency with the rest of the ledger instead of
+converting any amount. Only schemas 15–18 can contain yearly recurring transaction
+rules, only schemas 16–18 can store their end dates, and only schemas 17–18 store
+scheduled-transfer rules and generated-transfer provenance. Schema 18 preserves
+the structured import-review state; older backups reconstruct imported rows from
+their surviving import keys as unreviewed without assigning a state to manual rows.
+For a
 backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
 recovery process in
@@ -641,8 +654,8 @@ OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete schema-17 JSON ledger, including its
-currency and eight data collections, and verifies schema-8 through schema-16
+The same gate exports and restores a complete schema-18 JSON ledger, including its
+currency and eight data collections, and verifies schema-8 through schema-17
 compatibility. Pre-schema-14 backups upgrade to HKD.
 Schema-14 and older backups retain their existing daily, weekly, or monthly recurring
 rules without inventing a yearly frequency, and schema-15 and older rules receive no
@@ -650,9 +663,10 @@ invented end date. Schema-12 and older backups
 never invent an emergency-fund checkpoint; schema-11 and older backups also
 receive no invented opening balance, schema-10 and older backups receive no
 invented transfer, schema-9 and older backups receive no invented category plan,
-and schema-8 history upgrades as cleared. The gate rejects a modified checksum
-and a stale preview, and proves that the final re-export exactly matches the
-pre-restore data.
+and schema-8 history upgrades as cleared. Schema-17 and older backups reconstruct
+imported rows as unreviewed from surviving import keys. The gate rejects a
+modified checksum and a stale preview, and proves that the final re-export exactly
+matches the pre-restore data.
 
 Regenerate Worker binding types after changing bindings:
 
@@ -681,6 +695,7 @@ npm run types:worker
 | `0015_yearly_recurring_rules.sql` | Allows yearly recurring rules while preserving existing schedules and generated-transaction provenance. |
 | `0016_recurring_rule_end_dates.sql` | Adds optional inclusive end dates so recurring rules can complete automatically without deleting generated history. |
 | `0017_recurring_transfer_rules.sql` | Adds scheduled account-transfer rules plus immutable generated-transfer provenance while preserving manual transfers and report neutrality. |
+| `0018_import_review_status.sql` | Adds a nullable three-state local checklist for imported transactions, backfilling rows with surviving import keys as unreviewed while leaving manual rows unchanged. |
 
 Apply migrations locally:
 
@@ -729,6 +744,7 @@ POST   /api/transactions
 POST   /api/transactions/duplicates  (exact local-ledger match count; no transaction contents)
 PATCH  /api/transactions/category  (atomic category update for 1-200 same-type, explicitly versioned rows)
 PATCH  /api/transactions/clearing  (atomic cleared/uncleared update for 1-200 explicitly versioned rows)
+PATCH  /api/transactions/import-review  (atomic checklist update for 1-200 explicitly versioned imported rows)
 GET    /api/transactions/:id
 PUT    /api/transactions/:id
 DELETE /api/transactions/:id

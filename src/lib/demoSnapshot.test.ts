@@ -3,7 +3,12 @@ import { describe, it } from 'node:test'
 import { addDemo, deleteDemo, demoAccounts, demoTransactions } from './demo'
 import { buildDemoSnapshot } from './demoSnapshot'
 
-function snapshot(currency?: 'HKD' | 'USD', duplicatesOnly = false, amountMinor: number | null = null) {
+function snapshot(
+  currency?: 'HKD' | 'USD',
+  duplicatesOnly = false,
+  amountMinor: number | null = null,
+  importReviewStatus: 'all' | 'unreviewed' | 'needs_follow_up' | 'reviewed' = 'all',
+) {
   return buildDemoSnapshot(
     '2026-07',
     'all',
@@ -20,6 +25,7 @@ function snapshot(currency?: 'HKD' | 'USD', duplicatesOnly = false, amountMinor:
     '',
     amountMinor,
     currency,
+    importReviewStatus,
   )
 }
 
@@ -81,6 +87,17 @@ describe('demo snapshot currency', () => {
       income: 0,
       expense: 38_640,
       net: -38_640,
+    })
+  })
+
+  it('does not invent imported rows or allow an import-checklist filter to expose demo data', () => {
+    assert.ok(snapshot().transactions.every(({ importReviewStatus }) => importReviewStatus == null))
+    assert.deepEqual(snapshot(undefined, false, null, 'unreviewed').transactions, [])
+    assert.deepEqual(snapshot(undefined, false, null, 'reviewed').transactionFilterSummary, {
+      transactionCount: 0,
+      income: 0,
+      expense: 0,
+      net: 0,
     })
   })
 })

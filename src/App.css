@@ -2116,6 +2116,36 @@ textarea:focus-visible {
   gap: 8px;
 }
 
+.transaction-bulk-import-review {
+  display: grid;
+  min-width: min(100%, 320px);
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 6px 8px;
+}
+
+.transaction-bulk-import-review label {
+  min-width: 0;
+}
+
+.transaction-bulk-import-review select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 34px 0 11px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.transaction-bulk-import-review small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .transaction-bulk-category label {
   min-width: 0;
 }
@@ -3020,6 +3050,33 @@ button.account-register-row:focus-visible {
 .transaction-clearing-status.is-uncleared {
   color: var(--muted);
   background: var(--surface-soft);
+}
+
+.transaction-import-review-status {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.transaction-import-review-status.is-unreviewed {
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.transaction-import-review-status.is-needs_follow_up {
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-color: #decf91;
+}
+
+.transaction-import-review-status.is-reviewed {
+  color: var(--brand);
+  background: var(--income-soft);
+  border-color: #c2ddd3;
 }
 
 .transaction-row time {
@@ -6643,6 +6700,15 @@ button.account-register-row:focus-visible {
   .transaction-bulk-category {
     grid-column: 1 / -1;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-bulk-import-review {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-bulk-import-review small {
+    grid-column: auto;
   }
 
   .transaction-bulk-buttons > .button:first-child,

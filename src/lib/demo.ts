@@ -17,6 +17,7 @@ import type {
   NetWorthTrendPoint,
   Category,
   ExpenseCategorySummary,
+  ImportReviewStatus,
   Summary,
   Transaction,
   TransactionCategoryBatchInput,
@@ -288,6 +289,7 @@ function matchesQuery(
   dateTo: string | null,
   payee: string | null,
   amountMinor: number | null,
+  importReviewStatus: ImportReviewStatus | 'all',
 ) {
   const monthRange = scope === 'month' ? monthRangeDates(month) : null
   const matchesDate = monthRange
@@ -307,6 +309,7 @@ function matchesQuery(
     (amountMinor === null || transaction.amountMinor === amountMinor) &&
     matchesDemoPayee(transaction, payee) &&
     (status === 'all' || transaction.cleared === (status === 'cleared')) &&
+    (importReviewStatus === 'all' || transaction.importReviewStatus === importReviewStatus) &&
     (tag === null || noteHasTransactionTag(transaction.note, tag)) &&
     (!needle || `${transaction.payee} ${transaction.note}`.toLowerCase().includes(needle))
   )
@@ -343,6 +346,7 @@ export function getDemoTransactions(
   payee: string | null = null,
   currency: SupportedCurrency | null = null,
   amountMinor: number | null = null,
+  importReviewStatus: ImportReviewStatus | 'all' = 'all',
 ) {
   const localized = demoTransactions.map((transaction) => {
     const localizedTransaction = localizeDemoTransaction(transaction, t)
@@ -354,6 +358,7 @@ export function getDemoTransactions(
     .filter((transaction) => matchesQuery(
       transaction, month, type, search, accountId, categoryId, tag, status, scope, dateFrom, dateTo,
       payee, amountMinor,
+      importReviewStatus,
     ))
     .filter((transaction) => !duplicatesOnly || hasExactDuplicate(transaction, localized))
     .sort((left, right) => compareDemoTransactions(left, right, sort))
@@ -396,6 +401,7 @@ export function summarizeDemoTransactions(
   payee: string | null = null,
   currency: SupportedCurrency | null = null,
   amountMinor: number | null = null,
+  importReviewStatus: ImportReviewStatus | 'all' = 'all',
 ): TransactionFilterSummary {
   const rows = getDemoTransactions(
     month,
@@ -414,6 +420,7 @@ export function summarizeDemoTransactions(
     payee,
     currency,
     amountMinor,
+    importReviewStatus,
   )
   return { transactionCount: rows.length, ...exactTransactionTotals(rows) }
 }

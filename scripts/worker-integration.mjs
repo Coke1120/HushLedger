@@ -78,8 +78,23 @@ function withoutAccountOpeningBalances(accounts) {
   })
 }
 
-function withoutRecurringTransferData(backup) {
+function withoutImportReviewData(backup) {
   const compatible = structuredClone(backup)
+  compatible.data.transactions = compatible.data.transactions.map(({
+    importReviewStatus,
+    ...transaction
+  }) => {
+    assert(
+      importReviewStatus === null
+      || ['unreviewed', 'reviewed', 'needs_follow_up'].includes(importReviewStatus),
+    )
+    return transaction
+  })
+  return compatible
+}
+
+function withoutRecurringTransferData(backup) {
+  const compatible = withoutImportReviewData(backup)
   const recurringTransferRules = compatible.data.recurringTransferRules
   assert(Array.isArray(recurringTransferRules))
   delete compatible.data.recurringTransferRules
@@ -248,11 +263,13 @@ async function verifyUpgradeMigration() {
   const yearlyMigrationNames = allMigrationNames.filter((name) => /^0015_/.test(name))
   const scheduleEndMigrationNames = allMigrationNames.filter((name) => /^0016_/.test(name))
   const recurringTransferMigrationNames = allMigrationNames.filter((name) => /^0017_/.test(name))
+  const importReviewMigrationNames = allMigrationNames.filter((name) => /^0018_/.test(name))
   assert.equal(initialMigrationNames.length, 4)
   assert.equal(preYearlyMigrationNames.length, 10)
   assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
   assert.deepEqual(scheduleEndMigrationNames, ['0016_recurring_rule_end_dates.sql'])
   assert.deepEqual(recurringTransferMigrationNames, ['0017_recurring_transfer_rules.sql'])
+  assert.deepEqual(importReviewMigrationNames, ['0018_import_review_status.sql'])
   await Promise.all(
     initialMigrationNames.map((name) => (
       copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
@@ -352,7 +369,9 @@ async function verifyUpgradeMigration() {
      ) VALUES (
        '${recurringTransactionId}','expense',777,'HKD',1,3,'2026-06-30','upgrade recurring payee','generated before 0015',
        '${recurringSentinelId}','upgrade recurring sentinel','2026-06-30','${recurringSentinelId}:2026-06-30',0
-     );`,
+     );
+     INSERT INTO transaction_import_keys(import_key,transaction_id,imported_at)
+     VALUES ('csv:hushledger:id:${recurringTransactionId}','${recurringTransactionId}','2026-06-30T00:00:00.000Z');`,
     '--yes',
   ])
 
@@ -428,6 +447,23 @@ async function verifyUpgradeMigration() {
     upgradeConfig,
   ])
 
+  await Promise.all(
+    importReviewMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
   const verification = await runWrangler([
     'd1',
     'execute',
@@ -436,7 +472,9 @@ async function verifyUpgradeMigration() {
     '--persist-to',
     upgradeState,
     '--command',
-    `SELECT id, occurred_on AS occurredOn, cleared FROM transactions WHERE id = '${sentinelId}';
+    `SELECT id, occurred_on AS occurredOn, cleared,
+       import_review_status AS importReviewStatus
+     FROM transactions WHERE id = '${sentinelId}';
      SELECT name, localization_key AS localizationKey,
        opening_balance_minor AS openingBalanceMinor,
        opening_balance_on AS openingBalanceOn
@@ -450,7 +488,8 @@ async function verifyUpgradeMigration() {
      FROM recurring_rules WHERE id = '${recurringSentinelId}';
      SELECT id, recurring_rule_id AS recurringRuleId,
        recurrence_due_on AS recurrenceDueOn,
-       recurring_occurrence_key AS recurringOccurrenceKey, cleared
+       recurring_occurrence_key AS recurringOccurrenceKey, cleared,
+       import_review_status AS importReviewStatus
      FROM transactions WHERE id = '${recurringTransactionId}';
      SELECT
        id,
@@ -485,7 +524,8 @@ async function verifyUpgradeMigration() {
        'idx_recurring_rules_due', 'idx_recurring_rules_account', 'idx_recurring_rules_category',
        'idx_transactions_occurred_on', 'idx_transactions_type_occurred_on',
        'idx_transactions_account_occurred_on', 'idx_transactions_category_occurred_on',
-       'idx_transactions_recurring_rule', 'idx_transactions_cleared_occurred_on'
+       'idx_transactions_recurring_rule', 'idx_transactions_cleared_occurred_on',
+       'idx_transactions_import_review_status'
      );
      SELECT COUNT(*) AS recurringAndTransactionRevisionTriggers
      FROM sqlite_master
@@ -523,6 +563,7 @@ async function verifyUpgradeMigration() {
   assert.equal(statements[0].results[0].id, sentinelId)
   assert.equal(statements[0].results[0].occurredOn, '2026-07-10')
   assert.equal(statements[0].results[0].cleared, 1)
+  assert.equal(statements[0].results[0].importReviewStatus, null)
   assert.deepEqual(statements[1].results, [
     { name: 'Integration custom account', localizationKey: null, openingBalanceMinor: null, openingBalanceOn: null },
     { name: '日常帳戶', localizationKey: 'account.bank', openingBalanceMinor: null, openingBalanceOn: null },
@@ -549,6 +590,7 @@ async function verifyUpgradeMigration() {
     recurrenceDueOn: '2026-06-30',
     recurringOccurrenceKey: `${recurringSentinelId}:2026-06-30`,
     cleared: 0,
+    importReviewStatus: 'unreviewed',
   }])
   assert.deepEqual(statements[5].results, [{
     id: transferSentinelId,
@@ -567,8 +609,8 @@ async function verifyUpgradeMigration() {
     createdAt: '2026-07-11T01:02:03.000Z',
     updatedAt: '2026-07-12T04:05:06.000Z',
   }])
-  assert.equal(statements[6].results[0].importKeys, 0)
-  assert.equal(statements[7].results[0].revision, 4)
+  assert.equal(statements[6].results[0].importKeys, 1)
+  assert.equal(statements[7].results[0].revision, 6)
   assert.deepEqual(statements[8].results, [
     { name: 'account_transfers' },
     { name: 'emergency_fund_goals' },
@@ -576,7 +618,7 @@ async function verifyUpgradeMigration() {
     { name: 'recurring_transfer_rules' },
   ])
   assert.equal(statements[9].results[0].emergencyFundRevisionTriggers, 3)
-  assert.equal(statements[10].results[0].recurringAndTransactionIndexes, 9)
+  assert.equal(statements[10].results[0].recurringAndTransactionIndexes, 10)
   assert.equal(statements[11].results[0].recurringAndTransactionRevisionTriggers, 6)
   assert.equal(statements[12].results[0].recurringTransferIndexes, 4)
   assert.equal(statements[13].results[0].recurringTransferTriggers, 7)
@@ -618,6 +660,23 @@ async function verifyUpgradeMigration() {
     '--json',
   ])).stdout)
   assert.deepEqual(yearlyFrequency[0].results, [{ frequency: 'yearly' }])
+
+  await assert.rejects(
+    runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      upgradeState,
+      '--config',
+      upgradeConfig,
+      '--command',
+      `UPDATE transactions SET import_review_status = 'ignored' WHERE id = '${sentinelId}';`,
+      '--yes',
+    ]),
+    /CHECK constraint failed/,
+  )
 
   await assert.rejects(
     runWrangler([
@@ -1203,7 +1262,7 @@ async function verifyPristineCurrencyApi() {
     const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
-    assert.equal(usdBackup.schemaVersion, 17)
+    assert.equal(usdBackup.schemaVersion, 18)
     assert.equal(usdBackup.data.currency, 'USD')
     assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
     assert(usdBackup.data.accounts.every(({
@@ -5029,6 +5088,7 @@ async function verifyWorkerApi() {
   assert.equal(createdTransaction.response.status, 201)
   assert.equal(createdTransaction.payload.data.amountMinor, 123)
   assert.equal(createdTransaction.payload.data.cleared, false)
+  assert.equal(createdTransaction.payload.data.importReviewStatus, null)
 
   const duplicateCandidate = {
     type: transactionBody.type,
@@ -5238,6 +5298,7 @@ async function verifyWorkerApi() {
   const matchedManualTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
   assert.equal(matchedManualTransaction.response.status, 200)
   assert.equal(matchedManualTransaction.payload.data.cleared, true)
+  assert.equal(matchedManualTransaction.payload.data.importReviewStatus, 'unreviewed')
   const absentMatchedImportTransaction = await api(
     baseUrl,
     `/api/transactions/${csvImportIds.exactMatch}`,
@@ -5254,6 +5315,7 @@ async function verifyWorkerApi() {
   const importedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`)
   assert.equal(importedCsvTransaction.response.status, 200)
   assert.equal(importedCsvTransaction.payload.data.categoryId, transactionBody.categoryId)
+  assert.equal(importedCsvTransaction.payload.data.importReviewStatus, 'unreviewed')
   const deletedCsvTransaction = await api(baseUrl, `/api/transactions/${csvImportIds.fresh}`, {
     method: 'DELETE',
     body: { updatedAt: importedCsvTransaction.payload.data.updatedAt },
@@ -5280,6 +5342,120 @@ async function verifyWorkerApi() {
     `/api/transactions/${csvImportIds.possibleDuplicate}`,
   )
   assert.equal(importedPossibleDuplicate.response.status, 200)
+  assert.equal(importedPossibleDuplicate.payload.data.importReviewStatus, 'unreviewed')
+
+  const manualImportReviewTransaction = await api(
+    baseUrl,
+    `/api/transactions/${bulkClearingIds[0]}`,
+  )
+  assert.equal(manualImportReviewTransaction.response.status, 200)
+  assert.equal(manualImportReviewTransaction.payload.data.importReviewStatus, null)
+
+  const manualImportReviewConflict = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'reviewed',
+      transactions: [
+        {
+          id: matchedManualTransaction.payload.data.id,
+          updatedAt: matchedManualTransaction.payload.data.updatedAt,
+        },
+        {
+          id: manualImportReviewTransaction.payload.data.id,
+          updatedAt: manualImportReviewTransaction.payload.data.updatedAt,
+        },
+      ],
+    },
+  })
+  assert.equal(manualImportReviewConflict.response.status, 409)
+  assert.equal(manualImportReviewConflict.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+  assert.equal(
+    (await api(baseUrl, `/api/transactions/${transactionBody.id}`)).payload.data.importReviewStatus,
+    'unreviewed',
+  )
+
+  const reviewedImportBatch = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'reviewed',
+      transactions: [
+        {
+          id: matchedManualTransaction.payload.data.id,
+          updatedAt: matchedManualTransaction.payload.data.updatedAt,
+        },
+        {
+          id: importedPossibleDuplicate.payload.data.id,
+          updatedAt: importedPossibleDuplicate.payload.data.updatedAt,
+        },
+      ],
+    },
+  })
+  assert.equal(reviewedImportBatch.response.status, 200, JSON.stringify(reviewedImportBatch.payload))
+  assert.deepEqual(reviewedImportBatch.payload.data, { updated: 2, status: 'reviewed' })
+  const reviewedImports = await Promise.all([
+    api(baseUrl, `/api/transactions/${transactionBody.id}`),
+    api(baseUrl, `/api/transactions/${csvImportIds.possibleDuplicate}`),
+  ])
+  assert(reviewedImports.every(({ payload }) => payload.data.importReviewStatus === 'reviewed'))
+
+  const staleImportReview = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'needs_follow_up',
+      transactions: [{
+        id: matchedManualTransaction.payload.data.id,
+        updatedAt: matchedManualTransaction.payload.data.updatedAt,
+      }],
+    },
+  })
+  assert.equal(staleImportReview.response.status, 409)
+  assert.equal(staleImportReview.payload.error.code, 'TRANSACTION_VERSION_CONFLICT')
+
+  const followUpImport = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'needs_follow_up',
+      transactions: [{
+        id: reviewedImports[1].payload.data.id,
+        updatedAt: reviewedImports[1].payload.data.updatedAt,
+      }],
+    },
+  })
+  assert.equal(followUpImport.response.status, 200)
+  assert.deepEqual(followUpImport.payload.data, { updated: 1, status: 'needs_follow_up' })
+  const followUpTransaction = await api(
+    baseUrl,
+    `/api/transactions/${csvImportIds.possibleDuplicate}`,
+  )
+  assert.equal(followUpTransaction.payload.data.importReviewStatus, 'needs_follow_up')
+
+  const resetImportReview = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'unreviewed',
+      transactions: [{
+        id: reviewedImports[0].payload.data.id,
+        updatedAt: reviewedImports[0].payload.data.updatedAt,
+      }],
+    },
+  })
+  assert.equal(resetImportReview.response.status, 200)
+  assert.deepEqual(resetImportReview.payload.data, { updated: 1, status: 'unreviewed' })
+  const resetImportTransaction = await api(baseUrl, `/api/transactions/${transactionBody.id}`)
+  assert.equal(resetImportTransaction.payload.data.importReviewStatus, 'unreviewed')
+
+  const reReviewedImport = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'reviewed',
+      transactions: [{
+        id: resetImportTransaction.payload.data.id,
+        updatedAt: resetImportTransaction.payload.data.updatedAt,
+      }],
+    },
+  })
+  assert.equal(reReviewedImport.response.status, 200)
+  assert.deepEqual(reReviewedImport.payload.data, { updated: 1, status: 'reviewed' })
 
   const ambiguousMatchPreview = await api(baseUrl, '/api/imports/csv', {
     method: 'POST',
@@ -5332,6 +5508,39 @@ async function verifyWorkerApi() {
   assert.equal(duplicateReviewExport.response.status, 200)
   assert.equal(duplicateReviewExport.payload.trimEnd().split('\r\n').length - 1, 2)
 
+  const reviewedDuplicateQuery = `month=${month}&search=integration%20test&duplicates=exact&importReviewStatus=reviewed`
+  const reviewedDuplicateReview = await api(
+    baseUrl,
+    `/api/transactions?${reviewedDuplicateQuery}`,
+  )
+  assert.equal(reviewedDuplicateReview.response.status, 200)
+  assert.deepEqual(
+    reviewedDuplicateReview.payload.data.map(({ id }) => id),
+    [transactionBody.id],
+  )
+  const reviewedDuplicateSummary = await api(
+    baseUrl,
+    `/api/transactions/summary?${reviewedDuplicateQuery}`,
+  )
+  assert.equal(reviewedDuplicateSummary.response.status, 200)
+  assert.deepEqual(reviewedDuplicateSummary.payload.data, {
+    transactionCount: 1,
+    income: 0,
+    expense: transactionBody.amountMinor,
+    net: -transactionBody.amountMinor,
+  })
+  const reviewedDuplicateExport = await exportTransactionCsv(baseUrl, {
+    month,
+    search: 'integration test',
+    duplicates: 'exact',
+    importReviewStatus: 'reviewed',
+  })
+  assert.equal(reviewedDuplicateExport.response.status, 200)
+  const duplicateExportLines = duplicateReviewExport.payload.trimEnd().split('\r\n')
+  const reviewedExportLines = reviewedDuplicateExport.payload.trimEnd().split('\r\n')
+  assert.equal(reviewedExportLines.length - 1, 1)
+  assert.equal(reviewedExportLines[0], duplicateExportLines[0])
+
   const invalidDuplicateReview = await api(
     baseUrl,
     `/api/transactions?month=${month}&duplicates=fuzzy`,
@@ -5383,7 +5592,7 @@ async function verifyWorkerApi() {
       ...transactionFields,
       amountMinor: 456,
       payee: 'edited integration test',
-      updatedAt: matchedManualTransaction.payload.data.updatedAt,
+      updatedAt: fetchedTransaction.payload.data.updatedAt,
     },
   })
   assert.equal(updatedTransaction.response.status, 200)
@@ -6131,6 +6340,44 @@ async function verifyWorkerApi() {
 
   const recurringTransfers = await verifyRecurringTransferRules(baseUrl, today, month)
 
+  const reviewedBackupImportId = '41000000-0000-4000-8000-000000000009'
+  const reviewedBackupImport = await api(baseUrl, '/api/imports/csv', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      rows: [{
+        ...transactionBody,
+        id: reviewedBackupImportId,
+        amountMinor: 31_415,
+        payee: 'Backup review round-trip',
+        cleared: true,
+        sourceRow: 99,
+        importKey: `csv:hushledger:id:${reviewedBackupImportId}`,
+        include: true,
+      }],
+    },
+  })
+  assert.equal(reviewedBackupImport.response.status, 201, JSON.stringify(reviewedBackupImport.payload))
+  assert.equal(reviewedBackupImport.payload.data.imported, 1)
+  const unreviewedBackupTransaction = await api(
+    baseUrl,
+    `/api/transactions/${reviewedBackupImportId}`,
+  )
+  assert.equal(unreviewedBackupTransaction.response.status, 200)
+  assert.equal(unreviewedBackupTransaction.payload.data.importReviewStatus, 'unreviewed')
+  const reviewedBackupStatus = await api(baseUrl, '/api/transactions/import-review', {
+    method: 'PATCH',
+    body: {
+      status: 'reviewed',
+      transactions: [{
+        id: reviewedBackupImportId,
+        updatedAt: unreviewedBackupTransaction.payload.data.updatedAt,
+      }],
+    },
+  })
+  assert.equal(reviewedBackupStatus.response.status, 200)
+  assert.deepEqual(reviewedBackupStatus.payload.data, { updated: 1, status: 'reviewed' })
+
   const navigationBackupDownload = await api(baseUrl, '/api/backups/ledger')
   assert.equal(navigationBackupDownload.response.status, 404)
   assert.equal(navigationBackupDownload.payload.error.code, 'NOT_FOUND')
@@ -6148,11 +6395,29 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 17)
+  assert.equal(backup.schemaVersion, 18)
   assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
   assert(backup.data.transactions.every(({ cleared }) => typeof cleared === 'boolean'))
+  assert(backup.data.transactions.every(({ importReviewStatus }) => (
+    importReviewStatus === null
+    || ['unreviewed', 'reviewed', 'needs_follow_up'].includes(importReviewStatus)
+  )))
+  assert.equal(
+    backup.data.transactions.find(({ id }) => id === reviewedBackupImportId)?.importReviewStatus,
+    'reviewed',
+  )
+  assert.equal(
+    backup.data.transactions.find(
+      ({ id }) => id === csvImportIds.possibleDuplicate,
+    )?.importReviewStatus,
+    'needs_follow_up',
+  )
+  assert.equal(
+    backup.data.transactions.find(({ id }) => id === bulkClearingIds[0])?.importReviewStatus,
+    null,
+  )
   assert(backup.data.categories.every(({ monthlyPlanMinor }) => (
     monthlyPlanMinor === null || Number.isSafeInteger(monthlyPlanMinor)
   )))
@@ -6379,6 +6644,46 @@ async function verifyWorkerApi() {
   const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema17Backup = withoutImportReviewData(backup)
+  schema17Backup.schemaVersion = 17
+  schema17Backup.checksum.digest = backupChecksum(schema17Backup)
+  const schema17Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema17Backup },
+  })
+  assert.equal(schema17Preview.response.status, 200, JSON.stringify(schema17Preview.payload))
+  const schema17Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema17Backup,
+      expectedCurrentDigest: schema17Preview.payload.data.currentDigest,
+      expectedRevision: schema17Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema17Restore.response.status, 200, JSON.stringify(schema17Restore.payload))
+  const upgradedSchema17Backup = await downloadLedgerBackup(baseUrl)
+  assert.equal(upgradedSchema17Backup.payload.schemaVersion, 18)
+  assert.equal(
+    upgradedSchema17Backup.payload.data.transactions.find(
+      ({ id }) => id === reviewedBackupImportId,
+    )?.importReviewStatus,
+    'unreviewed',
+  )
+  assert.equal(
+    upgradedSchema17Backup.payload.data.transactions.find(
+      ({ id }) => id === csvImportIds.possibleDuplicate,
+    )?.importReviewStatus,
+    'unreviewed',
+  )
+  assert.equal(
+    upgradedSchema17Backup.payload.data.transactions.find(
+      ({ id }) => id === bulkClearingIds[0],
+    )?.importReviewStatus,
+    null,
+  )
+
   const schema16Backup = withoutRecurringTransferData(backup)
   schema16Backup.schemaVersion = 16
   schema16Backup.checksum.digest = backupChecksum(schema16Backup)
@@ -6399,7 +6704,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema16Restore.response.status, 200, JSON.stringify(schema16Restore.payload))
   const upgradedSchema16Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema16Backup.payload.schemaVersion, 17)
+  assert.equal(upgradedSchema16Backup.payload.schemaVersion, 18)
   assert.deepEqual(upgradedSchema16Backup.payload.data.recurringTransferRules, [])
   assert(upgradedSchema16Backup.payload.data.accountTransfers.every(({
     recurringTransferRuleId,
@@ -6433,7 +6738,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema15Restore.response.status, 200, JSON.stringify(schema15Restore.payload))
   const upgradedSchema15Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 17)
+  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 18)
   assert(upgradedSchema15Backup.payload.data.recurringRules.every(
     ({ scheduleEndsOn }) => scheduleEndsOn === null,
   ))
@@ -6469,7 +6774,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
   const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 17)
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 18)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
   const schema12Backup = withoutYearlyRecurringData(backup)
@@ -6953,8 +7258,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0017',
-      upgradeMigration: '0004-to-0017-preserved-data-fks-indexes-triggers-yearly-end-dates-and-recurring-transfers',
+      freshMigrations: '0001-0018',
+      upgradeMigration: '0004-to-0018-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-and-import-review',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

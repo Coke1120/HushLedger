@@ -10,6 +10,7 @@ import {
   categoryUpdateSchema,
   emergencyFundGoalDeleteSchema,
   emergencyFundGoalSaveSchema,
+  importReviewStatusSchema,
   referenceIdSchema,
   referenceOrderSchema,
   referenceStatusSchema,
@@ -28,6 +29,7 @@ import {
   transactionClearingBatchSchema,
   transactionDuplicateCheckSchema,
   transactionInputSchema,
+  transactionImportReviewBatchSchema,
   transactionPageQuerySchema,
   transactionQuerySchema,
   transactionUpdateSchema,
@@ -295,6 +297,32 @@ describe('transaction validation', () => {
     }).success, false)
   })
 
+  it('accepts only the three import review states and bounded unique imported transaction versions', () => {
+    const updatedAt = '2026-07-11T10:30:00.000Z'
+    const transactions = [
+      { id: valid.id, updatedAt },
+      { id: '019f5087-229b-7ce3-a76f-95c833dcf252', updatedAt },
+    ]
+
+    for (const status of ['unreviewed', 'reviewed', 'needs_follow_up'] as const) {
+      assert.equal(importReviewStatusSchema.safeParse(status).success, true)
+      assert.deepEqual(transactionImportReviewBatchSchema.parse({ status, transactions }), {
+        status,
+        transactions,
+      })
+    }
+    assert.equal(importReviewStatusSchema.safeParse('ignored').success, false)
+    assert.equal(transactionImportReviewBatchSchema.safeParse({
+      status: 'reviewed',
+      transactions: [transactions[0], transactions[0]],
+    }).success, false)
+    assert.equal(transactionImportReviewBatchSchema.safeParse({
+      status: 'reviewed',
+      transactions,
+      cleared: true,
+    }).success, false)
+  })
+
   it('rejects an update that tries to replace its immutable ID', () => {
     const { id, ...fields } = valid
     assert.equal(
@@ -339,6 +367,7 @@ describe('transaction query validation', () => {
         scope: 'all',
         type: 'expense',
         status: 'uncleared',
+        importReviewStatus: 'needs_follow_up',
         accountId: '2',
         categoryId: '3',
         amountMinor: '38640',
@@ -353,6 +382,7 @@ describe('transaction query validation', () => {
         scope: 'all',
         type: 'expense',
         status: 'uncleared',
+        importReviewStatus: 'needs_follow_up',
         accountId: 2,
         categoryId: 3,
         amountMinor: 38_640,
@@ -451,6 +481,7 @@ describe('transaction query validation', () => {
     { month: '2026-13' },
     { type: 'transfer' },
     { month: '2026-07', status: 'pending' },
+    { month: '2026-07', importReviewStatus: 'ignored' },
     { accountId: '0' },
     { categoryId: '1.5' },
     { month: '2026-07', amountMinor: '0' },

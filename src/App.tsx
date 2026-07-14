@@ -32,6 +32,7 @@ import {
   TransactionToolbar,
   type TransactionClearingFilter,
   type TransactionFilter,
+  type TransactionImportReviewFilter,
 } from './components/TransactionToolbar'
 import { useHongKongToday } from './hooks/useHongKongToday'
 import { useMoneyData } from './hooks/useMoneyData'
@@ -74,6 +75,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
   const [clearingFilter, setClearingFilter] = useState<TransactionClearingFilter>('all')
+  const [importReviewFilter, setImportReviewFilter] = useState<TransactionImportReviewFilter>('all')
   const [accountFilterId, setAccountFilterId] = useState<number | null>(null)
   const [registerAccountId, setRegisterAccountId] = useState<number | null>(null)
   const [registerMode, setRegisterMode] = useState<'review' | 'reconcile'>('review')
@@ -142,6 +144,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     payeeFilter,
     tagFilter,
     clearingFilter,
+    importReviewFilter,
     view === 'transactions' ? transactionSort : 'date_desc',
     duplicatesOnly,
     effectiveTransactionDateScope,
@@ -158,6 +161,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setAccountRegisterEntryClearing,
     setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
+    setSelectedTransactionsImportReviewStatus,
     saveAccountTransfer,
     saveTransaction: saveMoneyTransaction,
   } = data
@@ -337,6 +341,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setDuplicatesOnly(false)
     setFilter(category.type)
     setClearingFilter('all')
+    setImportReviewFilter('all')
     setAccountFilterId(null)
     setRegisterAccountId(null)
     setCategoryFilterId(category.id)
@@ -353,6 +358,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setDuplicatesOnly(false)
     setFilter('expense')
     setClearingFilter('all')
+    setImportReviewFilter('all')
     setAccountFilterId(null)
     setRegisterAccountId(null)
     setCategoryFilterId(null)
@@ -369,6 +375,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTagFilter(null)
     setFilter('all')
     setClearingFilter('all')
+    setImportReviewFilter('all')
     setDuplicatesOnly(false)
     setPayeeFilter(null)
     setRegisterDateRange(null)
@@ -465,6 +472,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       dateTo: transactionDateScope === 'range' ? transactionDateRange.to : null,
       type: filter,
       status: clearingFilter,
+      importReviewStatus: importReviewFilter,
       accountId: accountFilterId,
       categoryId: categoryFilterId,
       payee: payeeFilter,
@@ -475,7 +483,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       sort: transactionSort,
     }
     storeSavedTransactionViews((current) => addSavedTransactionView(current, candidate).views)
-  }, [accountFilterId, amountFilterMinor, categoryFilterId, clearingFilter, duplicatesOnly, filter, payeeFilter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
+  }, [accountFilterId, amountFilterMinor, categoryFilterId, clearingFilter, duplicatesOnly, filter, importReviewFilter, payeeFilter, search, storeSavedTransactionViews, tagFilter, transactionDateRange.from, transactionDateRange.to, transactionDateScope, transactionSort])
 
   const applySavedTransactionView = useCallback((savedView: SavedTransactionView) => {
     const accountId = savedView.accountId !== null
@@ -494,6 +502,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       setCustomTransactionDateRange({ from: savedView.dateFrom, to: savedView.dateTo })
     }
     setClearingFilter(savedView.status)
+    setImportReviewFilter(savedView.importReviewStatus)
     setAccountFilterId(accountId)
     setCategoryFilterId(categoryId)
     setPayeeFilter(savedView.payee)
@@ -510,6 +519,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setFilter('all')
     setTransactionDateScope('month')
     setClearingFilter('all')
+    setImportReviewFilter('all')
     setAccountFilterId(null)
     setCategoryFilterId(null)
     setPayeeFilter(null)
@@ -744,6 +754,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 tagFilter={tagFilter}
                 filter={filter}
                 clearingFilter={clearingFilter}
+                importReviewFilter={importReviewFilter}
                 dateScope={transactionDateScope}
                 dateFrom={transactionDateRange.from}
                 dateTo={transactionDateRange.to}
@@ -764,6 +775,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onTagFilterChange={changeTagFilter}
                 onFilterChange={changeTransactionFilter}
                 onClearingFilterChange={setClearingFilter}
+                onImportReviewFilterChange={setImportReviewFilter}
                 onDateScopeChange={setTransactionDateScope}
                 onDateFromChange={changeTransactionDateFrom}
                 onDateToChange={changeTransactionDateTo}
@@ -793,6 +805,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                       filter !== 'all'
                       || transactionDateScope !== 'month'
                       || clearingFilter !== 'all'
+                      || importReviewFilter !== 'all'
                       || accountFilterId !== null
                       || categoryFilterId !== null
                       || payeeFilter !== null
@@ -878,6 +891,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                     view,
                     filter,
                     clearingFilter,
+                    importReviewFilter,
                     accountFilterId,
                     categoryFilterId,
                     payeeFilter,
@@ -899,6 +913,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   onTagSelect={changeTagFilter}
                   onSetCategory={setSelectedTransactionsCategory}
                   onSetClearing={setSelectedTransactionsClearing}
+                  onSetImportReviewStatus={setSelectedTransactionsImportReviewStatus}
                 />
                 {view === 'transactions' && (
                   data.transactionPageHasMore

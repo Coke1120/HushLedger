@@ -7,6 +7,7 @@ import {
   setAccountRegisterEntryClearingAction,
   setTransactionsCategoryAction,
   setTransactionsClearingAction,
+  setTransactionsImportReviewStatusAction,
   updateAccountTransferAction,
   updateTransactionAction,
 } from '../app/actions'
@@ -33,6 +34,7 @@ import type {
   AccountTransferInput,
   Category,
   EmergencyFundGoal,
+  ImportReviewStatus,
   NetWorthTrendPoint,
   Summary,
   Transaction,
@@ -87,6 +89,7 @@ export function useMoneyData(
   payee: string | null,
   tag: string | null,
   status: TransactionClearingStatus | 'all',
+  importReviewStatus: ImportReviewStatus | 'all',
   sort: TransactionSort,
   duplicatesOnly: boolean,
   scope: TransactionDateScope,
@@ -99,7 +102,7 @@ export function useMoneyData(
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
     buildDemoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo, amountMinor,
+      dateFrom, dateTo, amountMinor, undefined, importReviewStatus,
     )
   ))
   const [source, setSource] = useState<DataSource>('loading')
@@ -121,6 +124,7 @@ export function useMoneyData(
     dateTo,
     type,
     status,
+    importReviewStatus,
     accountId: registerAccountId ?? accountId,
     categoryId,
     amountMinor,
@@ -129,7 +133,7 @@ export function useMoneyData(
     tag,
     duplicatesOnly,
     sort,
-  }), [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, registerAccountId, scope, search, sort, status, tag, type])
+  }), [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, importReviewStatus, month, payee, registerAccountId, scope, search, sort, status, tag, type])
 
   const fetchSnapshot = useCallback(async (): Promise<{
     snapshot: Snapshot
@@ -197,9 +201,9 @@ export function useMoneyData(
   const setDemoSnapshot = useCallback(() => {
     setSnapshot((current) => buildDemoSnapshot(
       month, type, search, accountId, categoryId, payee, tag, status, sort, duplicatesOnly, scope,
-      dateFrom, dateTo, amountMinor, current.ledgerSettings.currency,
+      dateFrom, dateTo, amountMinor, current.ledgerSettings.currency, importReviewStatus,
     ))
-  }, [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, sort, status, tag, type])
+  }, [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, importReviewStatus, month, payee, scope, search, sort, status, tag, type])
 
   const refresh = useCallback(
     async (failureMode: RefreshFailureMode = 'demo') => {
@@ -511,6 +515,61 @@ export function useMoneyData(
     [refresh, setDemoSnapshot, source],
   )
 
+  const setSelectedTransactionsImportReviewStatus = useCallback(
+    async (transactions: Transaction[], nextStatus: ImportReviewStatus) => {
+      if (
+        submitting.current
+        || transactions.length === 0
+        || transactions.some(({ importReviewStatus }) => importReviewStatus == null)
+      ) return false
+      submitting.current = true
+      setSaving(true)
+      setSaveError(null)
+      setActionMessage(null)
+
+      try {
+        if (source === 'demo') {
+          setSaveError(message('importReviewUnavailable'))
+          return false
+        }
+        if (!navigator.onLine) {
+          setSaveError(message('transactionOfflineError'))
+          return false
+        }
+
+        await actionData(setTransactionsImportReviewStatusAction({
+          status: nextStatus,
+          transactions: transactions.map(({ id, updatedAt }) => ({ id, updatedAt })),
+        }))
+        const refreshed = await refresh('error')
+        if (!refreshed) {
+          setActionMessage(message('transactionSavedRefreshFailed'))
+          return true
+        }
+
+        const statusKey = nextStatus === 'unreviewed'
+          ? 'importReviewUnreviewed'
+          : nextStatus === 'needs_follow_up'
+            ? 'importReviewNeedsFollowUp'
+            : 'importReviewReviewed'
+        setActionMessage(message(
+          transactions.length === 1
+            ? 'bulkTransactionsImportReviewUpdatedOne'
+            : 'bulkTransactionsImportReviewUpdated',
+          { count: transactions.length, status: message(statusKey) },
+        ))
+        return true
+      } catch (error) {
+        setSaveError(messageForError(error, 'transactionBulkImportReviewFailed'))
+        return false
+      } finally {
+        submitting.current = false
+        setSaving(false)
+      }
+    },
+    [refresh, source],
+  )
+
   const setAccountRegisterEntryClearing = useCallback(
     async (input: AccountRegisterClearingInput) => {
       if (submitting.current) return false
@@ -681,6 +740,7 @@ export function useMoneyData(
             transactions: getDemoTransactions(
               month, type, search, t, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
               dateFrom, dateTo, payee, snapshot.ledgerSettings.currency, amountMinor,
+              importReviewStatus,
             ),
             transactionFilterSummary: summarizeDemoTransactions(
               month,
@@ -698,11 +758,12 @@ export function useMoneyData(
               payee,
               snapshot.ledgerSettings.currency,
               amountMinor,
+              importReviewStatus,
             ),
             summary: demoSummary(month, t),
           }
         : snapshot,
-    [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, month, payee, scope, search, snapshot, sort, source, status, t, tag, type],
+    [accountId, amountMinor, categoryId, dateFrom, dateTo, duplicatesOnly, importReviewStatus, month, payee, scope, search, snapshot, sort, source, status, t, tag, type],
   )
 
   const clearActionMessage = useCallback(() => setActionMessage(null), [])
@@ -727,6 +788,7 @@ export function useMoneyData(
     removeTransaction,
     setSelectedTransactionsCategory,
     setSelectedTransactionsClearing,
+    setSelectedTransactionsImportReviewStatus,
     setAccountRegisterEntryClearing,
     saveAccountTransfer,
     removeAccountTransfer,

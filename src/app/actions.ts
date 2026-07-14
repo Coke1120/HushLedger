@@ -29,12 +29,14 @@ import {
   transactionClearingBatchSchema,
   transactionIdSchema,
   transactionInputSchema,
+  transactionImportReviewBatchSchema,
   transactionUpdateSchema,
   type RecurringGenerationResult,
   type RecurringTransferGenerationResult,
   type Account,
   type AccountTransfer,
   type Category,
+  type ImportReviewStatus,
 } from '../lib/schema'
 import {
   actionError,
@@ -53,6 +55,7 @@ import {
   deleteTransaction,
   setTransactionsCategory,
   setTransactionsClearing,
+  setTransactionsImportReviewStatus,
   updateTransaction,
   type TransactionView,
   type UpdateTransactionResult,
@@ -305,6 +308,26 @@ export async function setTransactionsClearingAction(
       return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
     }
     return revalidatedSuccess({ updated: result.count, cleared: parsed.data.cleared })
+  })
+}
+
+export async function setTransactionsImportReviewStatusAction(
+  input: unknown,
+): Promise<ActionResult<{ updated: number; status: ImportReviewStatus }>> {
+  const denied = await accessDenied<{ updated: number; status: ImportReviewStatus }>()
+  if (denied) return denied
+
+  const parsed = transactionImportReviewBatchSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('匯入交易審查資料不正確', parsed.error.issues)
+  }
+
+  return runAction('set_transactions_import_review_status', async () => {
+    const result = await setTransactionsImportReviewStatus(await getDatabase(), parsed.data)
+    if (result.kind === 'version_conflict') {
+      return actionError('TRANSACTION_VERSION_CONFLICT', '交易已被修改，請重新載入後再試')
+    }
+    return revalidatedSuccess({ updated: result.count, status: parsed.data.status })
   })
 }
 

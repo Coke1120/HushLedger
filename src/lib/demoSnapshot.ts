@@ -19,6 +19,7 @@ import type {
   AccountTransfer,
   Category,
   EmergencyFundGoal,
+  ImportReviewStatus,
   NetWorthTrendPoint,
   Summary,
   Transaction,
@@ -60,10 +61,12 @@ export function buildDemoSnapshot(
   dateTo: string,
   amountMinor: number | null = null,
   ledgerCurrency: SupportedCurrency = DEFAULT_LEDGER_CURRENCY,
+  importReviewStatus: ImportReviewStatus | 'all' = 'all',
 ): DemoSnapshot {
   const transactions = getDemoTransactions(
     month, type, search, undefined, accountId, categoryId, tag, status, sort, duplicatesOnly, scope,
     dateFrom, dateTo, payee, ledgerCurrency, amountMinor,
+    importReviewStatus,
   )
 
   return {
@@ -89,6 +92,7 @@ export function buildDemoSnapshot(
       payee,
       ledgerCurrency,
       amountMinor,
+      importReviewStatus,
     ),
     summary: demoSummary(month),
     accounts: demoAccounts.map((account) => ({ ...account, currency: ledgerCurrency })),

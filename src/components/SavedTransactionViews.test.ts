@@ -16,6 +16,7 @@ const view: SavedTransactionView = {
   dateTo: null,
   type: 'all',
   status: 'all',
+  importReviewStatus: 'unreviewed',
   accountId: null,
   categoryId: null,
   payee: null,
@@ -62,6 +63,7 @@ function renderViews(privacyMode: boolean) {
 describe('saved transaction view amount privacy', () => {
   it('shows the formatted exact amount only while screen privacy is off', () => {
     assert.match(renderViews(false), /Exact amount HK\$123\.45/)
+    assert.match(renderViews(false), /Import checklist: unreviewed/)
     assert.doesNotMatch(renderViews(true), /123\.45/)
     assert.match(renderViews(true), /Exact amount Sensitive text hidden/)
   })

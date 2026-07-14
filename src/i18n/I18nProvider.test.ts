@@ -112,6 +112,20 @@ describe('message catalogs', () => {
     )
   })
 
+  it('keeps import review a local checklist distinct from fraud and #follow-up', () => {
+    for (const [locale, terms] of [
+      ['zh-Hant', ['本機', '欺詐', '授權', '銀行確認', '#follow-up']],
+      ['en', ['local', 'fraud', 'authorization', 'bank confirmation', '#follow-up']],
+      ['ja', ['ローカル', '不正', '承認', '銀行', '#follow-up']],
+      ['fr', ['locale', 'fraude', 'autorisation', 'confirmation bancaire', '#follow-up']],
+    ] satisfies ReadonlyArray<readonly [Locale, readonly string[]]>) {
+      const help = translate(locale, 'importReviewFilterHelp').toLocaleLowerCase(locale)
+      for (const term of terms) {
+        assert.ok(help.includes(term.toLocaleLowerCase(locale)), `${locale} omits ${term}`)
+      }
+    }
+  })
+
   it('limits backup health claims to browser-local preparation records', () => {
     assert.equal(
       translate('en', 'ledgerBackupHealthDue', { count: 30 }),

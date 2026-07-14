@@ -9,9 +9,13 @@ import { TransactionToolbar } from './TransactionToolbar'
 
 function renderToolbar(
   tagFilter: string | null,
-  options: { amountFilterMinor?: number | null; privacyMode?: boolean } = {},
+  options: {
+    amountFilterMinor?: number | null
+    importReviewFilter?: 'all' | 'unreviewed' | 'needs_follow_up' | 'reviewed'
+    privacyMode?: boolean
+  } = {},
 ) {
-  const { amountFilterMinor = null, privacyMode = false } = options
+  const { amountFilterMinor = null, importReviewFilter = 'all', privacyMode = false } = options
   const context: I18nContextValue = {
     locale: 'en',
     setLocale: () => undefined,
@@ -38,6 +42,7 @@ function renderToolbar(
       tagFilter,
       filter: 'all',
       clearingFilter: 'all',
+      importReviewFilter,
       dateScope: 'month',
       dateFrom: '2026-07-01',
       dateTo: '2026-07-31',
@@ -58,6 +63,7 @@ function renderToolbar(
       onTagFilterChange: noop,
       onFilterChange: noop,
       onClearingFilterChange: noop,
+      onImportReviewFilterChange: noop,
       onDateScopeChange: noop,
       onDateFromChange: noop,
       onDateToChange: noop,
@@ -101,5 +107,19 @@ describe('exact amount transaction filter', () => {
     assert.match(visibleMarkup, /type="text"[^>]*value="123\.45"/)
     assert.match(visibleMarkup, />Apply amount</)
     assert.match(privateMarkup, /type="password"[^>]*value="123\.45"/)
+  })
+})
+
+describe('import checklist filter', () => {
+  it('offers the exact imported-row states separately from the #follow-up tag', () => {
+    const markup = renderToolbar('#follow-up', { importReviewFilter: 'needs_follow_up' })
+
+    assert.match(markup, /class="transaction-reference-filter transaction-import-review-filter"/)
+    assert.match(markup, /<select[^>]*title="Filter the local import checklist only\. This does not detect or determine fraud, authorization, or bank confirmation, and is separate from #follow-up tags\."[^>]*>/)
+    assert.match(markup, /<option value="all">All import checklist states<\/option>/)
+    assert.match(markup, /<option value="unreviewed">Import checklist: unreviewed<\/option>/)
+    assert.match(markup, /<option value="needs_follow_up" selected="">Import checklist: needs follow-up<\/option>/)
+    assert.match(markup, /<option value="reviewed">Import checklist: reviewed<\/option>/)
+    assert.match(markup, /transaction-follow-up-filter is-active/)
   })
 })

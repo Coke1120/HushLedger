@@ -1,4 +1,5 @@
 import type {
+  ImportReviewStatus,
   TransactionClearingStatus,
   TransactionDateScope,
   TransactionQuery,
@@ -13,6 +14,7 @@ export type TransactionQueryFilters = {
   dateTo: string
   type: TransactionType | 'all'
   status: TransactionClearingStatus | 'all'
+  importReviewStatus?: ImportReviewStatus | 'all'
   accountId: number | null
   categoryId: number | null
   amountMinor: number | null
@@ -30,6 +32,7 @@ export function transactionQueryFromFilters({
   dateTo,
   type,
   status,
+  importReviewStatus,
   accountId,
   categoryId,
   amountMinor,
@@ -46,6 +49,9 @@ export function transactionQueryFromFilters({
   }
   if (type !== 'all') query.type = type
   if (status !== 'all') query.status = status
+  if (importReviewStatus && importReviewStatus !== 'all') {
+    query.importReviewStatus = importReviewStatus
+  }
   if (accountId !== null) query.accountId = accountId
   if (categoryId !== null) query.categoryId = categoryId
   if (amountMinor !== null) query.amountMinor = amountMinor

@@ -28,6 +28,7 @@ import type {
   CategoryLocalizationKey,
   ExpenseCategorySummary,
   ExpensePayeeSummary,
+  ImportReviewStatus,
   MonthlySpendingPlanSummary,
   NetWorthTrendPoint,
   PayeeSuggestion,
@@ -37,6 +38,7 @@ import type {
   TransactionClearingBatchInput,
   TransactionFilterSummary,
   TransactionInput,
+  TransactionImportReviewBatchInput,
   TransactionPageCursor,
   TransactionPageQuery,
   TransactionQuery,
@@ -70,6 +72,7 @@ type TransactionRow = {
   recurringRuleId: string | null
   recurringRuleName: string | null
   recurrenceDueOn: string | null
+  importReviewStatus: ImportReviewStatus | null
   createdAt: string
   updatedAt: string
 }
@@ -128,6 +131,10 @@ export type SetTransactionsCategoryResult =
   | { kind: 'version_conflict' }
   | { kind: 'reference_invalid'; code: 'CATEGORY_INVALID' | 'CATEGORY_TYPE_MISMATCH' }
 
+export type SetTransactionsImportReviewStatusResult =
+  | { kind: 'updated'; count: number }
+  | { kind: 'version_conflict' }
+
 type TransactionCategoryGuardRow = {
   desiredCount: number
   currentCount: number
@@ -157,6 +164,7 @@ const transactionSelect = `
     t.recurring_rule_id AS recurringRuleId,
     t.recurring_rule_name AS recurringRuleName,
     t.recurrence_due_on AS recurrenceDueOn,
+    t.import_review_status AS importReviewStatus,
     t.created_at AS createdAt,
     t.updated_at AS updatedAt
   FROM transactions t
@@ -564,6 +572,11 @@ function transactionQueryWhere(query: TransactionQuery) {
     values.push(query.status === 'cleared' ? 1 : 0)
   }
 
+  if (query.importReviewStatus) {
+    filters.push('t.import_review_status = ?')
+    values.push(query.importReviewStatus)
+  }
+
   if (query.search) {
     const search = `%${escapeLike(query.search)}%`
     filters.push(`(
@@ -690,6 +703,14 @@ export async function createTransaction(
       : { kind: 'id_conflict' }
   }
 
+  const reservedImportId = await database.prepare(`
+    SELECT 1 AS found
+    FROM transaction_import_keys
+    WHERE transaction_id = ?
+    LIMIT 1
+  `).bind(input.id).first<{ found: number }>()
+  if (reservedImportId) return { kind: 'id_conflict' }
+
   const referenceError = await validateReferences(database, input)
   if (referenceError) return { kind: 'reference_invalid', code: referenceError }
 
@@ -713,9 +734,14 @@ export async function createTransaction(
       WHERE id = ? AND is_active = 1 AND currency = ?
     )
       AND EXISTS (
+      SELECT 1
+      FROM categories
+      WHERE id = ? AND is_active = 1 AND type = ?
+    )
+      AND NOT EXISTS (
         SELECT 1
-        FROM categories
-        WHERE id = ? AND is_active = 1 AND type = ?
+        FROM transaction_import_keys
+        WHERE transaction_id = ?
       )
     ON CONFLICT(id) DO NOTHING
   `)
@@ -734,6 +760,7 @@ export async function createTransaction(
       input.currency,
       input.categoryId,
       input.type,
+      input.id,
     )
     .run()
 
@@ -743,6 +770,13 @@ export async function createTransaction(
     if (currentReferenceError) {
       return { kind: 'reference_invalid', code: currentReferenceError }
     }
+    const currentReservedImportId = await database.prepare(`
+      SELECT 1 AS found
+      FROM transaction_import_keys
+      WHERE transaction_id = ?
+      LIMIT 1
+    `).bind(input.id).first<{ found: number }>()
+    if (currentReservedImportId) return { kind: 'id_conflict' }
     throw new Error('Transaction insert did not produce a row')
   }
   if (!matchesInput(transaction, input)) return { kind: 'id_conflict' }
@@ -964,6 +998,56 @@ export async function setTransactionsCategory(
     throw new Error('Bulk transaction category update did not return every selected row')
   }
   return { kind: 'updated', count: input.transactions.length }
+}
+
+export async function setTransactionsImportReviewStatus(
+  database: D1Database,
+  input: TransactionImportReviewBatchInput,
+): Promise<SetTransactionsImportReviewStatusResult> {
+  const desired = JSON.stringify(input.transactions)
+  const updated = await database.prepare(`
+    WITH
+    desired AS (
+      SELECT
+        json_extract(value, '$.id') AS desired_id,
+        json_extract(value, '$.updatedAt') AS expected_updated_at
+      FROM json_each(?)
+    ),
+    review_guard AS (
+      SELECT
+        (SELECT COUNT(*) FROM desired) AS desired_count,
+        (
+          SELECT COUNT(*)
+          FROM desired
+          INNER JOIN transactions AS current
+            ON current.id = desired.desired_id
+            AND current.updated_at = desired.expected_updated_at
+            AND current.import_review_status IS NOT NULL
+          WHERE EXISTS (
+            SELECT 1
+            FROM transaction_import_keys
+            WHERE transaction_import_keys.transaction_id = current.id
+          )
+        ) AS matched_count
+    )
+    UPDATE transactions
+    SET
+      import_review_status = ?,
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
+    WHERE id IN (SELECT desired_id FROM desired)
+      AND (
+        SELECT desired_count = matched_count
+        FROM review_guard
+      )
+  `).bind(desired, input.status).run()
+
+  return Number(updated.meta.changes) > 0
+    ? { kind: 'updated', count: input.transactions.length }
+    : { kind: 'version_conflict' }
 }
 
 export async function deleteTransaction(
