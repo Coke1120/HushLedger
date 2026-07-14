@@ -4,14 +4,19 @@ import {
   ArrowUpRight,
   Circle,
   CircleCheck,
+  Download,
   Landmark,
   LoaderCircle,
   ReceiptText,
   Scale,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { visibleAccountRegisterEntries } from '../lib/accountRegister'
+import {
+  accountRegisterExportCanStart,
+  accountRegisterExportIsCurrent,
+} from '../lib/accountRegisterExport'
 import { isValidCalendarDate } from '../lib/date'
 import { parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
@@ -24,6 +29,7 @@ import type {
 type AccountRegisterProps = {
   accountId: number
   register: AccountRegisterData | null
+  canExport: boolean
   dateFrom: string
   dateTo: string
   transactions: Transaction[]
@@ -46,6 +52,7 @@ type AccountRegisterProps = {
 export function AccountRegister({
   accountId,
   register,
+  canExport,
   dateFrom,
   dateTo,
   transactions,
@@ -66,7 +73,10 @@ export function AccountRegister({
   const [statementValue, setStatementValue] = useState('')
   const [rangeDraft, setRangeDraft] = useState({ dateFrom, dateTo })
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
+  const [exportState, setExportState] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle')
   const unclearedFilterRef = useRef<HTMLInputElement>(null)
+  const exportRequestIdRef = useRef(0)
+  const exportControllerRef = useRef<AbortController | null>(null)
   const transactionsById = useMemo(
     () => new Map(transactions.map((transaction) => [transaction.id, transaction])),
     [transactions],
@@ -84,6 +94,29 @@ export function AccountRegister({
     && isValidCalendarDate(rangeDraft.dateTo)
     && rangeDraft.dateFrom <= rangeDraft.dateTo
   const rangeChanged = rangeDraft.dateFrom !== dateFrom || rangeDraft.dateTo !== dateTo
+  const exporting = exportState === 'preparing'
+  const exportAvailable = accountRegisterExportCanStart({
+    canExport,
+    rangeReady,
+    rangeChanged,
+    saving,
+  })
+  const exportContext = [
+    accountId,
+    dateFrom,
+    dateTo,
+    rangeDraft.dateFrom,
+    rangeDraft.dateTo,
+    canExport ? 'online' : 'unavailable',
+  ].join(':')
+  const exportContextRef = useRef(exportContext)
+  const exportStatus = exportState === 'preparing'
+    ? t('exportCsvPreparing')
+    : exportState === 'ready'
+      ? t('exportCsvReady')
+      : exportState === 'error'
+        ? t('exportCsvFailed')
+        : ''
   const statementResult = useMemo(() => {
     if (!statementValue.trim()) return null
     if (clearedBalance === null || clearedBalance === undefined) return null
@@ -96,6 +129,22 @@ export function AccountRegister({
       return undefined
     }
   }, [clearedBalance, locale, statementValue])
+  useLayoutEffect(() => {
+    exportContextRef.current = exportContext
+    const resetStatus = window.setTimeout(() => setExportState('idle'), 0)
+    return () => {
+      window.clearTimeout(resetStatus)
+      exportRequestIdRef.current += 1
+      exportControllerRef.current?.abort()
+      exportControllerRef.current = null
+    }
+  }, [exportContext])
+  const cancelExport = () => {
+    exportRequestIdRef.current += 1
+    exportControllerRef.current?.abort()
+    exportControllerRef.current = null
+    setExportState('idle')
+  }
   const toggleReconciliation = () => {
     const next = !reconciling
     setReconciling(next)
@@ -104,7 +153,63 @@ export function AccountRegister({
   const applyDateRange = () => {
     if (!validRange || !rangeChanged || saving) return
     if (rangeDraft.dateTo !== dateTo) setStatementValue('')
+    cancelExport()
     onDateRangeChange(rangeDraft.dateFrom, rangeDraft.dateTo)
+  }
+  const exportRegister = async () => {
+    if (!exportAvailable || exporting) return
+    const requestId = ++exportRequestIdRef.current
+    exportControllerRef.current?.abort()
+    const controller = new AbortController()
+    exportControllerRef.current = controller
+    const requestContext = exportContext
+    setExportState('preparing')
+    try {
+      const response = await fetch('/api/exports/account-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, dateFrom, dateTo }),
+        cache: 'no-store',
+        credentials: 'same-origin',
+        signal: controller.signal,
+      })
+      const contentType = response.headers.get('content-type') ?? ''
+      if (!response.ok || !/^text\/csv(?:;|$)/i.test(contentType)) {
+        throw new Error('Account-register export failed')
+      }
+
+      const blob = await response.blob()
+      if (!accountRegisterExportIsCurrent({
+        requestId,
+        activeRequestId: exportRequestIdRef.current,
+        requestContext,
+        activeContext: exportContextRef.current,
+        aborted: controller.signal.aborted,
+      })) return
+
+      const objectUrl = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = objectUrl
+      anchor.download = accountRegisterExportFileName(
+        response.headers.get('content-disposition'),
+      )
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+      setExportState('ready')
+    } catch {
+      if (!accountRegisterExportIsCurrent({
+        requestId,
+        activeRequestId: exportRequestIdRef.current,
+        requestContext,
+        activeContext: exportContextRef.current,
+        aborted: controller.signal.aborted,
+      })) return
+      setExportState('error')
+    } finally {
+      if (requestId === exportRequestIdRef.current) exportControllerRef.current = null
+    }
   }
 
   const accountSnapshotLoading = Boolean(register && register.accountId !== accountId)
@@ -170,19 +275,49 @@ export function AccountRegister({
             from: formatDate(dateFrom),
             to: formatDate(dateTo),
           })}</p>
+          <p className="account-register-export-help" id="account-register-export-help">
+            {t('exportAccountRegisterCsvHelp')}
+          </p>
         </div>
-        <button
-          className="button button-secondary account-register-reconcile-toggle"
-          type="button"
-          onClick={toggleReconciliation}
-          disabled={saving}
-          aria-expanded={reconciliationOpen}
-          aria-controls="account-reconciliation"
-        >
-          <Scale aria-hidden="true" />
-          {t(reconciliationOpen ? 'closeStatementComparison' : 'compareStatement')}
-        </button>
+        <div className="account-register-heading-actions">
+          <button
+            className="button button-secondary account-register-export"
+            type="button"
+            onClick={() => void exportRegister()}
+            disabled={!exportAvailable || exporting}
+            aria-describedby="account-register-export-help account-register-export-status"
+            title={t(
+              !canExport || !rangeReady
+                ? 'exportAccountRegisterCsvUnavailable'
+                : rangeChanged
+                  ? 'exportAccountRegisterCsvApplyRange'
+                  : 'exportAccountRegisterCsvHelp',
+            )}
+          >
+            <Download aria-hidden="true" />
+            {exporting ? t('exportCsvPreparing') : t('exportAccountRegisterCsv')}
+          </button>
+          <button
+            className="button button-secondary account-register-reconcile-toggle"
+            type="button"
+            onClick={toggleReconciliation}
+            disabled={saving}
+            aria-expanded={reconciliationOpen}
+            aria-controls="account-reconciliation"
+          >
+            <Scale aria-hidden="true" />
+            {t(reconciliationOpen ? 'closeStatementComparison' : 'compareStatement')}
+          </button>
+        </div>
       </header>
+      <p
+        id="account-register-export-status"
+        className={`account-register-export-status${exportState === 'error' ? ' is-error' : ''}`}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {exportStatus}
+      </p>
 
       <dl className="account-register-summary">
         <div>
@@ -230,10 +365,13 @@ export function AccountRegister({
               <input
                 type="date"
                 value={rangeDraft.dateFrom}
-                onChange={(event) => setRangeDraft((current) => ({
-                  ...current,
-                  dateFrom: event.target.value,
-                }))}
+                onChange={(event) => {
+                  cancelExport()
+                  setRangeDraft((current) => ({
+                    ...current,
+                    dateFrom: event.target.value,
+                  }))
+                }}
               />
             </label>
             <label>
@@ -243,6 +381,7 @@ export function AccountRegister({
                 value={rangeDraft.dateTo}
                 onChange={(event) => {
                   const nextDateTo = event.target.value
+                  cancelExport()
                   setRangeDraft((current) => ({ ...current, dateTo: nextDateTo }))
                   if (nextDateTo !== dateTo) setStatementValue('')
                 }}
@@ -468,4 +607,9 @@ export function AccountRegister({
       ) : null}
     </section>
   )
+}
+
+function accountRegisterExportFileName(contentDisposition: string | null) {
+  return contentDisposition?.match(/filename="([^"]+)"/)?.[1]
+    ?? 'hushledger-account-register.csv'
 }

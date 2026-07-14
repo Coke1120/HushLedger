@@ -1,3 +1,4 @@
+import { csvText } from './csv'
 import { formatAmountInput } from './money'
 import type { Transaction, TransactionType } from './schema'
 
@@ -55,9 +56,4 @@ export function transactionsToCsv(transactions: readonly CsvTransaction[]) {
 function signedAmount(amountMinor: number, type: TransactionType) {
   const amount = formatAmountInput(amountMinor)
   return type === 'expense' ? `-${amount}` : amount
-}
-
-function csvText(value: string) {
-  const spreadsheetSafe = /^(?:[\t\r\n]|[ \t\r\n]*[=+\-@])/.test(value) ? `'${value}` : value
-  return `"${spreadsheetSafe.replaceAll('"', '""')}"`
 }

@@ -921,6 +921,14 @@ function exportTransactionCsv(baseUrl, body) {
   return api(baseUrl, '/api/exports/transactions', { method: 'POST', body })
 }
 
+function exportAccountRegisterCsv(baseUrl, body, { origin = baseUrl } = {}) {
+  return api(baseUrl, '/api/exports/account-register', {
+    method: 'POST',
+    origin,
+    body,
+  })
+}
+
 function downloadLedgerBackup(baseUrl, { origin = baseUrl } = {}) {
   return api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -2943,6 +2951,114 @@ async function verifyWorkerApi() {
     cappedRegister.payload.data.entries[0].runningBalanceMinor,
     bulkAccountBalance.recordedBalance,
   )
+  const accountRegisterExportBody = { month, accountId: 1 }
+  const oldestBulkTransactionId = '30000000-0000-4000-8000-000000000001'
+  assert.equal(
+    cappedRegister.payload.data.entries.some(({ sourceId }) => sourceId === oldestBulkTransactionId),
+    false,
+  )
+  const cappedAccountRegisterExport = await exportAccountRegisterCsv(
+    baseUrl,
+    accountRegisterExportBody,
+  )
+  assert.equal(
+    cappedAccountRegisterExport.response.status,
+    200,
+    JSON.stringify(cappedAccountRegisterExport.payload),
+  )
+  assert.equal(
+    cappedAccountRegisterExport.response.url,
+    `${baseUrl}/api/exports/account-register`,
+  )
+  assert.match(
+    cappedAccountRegisterExport.response.headers.get('content-type') ?? '',
+    /^text\/csv;\s*charset=utf-8/i,
+  )
+  assert.match(
+    cappedAccountRegisterExport.response.headers.get('cache-control') ?? '',
+    /private.*no-store/,
+  )
+  assert.equal(
+    cappedAccountRegisterExport.response.headers.get('x-content-type-options'),
+    'nosniff',
+  )
+  assert.equal(
+    cappedAccountRegisterExport.response.headers.get('content-disposition'),
+    `attachment; filename="hushledger-account-register-1-${cappedRegister.payload.data.dateFrom}-to-${
+      cappedRegister.payload.data.dateTo
+    }.csv"`,
+  )
+  assert.deepEqual(
+    [...cappedAccountRegisterExport.bytes.slice(0, 3)],
+    [0xef, 0xbb, 0xbf],
+  )
+  const accountRegisterCsvLines = cappedAccountRegisterExport.payload.trimEnd().split('\r\n')
+  assert.equal(
+    accountRegisterCsvLines[0],
+    'Date,Entry Kind,Amount,Currency,Cleared,Running Balance,Account,Account ID,Category,Payee,Counterparty Account,Transfer Direction,Note,Entry ID,Source ID',
+  )
+  assert(accountRegisterCsvLines.every((line) => line.split(',').length === 15))
+  assert.match(accountRegisterCsvLines[1], new RegExp(`^${month}-01,range_start,,HKD,,`))
+  const cappedAccountRegisterActivityRows = accountRegisterCsvLines.slice(2)
+  assert.equal(cappedAccountRegisterActivityRows.length, 205)
+  assert.equal(
+    cappedAccountRegisterActivityRows[0].endsWith(
+      `transaction:${oldestBulkTransactionId},${oldestBulkTransactionId}`,
+    ),
+    true,
+  )
+
+  const accountRegisterExportNavigation = await api(
+    baseUrl,
+    `/api/exports/account-register?month=${month}&accountId=1`,
+  )
+  assert.equal(accountRegisterExportNavigation.response.status, 404)
+  assert.equal(accountRegisterExportNavigation.payload.error.code, 'NOT_FOUND')
+  const crossOriginAccountRegisterExport = await exportAccountRegisterCsv(
+    baseUrl,
+    accountRegisterExportBody,
+    { origin: 'https://attacker.invalid' },
+  )
+  assert.equal(crossOriginAccountRegisterExport.response.status, 403)
+  assert.equal(crossOriginAccountRegisterExport.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const wrongMediaTypeAccountRegisterExport = await fetch(
+    `${baseUrl}/api/exports/account-register`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: baseUrl },
+      body: JSON.stringify(accountRegisterExportBody),
+    },
+  )
+  assert.equal(wrongMediaTypeAccountRegisterExport.status, 415)
+  assert.equal(
+    (await wrongMediaTypeAccountRegisterExport.json()).error.code,
+    'UNSUPPORTED_MEDIA_TYPE',
+  )
+  const invalidAccountRegisterExport = await exportAccountRegisterCsv(baseUrl, {
+    month: '2026-13',
+    accountId: 1,
+  })
+  assert.equal(invalidAccountRegisterExport.response.status, 400)
+  assert.equal(invalidAccountRegisterExport.payload.error.code, 'INVALID_QUERY')
+  const extraAccountRegisterExport = await exportAccountRegisterCsv(baseUrl, {
+    ...accountRegisterExportBody,
+    privateMemo: 'must be rejected',
+  })
+  assert.equal(extraAccountRegisterExport.response.status, 400)
+  assert.equal(extraAccountRegisterExport.payload.error.code, 'INVALID_QUERY')
+  const reversedAccountRegisterExport = await exportAccountRegisterCsv(baseUrl, {
+    dateFrom: today,
+    dateTo: shiftCalendarDay(today, -1),
+    accountId: 1,
+  })
+  assert.equal(reversedAccountRegisterExport.response.status, 400)
+  assert.equal(reversedAccountRegisterExport.payload.error.code, 'INVALID_QUERY')
+  const missingAccountRegisterExport = await exportAccountRegisterCsv(baseUrl, {
+    month,
+    accountId: 999999,
+  })
+  assert.equal(missingAccountRegisterExport.response.status, 404)
+  assert.equal(missingAccountRegisterExport.payload.error.code, 'ACCOUNT_NOT_FOUND')
   const sourceBalanceBefore = balancesBeforeTransfer.payload.data.find(
     ({ accountId }) => accountId === account.id,
   )
@@ -3380,7 +3496,7 @@ async function verifyWorkerApi() {
       categoryId: incomeCategory.id,
       occurredOn: statementCutoff,
       cleared: false,
-      payee: 'Cutoff-day pending income',
+      payee: '=Cutoff-day pending income',
       note: '',
     },
     {
@@ -3410,7 +3526,7 @@ async function verifyWorkerApi() {
     occurredOn: statementCutoff,
     fromCleared: false,
     toCleared: true,
-    note: 'Cutoff-day mixed-clearing transfer',
+    note: '@Cutoff-day mixed-clearing transfer',
   }
   const statementTransfer = await api(baseUrl, '/api/transfers', {
     method: 'POST',
@@ -3447,6 +3563,120 @@ async function verifyWorkerApi() {
   assert.equal(statementRegisterTransfer.cleared, false)
   assert.equal(statementRegisterTransfer.transferDirection, 'out')
   assert.equal(statementRegisterTransfer.counterpartyAccountName, transferDestination.name)
+
+  const accountRegisterRevisionProbe = await downloadLedgerBackup(baseUrl)
+  assert.equal(
+    accountRegisterRevisionProbe.response.status,
+    200,
+    JSON.stringify(accountRegisterRevisionProbe.payload),
+  )
+  const revisionBeforeAccountRegisterExports = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: accountRegisterRevisionProbe.payload },
+  })
+  assert.equal(
+    revisionBeforeAccountRegisterExports.response.status,
+    200,
+    JSON.stringify(revisionBeforeAccountRegisterExports.payload),
+  )
+  const statementAccountRegisterExportBody = {
+    dateFrom: statementDateFrom,
+    dateTo: statementCutoff,
+    accountId: statementAccount.id,
+  }
+  const statementAccountRegisterExport = await exportAccountRegisterCsv(
+    baseUrl,
+    statementAccountRegisterExportBody,
+  )
+  const repeatedStatementAccountRegisterExport = await exportAccountRegisterCsv(
+    baseUrl,
+    statementAccountRegisterExportBody,
+  )
+  assert.equal(
+    statementAccountRegisterExport.response.status,
+    200,
+    JSON.stringify(statementAccountRegisterExport.payload),
+  )
+  assert.equal(repeatedStatementAccountRegisterExport.response.status, 200)
+  assert.equal(
+    repeatedStatementAccountRegisterExport.payload,
+    statementAccountRegisterExport.payload,
+  )
+  assert.deepEqual(
+    repeatedStatementAccountRegisterExport.bytes,
+    statementAccountRegisterExport.bytes,
+  )
+  assert.equal(
+    statementAccountRegisterExport.response.headers.get('content-disposition'),
+    `attachment; filename="hushledger-account-register-${statementAccount.id}-${
+      statementDateFrom
+    }-to-${statementCutoff}.csv"`,
+  )
+  const statementAccountRegisterCsvLines = statementAccountRegisterExport.payload
+    .trimEnd()
+    .split('\r\n')
+  assert(statementAccountRegisterCsvLines.every((line) => line.split(',').length === 15))
+  const statementAccountRegisterRows = statementAccountRegisterCsvLines
+    .slice(1)
+    .map((line) => line.split(','))
+  assert.deepEqual(statementAccountRegisterRows[0].slice(0, 6), [
+    statementDateFrom,
+    'range_start',
+    '',
+    statementAccount.currency,
+    '',
+    '2000.00',
+  ])
+  const statementActivityRows = statementAccountRegisterRows.slice(1)
+  assert.equal(statementActivityRows.length, 5)
+  assert.deepEqual(
+    statementActivityRows.map(([date]) => date),
+    statementActivityRows.map(([date]) => date).toSorted(),
+  )
+  assert.deepEqual(
+    new Set(statementActivityRows.map((row) => row[14])),
+    new Set([
+      ...statementTransactionBodies.slice(1, 5).map(({ id }) => id),
+      statementTransferBody.id,
+    ]),
+  )
+  let statementRunningBalance = 2_000
+  for (const row of statementActivityRows) {
+    assert.match(row[2], /^-?\d+\.\d{2}$/)
+    statementRunningBalance += Number(row[2])
+    assert.equal(Number(row[5]), statementRunningBalance)
+  }
+  assert.equal(statementRunningBalance, 1_880)
+  assert.equal(statementActivityRows.at(-1)[5], '1880.00')
+  const formulaSafeStatementRow = statementActivityRows.find(
+    (row) => row[14] === statementTransactionBodies[4].id,
+  )
+  assert(formulaSafeStatementRow)
+  assert.equal(formulaSafeStatementRow[9], `"'=Cutoff-day pending income"`)
+  const exportedStatementTransferRow = statementActivityRows.find(
+    (row) => row[14] === statementTransferBody.id,
+  )
+  assert(exportedStatementTransferRow)
+  assert.equal(exportedStatementTransferRow[1], 'transfer')
+  assert.equal(exportedStatementTransferRow[2], '-40.00')
+  assert.equal(exportedStatementTransferRow[4], 'Uncleared')
+  assert.equal(exportedStatementTransferRow[5], '1880.00')
+  assert.equal(exportedStatementTransferRow[10], `"${transferDestination.name}"`)
+  assert.equal(exportedStatementTransferRow[11], 'out')
+  assert.equal(exportedStatementTransferRow[12], `"'@Cutoff-day mixed-clearing transfer"`)
+  const revisionAfterAccountRegisterExports = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: accountRegisterRevisionProbe.payload },
+  })
+  assert.equal(revisionAfterAccountRegisterExports.response.status, 200)
+  assert.equal(
+    revisionAfterAccountRegisterExports.payload.data.currentRevision,
+    revisionBeforeAccountRegisterExports.payload.data.currentRevision,
+  )
+  assert.equal(
+    revisionAfterAccountRegisterExports.payload.data.currentDigest,
+    revisionBeforeAccountRegisterExports.payload.data.currentDigest,
+  )
 
   const statementTransactionsQuery = await api(baseUrl, '/api/transactions/query', {
     method: 'POST',
@@ -5820,6 +6050,11 @@ async function verifyWorkerApi() {
     accountBalanceGuards: 3,
     accountRegisterQueries: 9,
     accountRegisterGuards: 9,
+    accountRegisterExports: 3,
+    accountRegisterExportRows:
+      cappedAccountRegisterActivityRows.length + statementActivityRows.length,
+    accountRegisterExportGuards: 7,
+    accountRegisterExportNoWriteChecks: 2,
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
     ledgerBackupTables: 8,

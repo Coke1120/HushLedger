@@ -81,6 +81,11 @@ not operate an independent database server or a multi-user identity system.
   transaction amounts, or cloud metadata.
 - Export all transactions matching the selected date scope and filters as CSV
   without the interactive 200-row limit; keep disaster-recovery backups separate.
+- Export the complete selected account register as a separate reconciliation CSV,
+  including one explicit range-start balance snapshot when available, every
+  transaction and selected-account transfer leg, clearing state, and the exact
+  running balance after each entry. Keep it independent of the 200-row screen
+  limit, transaction import, and full-ledger restore.
 - Import a HushLedger CSV directly, or locally map a headered bank CSV's delimiter,
   date/description/amount fields, target account, and fallback categories before
   correcting individual row categories, rerunning duplicate preview, explicitly
@@ -327,6 +332,7 @@ GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
 POST   /api/exports/transactions  (primary private body query; uncapped CSV)
+POST   /api/exports/account-register  (complete selected account/range register CSV)
 POST   /api/imports/csv  (preview or commit, 200 rows maximum)
 POST   /api/ai/models
 POST   /api/imports/parse  (draft only; zero D1 writes)
@@ -370,6 +376,16 @@ conflicts against D1, and writes selected rows in a transactional batch. Import
 keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
+
+The account-register export is a different report-only CSV. It reuses the exact
+server-side opening-balance, transaction, transfer-leg, clearing, and running-
+balance calculation without the interactive 200-entry cap. Rows are oldest-first;
+an available period-start balance is an explicit `range_start` snapshot with no
+movement amount, while a stored opening balance inside the range remains an
+`opening` entry. It requires the same explicit same-origin JSON `POST`, never uses
+the client-only uncleared filter, and cannot be imported as ordinary transactions.
+Both CSV downloads are plaintext and keep exact amounts even while screen privacy
+is enabled; user-entered text is neutralized against spreadsheet formulas.
 
 The schema-17 ledger JSON format covers the ledger currency and eight collections:
 accounts, categories, the emergency-fund checkpoint, recurring transaction rules,

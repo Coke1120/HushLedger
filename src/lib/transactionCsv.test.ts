@@ -50,4 +50,30 @@ describe('transaction CSV export', () => {
     assert.match(csv, /"'-10\+20"/)
     assert.match(csv, /"'\n=RULE\(\)"/)
   })
+
+  it('neutralizes full-width spreadsheet formula markers', () => {
+    const csv = transactionsToCsv([{
+      ...transaction,
+      accountName: '＝ACCOUNT()',
+      categoryName: ' ＋CATEGORY()',
+      payee: '－PAYEE()',
+      note: '＠NOTE()',
+    }])
+
+    assert.match(csv, /"'＝ACCOUNT\(\)"/)
+    assert.match(csv, /"' ＋CATEGORY\(\)"/)
+    assert.match(csv, /"'－PAYEE\(\)"/)
+    assert.match(csv, /"'＠NOTE\(\)"/)
+  })
+
+  it('adds one reversible safety apostrophe to formula-like text with natural apostrophes', () => {
+    const csv = transactionsToCsv([{
+      ...transaction,
+      payee: "'=PAYEE()",
+      note: "''-NOTE()",
+    }])
+
+    assert.match(csv, /"''=PAYEE\(\)"/)
+    assert.match(csv, /"'''-NOTE\(\)"/)
+  })
 })

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { restoreSpreadsheetText } from './csv'
 import type { SupportedCurrency } from './currency'
 import { isValidCalendarDate } from './date'
 import { parseAmount } from './money'
@@ -228,9 +229,10 @@ export async function parseHushLedgerCsv(
       continue
     }
 
-    const accountName = value('Account').trim()
+    const accountReference = spreadsheetReference(value('Account'))
+    const accountName = accountReference.restored
     const matchingAccounts = references.accounts.filter(
-      (account) => normalizedName(account.name) === normalizedName(accountName),
+      (account) => accountReference.normalized.has(normalizedName(account.name)),
     )
     if (matchingAccounts.length === 0) {
       issues.push({ row: sourceRow, code: 'account_not_found', value: accountName })
@@ -241,10 +243,11 @@ export async function parseHushLedgerCsv(
       continue
     }
 
-    const categoryName = value('Category').trim()
+    const categoryReference = spreadsheetReference(value('Category'))
+    const categoryName = categoryReference.restored
     const matchingCategories = references.categories.filter(
       (category) =>
-        category.type === type && normalizedName(category.name) === normalizedName(categoryName),
+        category.type === type && categoryReference.normalized.has(normalizedName(category.name)),
     )
     if (matchingCategories.length === 0) {
       issues.push({ row: sourceRow, code: 'category_not_found', value: categoryName })
@@ -340,10 +343,13 @@ function normalizedName(value: string) {
   return value.trim().normalize('NFKC').toLocaleLowerCase('en')
 }
 
-function restoreSpreadsheetText(value: string) {
-  if (!value.startsWith("'")) return value
-  const restored = value.slice(1)
-  return /^(?:[\t\r\n]|[ \t\r\n]*[=+\-@])/.test(restored) ? restored : value
+function spreadsheetReference(value: string) {
+  const raw = value.trim()
+  const restored = restoreSpreadsheetText(value).trim()
+  return {
+    restored,
+    normalized: new Set([raw, restored].map(normalizedName)),
+  }
 }
 
 export function parseCsvRecords(text: string, delimiter = ',') {

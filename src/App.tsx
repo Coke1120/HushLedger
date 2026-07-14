@@ -793,6 +793,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 key={`${registerAccountId}:${month}`}
                 accountId={registerAccountId}
                 register={data.accountRegister}
+                canExport={data.source === 'live' && data.online}
                 dateFrom={effectiveRegisterDateRange.from}
                 dateTo={effectiveRegisterDateRange.to}
                 transactions={data.transactions}

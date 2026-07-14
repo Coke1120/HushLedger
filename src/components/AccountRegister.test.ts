@@ -28,6 +28,9 @@ const register: AccountRegisterData = {
 function renderRegister(
   privacyMode: boolean,
   accountId = register.accountId,
+  canExport = true,
+  dateFrom = register.dateFrom,
+  dateTo = register.dateTo,
 ) {
   const context: I18nContextValue = {
     locale: 'en',
@@ -55,8 +58,9 @@ function renderRegister(
     createElement(AccountRegister, {
       accountId,
       register,
-      dateFrom: register.dateFrom,
-      dateTo: register.dateTo,
+      canExport,
+      dateFrom,
+      dateTo,
       transactions: [],
       transfers: [],
       loading: false,
@@ -89,6 +93,7 @@ describe('statement-period reconciliation', () => {
     const markup = renderRegister(true)
 
     assert.match(markup, /Ledger queries send the selected account and period to the same-origin HushLedger API/)
+    assert.match(markup, /plaintext and includes exact amounts even when screen privacy is on/)
     assert.match(markup, /type="password"/)
     assert.match(markup, /autoComplete="off"/)
     assert.doesNotMatch(markup, /HK\$980\.00|HK\$990\.00|-HK\$10\.00/)
@@ -100,4 +105,24 @@ describe('statement-period reconciliation', () => {
     assert.match(markup, /Organizing the account register/)
     assert.doesNotMatch(markup, /Statement account register|HK\$980\.00|Mark as cleared/)
   })
+
+  it('exports only a current live account range and explains the plaintext boundary', () => {
+    const liveMarkup = renderRegister(false)
+    const unavailableMarkup = renderRegister(false, register.accountId, false)
+    const staleRangeMarkup = renderRegister(
+      false,
+      register.accountId,
+      true,
+      '2026-06-14',
+      register.dateTo,
+    )
+
+    assert.match(liveMarkup, /Export register CSV/)
+    assert.match(liveMarkup, /without the 200-row screen limit/)
+    assert.doesNotMatch(liveMarkup, /account-register-export"[^>]*disabled/)
+    assert.match(unavailableMarkup, /account-register-export"[^>]*disabled/)
+    assert.match(staleRangeMarkup, /account-register-export"[^>]*disabled/)
+    assert.match(unavailableMarkup, /Connect to the private ledger before exporting this register/)
+  })
+
 })

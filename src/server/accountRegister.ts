@@ -150,6 +150,7 @@ async function listRegisterEntries(
   account: RegisterAccountRow,
   start: string,
   end: string,
+  allEntries: boolean,
 ) {
   const activityStart = account.openingBalanceOn && account.openingBalanceOn > start
     ? account.openingBalanceOn
@@ -235,7 +236,7 @@ async function listRegisterEntries(
     SELECT *
     FROM annotated
     ORDER BY occurredOn DESC, createdAt DESC, entryId DESC
-    LIMIT 200
+    ${allEntries ? '' : 'LIMIT 200'}
   `).bind(
     account.id,
     start,
@@ -259,6 +260,21 @@ async function listRegisterEntries(
 export async function getAccountRegister(
   database: D1Database,
   query: AccountRegisterQuery,
+): Promise<AccountRegister | null> {
+  return buildAccountRegister(database, query, false)
+}
+
+export async function getAccountRegisterForExport(
+  database: D1Database,
+  query: AccountRegisterQuery,
+): Promise<AccountRegister | null> {
+  return buildAccountRegister(database, query, true)
+}
+
+async function buildAccountRegister(
+  database: D1Database,
+  query: AccountRegisterQuery,
+  allEntries: boolean,
 ): Promise<AccountRegister | null> {
   const accountId = query.accountId
   const account = await database.prepare(`
@@ -306,7 +322,7 @@ export async function getAccountRegister(
     ? null
     : await balanceBeforeRange(database, account, range.start)
   const [rows, cutoff] = await Promise.all([
-    listRegisterEntries(database, account, range.start, range.end),
+    listRegisterEntries(database, account, range.start, range.end, allEntries),
     balancesThroughCutoff(database, account, range.end),
   ])
   const entryCount = rows[0]?.totalCount ?? 0

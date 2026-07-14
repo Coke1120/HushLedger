@@ -2217,6 +2217,7 @@ textarea:focus-visible {
 
 .account-register-heading {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   align-items: flex-start;
 }
@@ -2255,9 +2256,31 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
-.account-register-reconcile-toggle {
+.account-register-heading-actions {
+  display: flex;
   flex: 0 0 auto;
+  gap: 8px;
   margin-left: auto;
+}
+
+.account-register-heading-actions .button {
+  white-space: normal;
+}
+
+.account-register-export-status {
+  margin: 8px 0 -10px;
+  color: var(--income);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.account-register-export-status:empty {
+  display: none;
+}
+
+.account-register-export-status.is-error {
+  color: var(--expense);
 }
 
 .account-register-summary {
@@ -6189,10 +6212,16 @@ button.account-register-row:focus-visible {
     flex-wrap: wrap;
   }
 
-  .account-register-reconcile-toggle {
+  .account-register-heading-actions {
+    display: grid;
     width: 100%;
     margin-left: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-register-heading-actions .button {
     justify-content: center;
+    white-space: normal;
   }
 
   .account-register-summary {

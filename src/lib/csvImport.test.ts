@@ -85,6 +85,97 @@ describe('HushLedger CSV import', () => {
     })
   })
 
+  it('round-trips natural apostrophes before formula-like payee and note text', async () => {
+    for (const apostrophes of ["'", "''", "'''"]) {
+      const payee = `${apostrophes}=Cafe`
+      const note = `${apostrophes}-Memo`
+      const csv = transactionsToCsv([transaction({ payee, note })])
+      const result = await parseHushLedgerCsv(csv, references)
+
+      assert.deepEqual(result.issues, [], apostrophes)
+      assert.equal(result.rows[0]?.payee, payee)
+      assert.equal(result.rows[0]?.note, note)
+    }
+  })
+
+  it('restores spreadsheet-safe account and category names before exact matching', async () => {
+    const names = [
+      { account: '=Cash', category: '+Food' },
+      { account: '  @Wallet', category: '\t-Bills' },
+      { account: '＝現金', category: '＋飲食' },
+    ]
+
+    for (const { account, category } of names) {
+      const csv = transactionsToCsv([transaction({
+        accountName: account,
+        categoryName: category,
+      })])
+      const result = await parseHushLedgerCsv(csv, {
+        accounts: [{ ...accounts[0], name: account }],
+        categories: [{ ...categories[0], name: category }],
+        currency: 'HKD',
+      })
+
+      assert.deepEqual(result.issues, [], `${account} / ${category}`)
+      assert.equal(result.rows[0]?.accountId, accounts[0].id)
+      assert.equal(result.rows[0]?.categoryId, categories[0].id)
+    }
+  })
+
+  it('keeps formula-safe reference matching ambiguity blocked', async () => {
+    const accountName = '=Cash'
+    const csv = transactionsToCsv([transaction({ accountName })])
+    const result = await parseHushLedgerCsv(csv, {
+      accounts: [
+        { ...accounts[0], name: accountName },
+        { ...accounts[0], id: 2, name: accountName },
+      ],
+      categories,
+      currency: 'HKD',
+    })
+
+    assert.deepEqual(result.rows, [])
+    assert.deepEqual(result.issues, [{
+      row: 2,
+      code: 'account_ambiguous',
+      value: accountName,
+    }])
+  })
+
+  it('does not strip a natural apostrophe from formula-like reference names', async () => {
+    const accountName = "'=Cash"
+    const categoryName = "'+Food"
+    const csv = transactionsToCsv([transaction({ accountName, categoryName })])
+    const result = await parseHushLedgerCsv(csv, {
+      accounts: [{ ...accounts[0], name: accountName }],
+      categories: [{ ...categories[0], name: categoryName }],
+      currency: 'HKD',
+    })
+
+    assert.deepEqual(result.issues, [])
+    assert.equal(result.rows[0]?.accountId, accounts[0].id)
+    assert.equal(result.rows[0]?.categoryId, categories[0].id)
+  })
+
+  it('rejects an encoded reference that could name either a raw or restored account', async () => {
+    const csv = transactionsToCsv([transaction({ accountName: '=Cash' })])
+    const result = await parseHushLedgerCsv(csv, {
+      accounts: [
+        { ...accounts[0], name: '=Cash' },
+        { ...accounts[0], id: 2, name: "'=Cash" },
+      ],
+      categories,
+      currency: 'HKD',
+    })
+
+    assert.deepEqual(result.rows, [])
+    assert.deepEqual(result.issues, [{
+      row: 2,
+      code: 'account_ambiguous',
+      value: '=Cash',
+    }])
+  })
+
   it('creates stable, distinct fingerprints for identical legacy rows without IDs', async () => {
     const header = 'Date,Type,Amount,Currency,Account,Category,Payee,Note'
     const row = '2026-07-13,expense,-12.34,HKD,"Daily, account",Food,Cafe,'

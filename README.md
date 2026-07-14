@@ -70,7 +70,9 @@ knowledge and explains every command and dashboard click.
   value only on screen, highlights
   uncleared entries with direct posting-status controls, and never claims to lock
   the ledger. The same monthly account register merges ordinary transactions with
-  both transfer legs and shows the exact recorded balance after every entry.
+  both transfer legs and shows the exact recorded balance after every entry. Its
+  separate CSV export downloads the complete selected account and range, including
+  clearing state and running balances, without the 200-row screen limit.
 - One optional emergency-fund checkpoint compares a user-chosen positive target
   with the recorded month-end balance of one active cash, bank, or wallet
   account. It does not create a separate balance, reserve or move money, recommend
@@ -143,6 +145,11 @@ knowledge and explains every command and dashboard click.
 - Export every transaction matching the current date scope and filters as an
   Excel-friendly UTF-8 CSV, without the 200-row display limit and with
   user-entered spreadsheet formulas neutralized.
+- Export a separate, oldest-first account-register CSV for the selected inclusive
+  date range. It includes an explicit available range-start balance, transactions,
+  the selected account's signed transfer legs, clearing state, and exact running
+  balances. It is a plaintext reconciliation report, not a transaction-import or
+  full-ledger restore format.
 - Re-import HushLedger CSV files directly, or map a bank CSV's delimiter, date,
   description, signed amount or debit/credit columns, destination account, and
   fallback categories in the browser. Bank imports can reuse the latest active
@@ -290,7 +297,7 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Recorded net worth is the exact sum of all available signed account balances at
   each month end. Transfers therefore have zero net effect. If any account balance
   is unavailable for a month, the complete net-worth point is unavailable too.
-- CSV exports include the transaction UUID for lossless round trips. Older
+- Transaction CSV exports include the transaction UUID for lossless round trips. Older
   HushLedger exports without that column receive stable row fingerprints during
   import; identical rows retain separate occurrence keys.
 - Generic bank imports hash an optional bank transaction ID with the destination
@@ -322,8 +329,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - The account register orders dated opening balances, transactions, and incoming
   or outgoing transfer legs in one stable stream. When a month exceeds 200 rows,
   it returns the newest 200 but calculates every displayed running balance from
-  the complete month. Activity before a dated opening balance is never presented
-  as trustworthy history.
+  the complete month. Its explicit same-origin CSV action re-reads every matching
+  entry without that display cap and orders them oldest-first for review. Activity
+  before a dated opening balance is never presented as trustworthy history.
 - Disabled accounts and categories are unavailable to new entries. An existing
   transaction may keep and edit against its archived references until the user
   explicitly reassigns them to active ones.
@@ -596,16 +604,16 @@ App Router shell, privacy-safe PWA assets, security headers, API contracts,
 configured Cron schedule, reference-data lifecycle and safety guards,
 recurring-rule CRUD, race-safe idempotency, and history preservation. It proves
 that transfers leave total net worth unchanged, incomplete opening-balance
-history is exposed, and a filtered CSV export is not truncated by the interactive
-200-row limit. It
+history is exposed, and neither filtered transaction CSV nor account-register
+CSV export is truncated by the interactive 200-row limit. It
 also starts local Next.js with a fake
 OpenAI-compatible provider, verifies model discovery and a successful strict
 draft parse, proves that parsing creates no D1 transaction, then verifies an
 explicit preview/commit, stable re-analysis identity, and a deleted-import
 tombstone.
-The same gate exports and restores a complete schema-16 JSON ledger, including its
-currency and seven data collections, and verifies schema-8 through schema-14
-compatibility plus schema-15 upgrades. Pre-schema-14 backups upgrade to HKD.
+The same gate exports and restores a complete schema-17 JSON ledger, including its
+currency and eight data collections, and verifies schema-8 through schema-16
+compatibility. Pre-schema-14 backups upgrade to HKD.
 Schema-14 and older backups retain their existing daily, weekly, or monthly recurring
 rules without inventing a yearly frequency, and schema-15 and older rules receive no
 invented end date. Schema-12 and older backups
@@ -698,6 +706,7 @@ GET    /api/transfers/:id
 PUT    /api/transfers/:id
 DELETE /api/transfers/:id
 POST   /api/exports/transactions  (primary private CSV export; JSON filters in the body)
+POST   /api/exports/account-register  (complete account/range reconciliation CSV; JSON query in the body)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or explicitly confirmed transactional restore)
 GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
@@ -766,6 +775,16 @@ history. A dated opening inside the selected month appears as the first trusted
 entry; months entirely before that date remain unavailable. The endpoint merges
 both sides of transfers without converting them into income or expense and uses
 stable date, creation-time, and ID ordering for same-day entries.
+
+The account-register export uses the same calculation but removes only the
+interactive 200-entry cap. It adds an explicit `range_start` balance row when the
+range has a trustworthy starting balance, then writes every ledger entry oldest-
+first with exact signed decimal movement and running balance. Transfer rows contain
+only the selected account's leg and retain that leg's clearing state. The route is
+same-origin JSON `POST` only, names files with a numeric account ID and exact range,
+and returns formula-neutralized plaintext CSV; screen privacy does not mask or
+encrypt the downloaded values. It is deliberately not accepted by transaction CSV
+import, and complete restore remains the versioned JSON ledger backup.
 
 Payee suggestions are derived on demand from existing transactions and are never
 sent to an AI provider or another service. Suggestions are separated by income
