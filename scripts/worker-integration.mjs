@@ -37,6 +37,15 @@ function shiftCalendarDay(date, amount) {
   return shifted.toISOString().slice(0, 10)
 }
 
+function shiftCalendarMonthDate(date, amount) {
+  const [year, month, day] = date.split('-').map(Number)
+  const shifted = new Date(Date.UTC(year, month - 1 + amount, 1))
+  const shiftedYear = shifted.getUTCFullYear()
+  const shiftedMonth = shifted.getUTCMonth() + 1
+  const shiftedDay = Math.min(day, new Date(Date.UTC(shiftedYear, shiftedMonth, 0)).getUTCDate())
+  return `${shiftedYear}-${String(shiftedMonth).padStart(2, '0')}-${String(shiftedDay).padStart(2, '0')}`
+}
+
 function shiftCalendarYear(date, amount) {
   const [year, month, day] = date.split('-').map(Number)
   const shiftedYear = year + amount
@@ -1399,6 +1408,9 @@ async function recurringTransferNeutralitySnapshot(baseUrl, month) {
   }
   const reportSummary = structuredClone(summary.payload.data)
   delete reportSummary.recurringTransferForecast
+  if (reportSummary.scheduledOutlook) {
+    reportSummary.scheduledOutlook.recurringTransferForecast = []
+  }
   return {
     summary: reportSummary,
     transactionSummary: transactionSummary.payload.data,
@@ -1672,6 +1684,20 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
   const repeatedForecastBeforeRun = await api(baseUrl, `/api/summary?month=${month}`)
   assert.equal(forecastBeforeRun.response.status, 200, JSON.stringify(forecastBeforeRun.payload))
   assert.deepEqual(repeatedForecastBeforeRun.payload, forecastBeforeRun.payload)
+  assert.equal(forecastBeforeRun.payload.data.scheduledOutlook.startOn, today)
+  assert.equal(
+    forecastBeforeRun.payload.data.scheduledOutlook.endOnExclusive,
+    shiftCalendarDay(today, 35),
+  )
+  const transferOutlookByRule = new Map(
+    forecastBeforeRun.payload.data.scheduledOutlook.recurringTransferForecast.map(
+      (item) => [item.recurringTransferRuleId, item],
+    ),
+  )
+  assert.deepEqual(transferOutlookByRule.get(ruleIds.main).occurrenceDates, [today])
+  assert.equal(transferOutlookByRule.has(ruleIds.deletedForecast), false)
+  assert.equal(transferOutlookByRule.has(ruleIds.completedForecast), false)
+  assert.equal(transferOutlookByRule.has(ruleIds.futureForecast), true)
   assert.deepEqual(forecastBeforeRun.payload.data.recurringTransferForecast, [{
     recurringTransferRuleId: ruleIds.main,
     name: compatibleCachedUpdate.payload.data.name,
@@ -5695,6 +5721,33 @@ async function verifyWorkerApi() {
     occurrenceCount: 1,
     occurrenceDates: [today],
   })
+  const scheduledOutlook = forecastBeforeRun.payload.data.scheduledOutlook
+  assert.equal(scheduledOutlook.startOn, today)
+  assert.equal(scheduledOutlook.endOnExclusive, shiftCalendarDay(today, 35))
+  assert.deepEqual(scheduledOutlook.recurringTransferForecast, [])
+  const outlookByRule = new Map(scheduledOutlook.recurringForecast.map(
+    (item) => [item.recurringRuleId, item],
+  ))
+  assert.equal(outlookByRule.get(ruleIds.daily).occurrenceCount, 35)
+  assert.equal(outlookByRule.get(ruleIds.daily).occurrenceDates[0], today)
+  assert.equal(
+    outlookByRule.get(ruleIds.daily).occurrenceDates.at(-1),
+    shiftCalendarDay(today, 34),
+  )
+  assert.deepEqual(outlookByRule.get(ruleIds.monthly).occurrenceDates, [
+    today,
+    shiftCalendarMonthDate(today, 1),
+  ])
+  const differentReportMonth = shiftCalendarMonth(month, 6)
+  const differentReportMonthSummary = await api(
+    baseUrl,
+    `/api/summary?month=${differentReportMonth}`,
+  )
+  assert.equal(differentReportMonthSummary.response.status, 200)
+  assert.deepEqual(
+    differentReportMonthSummary.payload.data.scheduledOutlook,
+    scheduledOutlook,
+  )
   const forecastBeforeRunTomorrow = await api(
     baseUrl,
     `/api/summary?month=${tomorrow.slice(0, 7)}`,

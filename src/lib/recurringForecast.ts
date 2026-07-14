@@ -1,4 +1,4 @@
-import { monthRangeDates } from './date'
+import { isValidCalendarDate, monthRangeDates } from './date'
 import { dueOccurrences, firstOccurrenceOnOrAfter } from './recurrence'
 import type {
   AccountLocalizationKey,
@@ -100,6 +100,20 @@ function addCalendarDays(date: string, days: number) {
   return shifted.toISOString().slice(0, 10)
 }
 
+function calendarDaySpan(startOn: string, endOnExclusive: string) {
+  if (!isValidCalendarDate(startOn) || !isValidCalendarDate(endOnExclusive)) {
+    throw new Error('Recurring forecast range must use valid calendar dates')
+  }
+  const span = (
+    Date.parse(`${endOnExclusive}T00:00:00.000Z`)
+    - Date.parse(`${startOn}T00:00:00.000Z`)
+  ) / (24 * 60 * 60 * 1000)
+  if (!Number.isSafeInteger(span) || span < 1) {
+    throw new Error('Recurring forecast range must be a non-empty half-open range')
+  }
+  return span
+}
+
 export function recurringForecastOccurrences(
   forecast: readonly ScheduledRecurringSummary[],
 ): RecurringForecastOccurrence[] {
@@ -196,14 +210,60 @@ export function recurringForecastPeriods(
   }))
 }
 
+export function recurringForecastPeriodsForRange(
+  startOn: string,
+  endOnExclusive: string,
+  forecast: readonly ScheduledRecurringSummary[],
+): RecurringForecastPeriod[] {
+  if (calendarDaySpan(startOn, endOnExclusive) !== 35) {
+    throw new Error('Recurring forecast periods require an exact 35-day range')
+  }
+  const boundaries = [0, 7, 14, 21, 28, 35].map((days) => addCalendarDays(startOn, days))
+  const totals = Array.from({ length: 5 }, () => ({ incomeMinor: 0n, expenseMinor: 0n }))
+
+  for (const rule of forecast) {
+    if (!Number.isSafeInteger(rule.amountMinor) || rule.amountMinor < 0) {
+      throw new Error('Recurring forecast amount must be a non-negative safe integer')
+    }
+
+    for (const occurrenceOn of rule.occurrenceDates) {
+      if (occurrenceOn < startOn || occurrenceOn >= endOnExclusive) {
+        throw new Error('Recurring forecast occurrence is outside the selected range')
+      }
+      const periodIndex = Math.floor(
+        (calendarDaySpan(startOn, addCalendarDays(occurrenceOn, 1)) - 1) / 7,
+      )
+      totals[periodIndex][rule.type === 'income' ? 'incomeMinor' : 'expenseMinor']
+        += BigInt(rule.amountMinor)
+    }
+  }
+
+  return totals.map((total, index) => ({
+    index: (index + 1) as RecurringForecastPeriod['index'],
+    startOn: boundaries[index],
+    endOnExclusive: boundaries[index + 1],
+    totals: safeRecurringForecastTotals(total.incomeMinor, total.expenseMinor),
+  }))
+}
+
 export function recurringForecastForMonth(
   rules: readonly RecurringForecastRule[],
   month: string,
 ): ScheduledRecurringSummary[] {
   const { start, end } = monthRangeDates(month)
 
+  return recurringForecastForRange(rules, start, end)
+}
+
+export function recurringForecastForRange(
+  rules: readonly RecurringForecastRule[],
+  startOn: string,
+  endOnExclusive: string,
+): ScheduledRecurringSummary[] {
+  calendarDaySpan(startOn, endOnExclusive)
+
   return rules.flatMap((rule) => {
-    const schedule = forecastScheduleForMonth(rule, start, end)
+    const schedule = forecastScheduleForRange(rule, startOn, endOnExclusive)
     if (!schedule) return []
     const { firstOccurrenceOn, occurrenceDates } = schedule
     const occurrenceCount = occurrenceDates.length
@@ -233,8 +293,18 @@ export function recurringTransferForecastForMonth(
 ): ScheduledRecurringTransferSummary[] {
   const { start, end } = monthRangeDates(month)
 
+  return recurringTransferForecastForRange(rules, start, end)
+}
+
+export function recurringTransferForecastForRange(
+  rules: readonly RecurringTransferForecastRule[],
+  startOn: string,
+  endOnExclusive: string,
+): ScheduledRecurringTransferSummary[] {
+  calendarDaySpan(startOn, endOnExclusive)
+
   return rules.flatMap((rule) => {
-    const schedule = forecastScheduleForMonth(rule, start, end)
+    const schedule = forecastScheduleForRange(rule, startOn, endOnExclusive)
     if (!schedule) return []
     const { firstOccurrenceOn, occurrenceDates } = schedule
 
@@ -259,7 +329,7 @@ export function recurringTransferForecastForMonth(
   ))
 }
 
-function forecastScheduleForMonth(
+function forecastScheduleForRange(
   rule: Pick<
     RecurringForecastRule,
     'nextOccurrenceOn' | 'frequency' | 'anchorDay' | 'scheduleEndsOn'
@@ -277,14 +347,20 @@ function forecastScheduleForMonth(
     return null
   }
 
+  const lastOn = addCalendarDays(end, -1)
+  const result = dueOccurrences(
+    firstOccurrenceOn,
+    lastOn,
+    rule.frequency,
+    rule.anchorDay,
+    calendarDaySpan(firstOccurrenceOn, end),
+  )
+  if (result.truncated) throw new Error('Recurring forecast range was truncated')
+
   return {
     firstOccurrenceOn,
-    occurrenceDates: dueOccurrences(
-      firstOccurrenceOn,
-      end,
-      rule.frequency,
-      rule.anchorDay,
-      32,
-    ).occurrences.filter((date) => date < end && (!rule.scheduleEndsOn || date <= rule.scheduleEndsOn)),
+    occurrenceDates: result.occurrences.filter(
+      (date) => !rule.scheduleEndsOn || date <= rule.scheduleEndsOn,
+    ),
   }
 }

@@ -98,3 +98,13 @@ export function formatHongKongDate(value: string, locale = 'zh-Hant') {
     timeZone: 'UTC',
   }).format(new Date(`${value}T00:00:00.000Z`))
 }
+
+export function formatHongKongDateWithYear(value: string, locale = 'zh-Hant') {
+  if (!isValidCalendarDate(value)) throw new Error('Date must be a valid YYYY-MM-DD calendar date')
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${value}T00:00:00.000Z`))
+}

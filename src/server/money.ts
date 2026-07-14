@@ -6,13 +6,15 @@ import {
   buildMonthlyCashFlowTrend,
   type MonthlyCashFlowQueryRow,
 } from '../lib/cashFlowTrend'
-import { monthRangeDates, shiftMonth } from '../lib/date'
+import { currentHongKongDate, monthRangeDates, shiftMonth } from '../lib/date'
 import { exactTransactionTotals } from '../lib/money'
 import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
 import {
   recurringForecastForMonth,
+  recurringForecastForRange,
   recurringTransferForecastForMonth,
+  recurringTransferForecastForRange,
   type RecurringForecastRule,
   type RecurringTransferForecastRule,
 } from '../lib/recurringForecast'
@@ -980,8 +982,17 @@ export async function deleteTransaction(
   return { kind: 'deleted', id }
 }
 
-export async function getSummary(database: D1Database, month: string): Promise<Summary> {
+export async function getSummary(
+  database: D1Database,
+  month: string,
+  now = new Date(),
+): Promise<Summary> {
   const { start, end } = monthRangeDates(month)
+  const outlookStart = currentHongKongDate(now).date
+  const outlookEndDate = new Date(`${outlookStart}T00:00:00.000Z`)
+  outlookEndDate.setUTCDate(outlookEndDate.getUTCDate() + 35)
+  const outlookEnd = outlookEndDate.toISOString().slice(0, 10)
+  const recurringQueryEnd = end > outlookEnd ? end : outlookEnd
   const previousStart = `${shiftMonth(month, -1)}-01`
   const trendStart = `${shiftMonth(month, -5)}-01`
   const [
@@ -1131,7 +1142,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
       ORDER BY next_occurrence_on ASC, id ASC
     `)
-      .bind(end)
+      .bind(recurringQueryEnd)
       .all<RecurringForecastRule>(),
     database.prepare(`
       SELECT
@@ -1157,7 +1168,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
         AND (r.schedule_ends_on IS NULL OR r.next_occurrence_on <= r.schedule_ends_on)
       ORDER BY r.next_occurrence_on ASC, r.id ASC
     `)
-      .bind(end)
+      .bind(recurringQueryEnd)
       .all<RecurringTransferForecastRule>(),
   ])
 
@@ -1190,6 +1201,20 @@ export async function getSummary(database: D1Database, month: string): Promise<S
       recurringTransferRulesResult.results,
       month,
     ),
+    scheduledOutlook: {
+      startOn: outlookStart,
+      endOnExclusive: outlookEnd,
+      recurringForecast: recurringForecastForRange(
+        recurringRulesResult.results,
+        outlookStart,
+        outlookEnd,
+      ),
+      recurringTransferForecast: recurringTransferForecastForRange(
+        recurringTransferRulesResult.results,
+        outlookStart,
+        outlookEnd,
+      ),
+    },
   }
 }
 

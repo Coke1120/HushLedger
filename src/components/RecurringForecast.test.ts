@@ -44,6 +44,48 @@ const unsafeSummary: Summary = {
   ],
 }
 
+const rollingUnsafeSummary: Summary = {
+  ...unsafeSummary,
+  scheduledOutlook: {
+    startOn: '2026-07-01',
+    endOnExclusive: '2026-08-05',
+    recurringForecast: unsafeSummary.recurringForecast,
+    recurringTransferForecast: [],
+  },
+}
+
+const rollingSummary: Summary = {
+  ...unsafeSummary,
+  month: '2040-01',
+  recurringForecast: [{
+    ...unsafeSummary.recurringForecast[0],
+    name: 'Selected month fallback',
+    amountMinor: 9_900,
+    firstOccurrenceOn: '2040-01-10',
+    occurrenceDates: ['2040-01-10'],
+  }],
+  scheduledOutlook: {
+    startOn: '2026-12-15',
+    endOnExclusive: '2027-01-19',
+    recurringForecast: [{
+      ...unsafeSummary.recurringForecast[0],
+      name: 'Rolling rent',
+      amountMinor: 8_000,
+      frequency: 'weekly',
+      firstOccurrenceOn: '2026-12-15',
+      occurrenceCount: 5,
+      occurrenceDates: [
+        '2026-12-15',
+        '2026-12-22',
+        '2026-12-29',
+        '2027-01-05',
+        '2027-01-12',
+      ],
+    }],
+    recurringTransferForecast: [],
+  },
+}
+
 function renderForecast(
   privacyMode: boolean,
   summary: Summary = unsafeSummary,
@@ -91,8 +133,51 @@ function periodTotalsCount(markup: string) {
 }
 
 describe('recurring forecast privacy rendering', () => {
+  it('shows an absolute rolling range independently of the selected report month', () => {
+    const markup = renderForecast(false, rollingSummary)
+
+    assert.match(markup, /35-day scheduled ledger outlook/)
+    assert.match(markup, /Ungenerated dates and amounts from active local ledger rules/)
+    assert.match(markup, /not bank confirmation, actual transactions, available balance or runway, or guaranteed dates or amounts/)
+    assert.match(markup, /class="sr-only">Outlook dates: December 15, 2026 through January 18, 2027, inclusive\.<\/p>/)
+    assert.match(markup, /<p aria-hidden="true"><strong>Outlook dates:<\/strong>/)
+    assert.doesNotMatch(markup, /<p[^>]*aria-label=/)
+    assert.match(markup, /dateTime="2026-12-15">December 15, 2026/)
+    assert.match(markup, /dateTime="2027-01-18">January 18, 2027/)
+    assert.match(markup, /Rolling rent/)
+    assert.match(markup, /Scheduled totals in 7-day periods/)
+    assert.doesNotMatch(markup, /Scheduled cash flow by week/)
+    assert.doesNotMatch(markup, /Selected month fallback|2040-01-10/)
+    assert.equal(periodTotalsCount(markup), 5)
+  })
+
+  it('keeps an explicitly empty rolling outlook empty instead of falling back to the month', () => {
+    const markup = renderForecast(false, {
+      ...rollingSummary,
+      scheduledOutlook: {
+        ...rollingSummary.scheduledOutlook!,
+        recurringForecast: [],
+        recurringTransferForecast: [],
+      },
+    })
+
+    assert.match(markup, /No ungenerated scheduled ledger entries in the next 35 days/)
+    assert.match(markup, /December 15, 2026 through January 18, 2027/)
+    assert.doesNotMatch(markup, /Selected month fallback|Rolling rent/)
+    assert.doesNotMatch(markup, /class="recurring-forecast-totals"/)
+  })
+
+  it('falls back to the selected-month fields from an older API response', () => {
+    const markup = renderForecast(false, unsafeSummary)
+
+    assert.match(markup, /Scheduled ledger entries/)
+    assert.match(markup, /First large entry/)
+    assert.match(markup, /2026-07-01/)
+    assert.doesNotMatch(markup, /Next 35 days|Outlook dates/)
+  })
+
   it('keeps unsafe totals structurally indistinguishable while amounts are masked', () => {
-    const markup = renderForecast(true)
+    const markup = renderForecast(true, rollingUnsafeSummary)
 
     assert.equal(periodTotalsCount(markup), 5)
     assert.match(markup, /class="recurring-forecast-totals"/)
@@ -103,7 +188,7 @@ describe('recurring forecast privacy rendering', () => {
   })
 
   it('still reports an unsafe period when screen privacy is off', () => {
-    const markup = renderForecast(false)
+    const markup = renderForecast(false, rollingUnsafeSummary)
 
     assert.equal(periodTotalsCount(markup), 4)
     assert.doesNotMatch(markup, /class="recurring-forecast-totals"/)
@@ -111,7 +196,7 @@ describe('recurring forecast privacy rendering', () => {
   })
 
   it('keeps the exact rule identity on every actionable occurrence', () => {
-    const markup = renderForecast(false)
+    const markup = renderForecast(false, rollingUnsafeSummary)
 
     assert.match(markup, /data-recurring-rule-id="10000000-0000-4000-8000-000000000001"/)
     assert.match(markup, /data-recurring-rule-id="10000000-0000-4000-8000-000000000002"/)
@@ -164,32 +249,38 @@ describe('recurring forecast privacy rendering', () => {
   })
 
   it('renders scheduled transfers separately without creating cash-flow totals', () => {
+    const transferForecast = [{
+      recurringTransferRuleId: '20000000-0000-4000-8000-000000000001',
+      name: 'Daily savings',
+      amountMinor: 4_500,
+      fromAccountId: 2,
+      fromAccountName: 'Everyday',
+      fromAccountLocalizationKey: 'account.bank' as const,
+      toAccountId: 3,
+      toAccountName: 'Reserve',
+      toAccountLocalizationKey: 'account.wallet' as const,
+      frequency: 'daily' as const,
+      firstOccurrenceOn: '2026-07-01',
+      occurrenceCount: 7,
+      occurrenceDates: [
+        '2026-07-01',
+        '2026-07-02',
+        '2026-07-03',
+        '2026-07-04',
+        '2026-07-05',
+        '2026-07-06',
+        '2026-07-07',
+      ],
+    }]
     const transferSummary: Summary = {
       ...unsafeSummary,
-      recurringForecast: [],
-      recurringTransferForecast: [{
-        recurringTransferRuleId: '20000000-0000-4000-8000-000000000001',
-        name: 'Daily savings',
-        amountMinor: 4_500,
-        fromAccountId: 2,
-        fromAccountName: 'Everyday',
-        fromAccountLocalizationKey: 'account.bank',
-        toAccountId: 3,
-        toAccountName: 'Reserve',
-        toAccountLocalizationKey: 'account.wallet',
-        frequency: 'daily',
-        firstOccurrenceOn: '2026-07-01',
-        occurrenceCount: 7,
-        occurrenceDates: [
-          '2026-07-01',
-          '2026-07-02',
-          '2026-07-03',
-          '2026-07-04',
-          '2026-07-05',
-          '2026-07-06',
-          '2026-07-07',
-        ],
-      }],
+      recurringTransferForecast: [],
+      scheduledOutlook: {
+        startOn: '2026-07-01',
+        endOnExclusive: '2026-08-05',
+        recurringForecast: [],
+        recurringTransferForecast: transferForecast,
+      },
     }
     const markup = renderForecast(false, transferSummary)
     const privateMarkup = renderForecast(true, transferSummary)
@@ -200,6 +291,7 @@ describe('recurring forecast privacy rendering', () => {
     assert.match(markup, /2026-07-01<\/time> · Daily/)
     assert.match(markup, /account\.bank:Everyday → account\.wallet:Reserve/)
     assert.match(markup, /HK\$45\.00/)
+    assert.doesNotMatch(markup, /First large entry/)
     assert.doesNotMatch(markup, /class="recurring-forecast-totals"/)
     assert.doesNotMatch(markup, /class="recurring-forecast-periods"/)
     assert.doesNotMatch(markup, /2026-07-07/)

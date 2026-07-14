@@ -97,6 +97,21 @@ describe('message catalogs', () => {
     )
   })
 
+  it('keeps the rolling outlook local, date-bounded, and non-promissory', () => {
+    assert.equal(
+      translate('en', 'scheduledOutlookHelp'),
+      'Ungenerated dates and amounts from active local ledger rules. They are not bank confirmation, actual transactions, available balance or runway, or guaranteed dates or amounts. Select an entry to manage its rule.',
+    )
+    assert.equal(
+      translate('en', 'scheduledOutlookRange', { from: 'July 14', to: 'August 17' }),
+      'Outlook dates: July 14 through August 17, inclusive.',
+    )
+    assert.equal(
+      translate('en', 'scheduledOutlookCashFlowPeriodsHelp'),
+      'Five consecutive 7-day periods cover the displayed range. They include only ungenerated recurring transaction rules; scheduled transfers remain separate and never enter these totals.',
+    )
+  })
+
   it('limits backup health claims to browser-local preparation records', () => {
     assert.equal(
       translate('en', 'ledgerBackupHealthDue', { count: 30 }),

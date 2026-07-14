@@ -4,9 +4,11 @@ import { useI18n } from '../i18n'
 import {
   recurringForecastOccurrences,
   recurringForecastPeriods,
+  recurringForecastPeriodsForRange,
   recurringTransferForecastOccurrences,
   summarizeRecurringForecast,
 } from '../lib/recurringForecast'
+import { formatHongKongDateWithYear } from '../lib/date'
 import type { Summary } from '../lib/schema'
 
 type RecurringForecastProps = {
@@ -45,7 +47,7 @@ export function RecurringForecast({
   onManage,
   onManageTransfer,
 }: RecurringForecastProps) {
-  const { formatDate, formatMoney, localizeEntityName, privacyMode, t } = useI18n()
+  const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
   const [expandedTransferMonth, setExpandedTransferMonth] = useState<string | null>(null)
   const accountsById = useMemo(
@@ -56,16 +58,26 @@ export function RecurringForecast({
     () => new Map(categories.map((category) => [category.id, category])),
     [categories],
   )
-  const showAll = expandedMonth === summary.month
-  const occurrences = recurringForecastOccurrences(summary.recurringForecast)
+  const scheduledOutlook = summary.scheduledOutlook
+  const forecastScope = scheduledOutlook
+    ? `${scheduledOutlook.startOn}:${scheduledOutlook.endOnExclusive}`
+    : summary.month
+  const forecast = scheduledOutlook
+    ? scheduledOutlook.recurringForecast
+    : summary.recurringForecast
+  const transferForecast = scheduledOutlook
+    ? scheduledOutlook.recurringTransferForecast
+    : summary.recurringTransferForecast ?? []
+  const showAll = expandedMonth === forecastScope
+  const occurrences = recurringForecastOccurrences(forecast)
   const transferOccurrences = recurringTransferForecastOccurrences(
-    summary.recurringTransferForecast ?? [],
+    transferForecast,
   )
   const hiddenOccurrenceCount = Math.max(0, occurrences.length - visibleOccurrenceLimit)
   const visibleOccurrences = showAll
     ? occurrences
     : occurrences.slice(0, visibleOccurrenceLimit)
-  const showAllTransfers = expandedTransferMonth === summary.month
+  const showAllTransfers = expandedTransferMonth === forecastScope
   const hiddenTransferOccurrenceCount = Math.max(
     0,
     transferOccurrences.length - visibleOccurrenceLimit,
@@ -73,10 +85,25 @@ export function RecurringForecast({
   const visibleTransferOccurrences = showAllTransfers
     ? transferOccurrences
     : transferOccurrences.slice(0, visibleOccurrenceLimit)
-  const totals = summarizeRecurringForecast(summary.recurringForecast)
+  const totals = summarizeRecurringForecast(forecast)
   const displayedTotals = totals ?? (privacyMode ? privacyTotalsPlaceholder : null)
-  const periods = recurringForecastPeriods(summary.month, summary.recurringForecast)
+  const periods = (scheduledOutlook
+    ? recurringForecastPeriodsForRange(
+        scheduledOutlook.startOn,
+        scheduledOutlook.endOnExclusive,
+        forecast,
+      )
+    : recurringForecastPeriods(summary.month, forecast))
     .filter(({ startOn, endOnExclusive }) => startOn < endOnExclusive)
+  const outlookInclusiveEndOn = scheduledOutlook
+    ? previousCalendarDate(scheduledOutlook.endOnExclusive)
+    : null
+  const formattedOutlookStartOn = scheduledOutlook
+    ? formatHongKongDateWithYear(scheduledOutlook.startOn, locale)
+    : null
+  const formattedOutlookEndOn = outlookInclusiveEndOn
+    ? formatHongKongDateWithYear(outlookInclusiveEndOn, locale)
+    : null
 
   return (
     <section
@@ -89,17 +116,40 @@ export function RecurringForecast({
           <CalendarClock />
         </span>
         <div>
-          <h2 id="recurring-forecast-title">{t('scheduledThisMonth')}</h2>
-          <p>{t('scheduledThisMonthHelp')}</p>
+          <h2 id="recurring-forecast-title">
+            {t(scheduledOutlook ? 'scheduledOutlookTitle' : 'scheduledThisMonth')}
+          </h2>
+          <p>{t(scheduledOutlook ? 'scheduledOutlookHelp' : 'scheduledThisMonthHelp')}</p>
+          {scheduledOutlook && outlookInclusiveEndOn
+            && formattedOutlookStartOn && formattedOutlookEndOn ? (
+            <>
+              <p className="sr-only">
+                {t('scheduledOutlookRange', {
+                  from: formattedOutlookStartOn,
+                  to: formattedOutlookEndOn,
+                })}
+              </p>
+              <p aria-hidden="true">
+                <strong>{t('scheduledOutlookRangeLabel')}:</strong>{' '}
+                <time dateTime={scheduledOutlook.startOn}>
+                  {formattedOutlookStartOn}
+                </time>
+                <span>–</span>
+                <time dateTime={outlookInclusiveEndOn}>{formattedOutlookEndOn}</time>
+              </p>
+            </>
+          ) : null}
         </div>
       </header>
 
       {loading ? (
-        <p className="category-spending-empty" role="status">{t('scheduledForecastLoading')}</p>
+        <p className="category-spending-empty" role="status">
+          {t(scheduledOutlook ? 'scheduledOutlookLoading' : 'scheduledForecastLoading')}
+        </p>
       ) : visibleOccurrences.length === 0 && transferOccurrences.length === 0 ? (
         <div className="category-spending-empty">
-          <strong>{t('noScheduledThisMonth')}</strong>
-          <span>{t('noScheduledThisMonthHelp')}</span>
+          <strong>{t(scheduledOutlook ? 'noScheduledOutlook' : 'noScheduledThisMonth')}</strong>
+          <span>{t(scheduledOutlook ? 'noScheduledOutlookHelp' : 'noScheduledThisMonthHelp')}</span>
         </div>
       ) : (
         <>
@@ -124,8 +174,14 @@ export function RecurringForecast({
             aria-labelledby="recurring-forecast-periods-title"
           >
             <header className="recurring-forecast-periods-heading">
-              <h3 id="recurring-forecast-periods-title">{t('scheduledCashFlowByWeek')}</h3>
-              <p>{t('scheduledCashFlowByWeekHelp')}</p>
+              <h3 id="recurring-forecast-periods-title">
+                {t(scheduledOutlook
+                  ? 'scheduledOutlookCashFlowPeriods'
+                  : 'scheduledCashFlowByWeek')}
+              </h3>
+              <p>{t(scheduledOutlook
+                ? 'scheduledOutlookCashFlowPeriodsHelp'
+                : 'scheduledCashFlowByWeekHelp')}</p>
             </header>
             <ol className="recurring-forecast-period-list">
               {periods.map((period) => {
@@ -257,7 +313,7 @@ export function RecurringForecast({
                 type="button"
                 aria-controls="recurring-forecast-list"
                 aria-expanded={showAll}
-                onClick={() => setExpandedMonth(showAll ? null : summary.month)}
+                onClick={() => setExpandedMonth(showAll ? null : forecastScope)}
               >
                 {showAll
                   ? t('showFewerScheduledEntries')
@@ -344,7 +400,7 @@ export function RecurringForecast({
                     aria-controls="recurring-transfer-forecast-list"
                     aria-expanded={showAllTransfers}
                     onClick={() => setExpandedTransferMonth(
-                      showAllTransfers ? null : summary.month,
+                      showAllTransfers ? null : forecastScope,
                     )}
                   >
                     {showAllTransfers

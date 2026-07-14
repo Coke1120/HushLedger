@@ -33,7 +33,9 @@ import {
   type TransactionClearingFilter,
   type TransactionFilter,
 } from './components/TransactionToolbar'
+import { useHongKongToday } from './hooks/useHongKongToday'
 import { useMoneyData } from './hooks/useMoneyData'
+import { startScheduledOutlookRefreshRetries } from './hooks/scheduledOutlookRefresh'
 import { useI18n } from './i18n'
 import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
 import type { AiProviderSettings } from './lib/ai'
@@ -67,6 +69,7 @@ const initialAiSettings: AiProviderSettings = {
 
 function App({ initialDate, initialMonth }: { initialDate: string; initialMonth: string }) {
   const { localizeEntityName, t } = useI18n()
+  const scheduledOutlookToday = useHongKongToday()
   const { status: appUpdateStatus, setRestartBlocked } = useAppUpdate()
   const [month, setMonth] = useState(initialMonth)
   const [filter, setFilter] = useState<TransactionFilter>('all')
@@ -163,6 +166,26 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     || recurringMutationInProgress
   const ledgerMutationInProgress = otherLedgerMutationInProgress || settingsMutationInProgress
   const ledgerInteractionLocked = ledgerRestoreInProgress || ledgerMutationInProgress
+  const scheduledOutlookStartOn = data.summary.scheduledOutlook?.startOn
+
+  useEffect(() => {
+    if (
+      data.source !== 'live'
+      || scheduledOutlookStartOn === undefined
+      || scheduledOutlookStartOn === scheduledOutlookToday
+      || ledgerInteractionLocked
+    ) return
+
+    return startScheduledOutlookRefreshRetries(
+      () => refreshMoneyData('preserve'),
+    )
+  }, [
+    data.source,
+    ledgerInteractionLocked,
+    refreshMoneyData,
+    scheduledOutlookStartOn,
+    scheduledOutlookToday,
+  ])
 
   const changeLedgerRestoreState = useCallback((restoring: boolean) => {
     if (restoring && (ledgerMutationInProgress || appUpdateStatus === 'installing')) return false

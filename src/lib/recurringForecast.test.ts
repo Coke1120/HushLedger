@@ -3,8 +3,11 @@ import { describe, it } from 'node:test'
 import {
   recurringForecastOccurrences,
   recurringForecastForMonth,
+  recurringForecastForRange,
   recurringForecastPeriods,
+  recurringForecastPeriodsForRange,
   recurringTransferForecastForMonth,
+  recurringTransferForecastForRange,
   recurringTransferForecastOccurrences,
   summarizeRecurringForecast,
   type RecurringForecastRule,
@@ -381,6 +384,155 @@ describe('monthly recurring forecast', () => {
 
     assert.equal(periods[0].totals, null)
     assert.deepEqual(periods[1].totals, { incomeMinor: 0, expenseMinor: 0, netMinor: 0 })
+  })
+})
+
+describe('rolling recurring forecast', () => {
+  it('uses a half-open 35-day range without truncating daily or anchored schedules', () => {
+    const daily = recurringForecastForRange([rule({
+      name: 'Daily plan',
+      frequency: 'daily',
+      nextOccurrenceOn: '2026-07-14',
+      anchorDay: 14,
+    })], '2026-07-14', '2026-08-18')[0]
+    assert.equal(daily.occurrenceCount, 35)
+    assert.equal(daily.occurrenceDates[0], '2026-07-14')
+    assert.equal(daily.occurrenceDates.at(-1), '2026-08-17')
+
+    assert.deepEqual(recurringForecastForRange([
+      rule({
+        id: '10000000-0000-4000-8000-000000000002',
+        name: 'Month end',
+        nextOccurrenceOn: '2026-07-31',
+        anchorDay: 31,
+      }),
+      rule({
+        id: '10000000-0000-4000-8000-000000000003',
+        name: 'Finite weekly',
+        frequency: 'weekly',
+        nextOccurrenceOn: '2026-07-14',
+        anchorDay: 14,
+        scheduleEndsOn: '2026-07-28',
+      }),
+      rule({
+        id: '10000000-0000-4000-8000-000000000004',
+        name: 'At exclusive end',
+        nextOccurrenceOn: '2026-08-18',
+      }),
+    ], '2026-07-14', '2026-08-18').map(({ name, occurrenceDates }) => ({
+      name,
+      occurrenceDates,
+    })), [
+      {
+        name: 'Finite weekly',
+        occurrenceDates: ['2026-07-14', '2026-07-21', '2026-07-28'],
+      },
+      { name: 'Month end', occurrenceDates: ['2026-07-31'] },
+    ])
+  })
+
+  it('builds five exact seven-day periods with safe transaction-only totals', () => {
+    const periods = recurringForecastPeriodsForRange('2026-07-14', '2026-08-18', [
+      summary({
+        type: 'income',
+        amountMinor: 1_000,
+        firstOccurrenceOn: '2026-07-14',
+        occurrenceCount: 2,
+        occurrenceDates: ['2026-07-14', '2026-08-17'],
+      }),
+      summary({
+        recurringRuleId: '10000000-0000-4000-8000-000000000011',
+        amountMinor: 125,
+        firstOccurrenceOn: '2026-07-20',
+        occurrenceCount: 4,
+        occurrenceDates: ['2026-07-20', '2026-07-21', '2026-07-28', '2026-08-04'],
+      }),
+    ])
+
+    assert.deepEqual(periods, [
+      {
+        index: 1,
+        startOn: '2026-07-14',
+        endOnExclusive: '2026-07-21',
+        totals: { incomeMinor: 1_000, expenseMinor: 125, netMinor: 875 },
+      },
+      {
+        index: 2,
+        startOn: '2026-07-21',
+        endOnExclusive: '2026-07-28',
+        totals: { incomeMinor: 0, expenseMinor: 125, netMinor: -125 },
+      },
+      {
+        index: 3,
+        startOn: '2026-07-28',
+        endOnExclusive: '2026-08-04',
+        totals: { incomeMinor: 0, expenseMinor: 125, netMinor: -125 },
+      },
+      {
+        index: 4,
+        startOn: '2026-08-04',
+        endOnExclusive: '2026-08-11',
+        totals: { incomeMinor: 0, expenseMinor: 125, netMinor: -125 },
+      },
+      {
+        index: 5,
+        startOn: '2026-08-11',
+        endOnExclusive: '2026-08-18',
+        totals: { incomeMinor: 1_000, expenseMinor: 0, netMinor: 1_000 },
+      },
+    ])
+
+    assert.throws(
+      () => recurringForecastPeriodsForRange('2026-07-14', '2026-08-17', []),
+      /exact 35-day range/,
+    )
+    assert.equal(recurringForecastPeriodsForRange('2026-07-14', '2026-08-18', [
+      summary({ amountMinor: Number.MAX_SAFE_INTEGER, occurrenceDates: ['2026-07-14'] }),
+      summary({
+        recurringRuleId: '10000000-0000-4000-8000-000000000012',
+        amountMinor: 1,
+        occurrenceDates: ['2026-07-20'],
+      }),
+    ])[0].totals, null)
+  })
+
+  it('keeps transfer occurrences separate and stably ordered across the range', () => {
+    assert.deepEqual(recurringTransferForecastForRange([
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000002',
+        name: 'Later ID',
+        frequency: 'daily',
+        nextOccurrenceOn: '2026-08-16',
+        anchorDay: 16,
+      }),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000001',
+        name: 'Earlier ID',
+        frequency: 'daily',
+        nextOccurrenceOn: '2026-08-17',
+        anchorDay: 17,
+        scheduleEndsOn: '2026-08-17',
+      }),
+    ], '2026-07-14', '2026-08-18').map(({ name, occurrenceDates }) => ({
+      name,
+      occurrenceDates,
+    })), [
+      { name: 'Later ID', occurrenceDates: ['2026-08-16', '2026-08-17'] },
+      { name: 'Earlier ID', occurrenceDates: ['2026-08-17'] },
+    ])
+  })
+
+  it('rejects empty, reversed, and invalid half-open ranges', () => {
+    for (const [startOn, endOnExclusive] of [
+      ['2026-07-14', '2026-07-14'],
+      ['2026-07-15', '2026-07-14'],
+      ['not-a-date', '2026-07-14'],
+    ]) {
+      assert.throws(
+        () => recurringForecastForRange([], startOn, endOnExclusive),
+        /range/,
+      )
+    }
   })
 })
 

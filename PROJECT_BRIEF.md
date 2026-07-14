@@ -53,15 +53,14 @@ not operate an independent database server or a multi-user identity system.
   Treat it only as a user-chosen progress comparison: it does not create or
   reserve money, recommend an amount or deadline, forecast future funds, automate
   transfers, or verify a provider balance.
-- Review active recurring entries that remain ungenerated in the selected month
-  as an expandable chronological list of every scheduled date, rule name,
-  optional payee, amount, and income/expense label. Group those exact dates into
-  fixed seven-day periods starting on day 1, including zero periods and a final
-  period that may be shorter. Review ungenerated scheduled transfers in a
-  separate expandable list with their source and destination accounts. Keep
-  transfer amounts outside exact income, expense, net, and weekly cash-flow
-  totals; keep every forecast separate from recorded or available balance, and
-  direct the user to the provider statement for the actual date and amount.
+- Review active recurring entries that remain ungenerated across an exact rolling
+  35-day Hong Kong calendar range, independent of the selected report month. Show
+  the absolute inclusive display dates and group the range into five consecutive
+  7-day periods with exact scheduled income, expense, and net totals. Review
+  scheduled transfers in a separate expandable list with their source and
+  destination accounts, never in those totals. Treat every date and amount as a
+  local rule value, not bank confirmation, an actual transaction, available
+  balance or runway, or a guaranteed date or amount.
 - Browse matching transactions for the selected month, a one-click fixed range
   of 12 complete calendar months through it, any other inclusive fixed date
   range, or all history. Load the first 200 in the selected order, disclose the
@@ -174,15 +173,14 @@ not operate an independent database server or a multi-user identity system.
 - Record each due transfer as one native account-transfer row with both posting
   states uncleared. Explain that this automates only the ledger: the user must
   confirm funds and complete the real bank or wallet transfer independently.
-- Use the overview forecast to see every ungenerated occurrence in the selected
-  month in stable date order, with explicit expansion controls. Recurring income
-  and expense retain exact monthly totals and fixed day-1-anchored seven-day
-  cash-flow periods; scheduled transfers appear separately with their account
+- Use the Overview outlook to see every ungenerated occurrence across the next
+  35 Hong Kong calendar days in stable date order, regardless of the selected
+  Month Navigator value. Recurring income and expenses use five exact consecutive
+  7-day periods; scheduled transfers appear separately with their account
   direction and never change those totals. Generated ledger entries remain part
-  of actual totals instead, and forecast money never becomes recorded or
-  available balance by presentation alone. Scheduled dates are ledger-generation
-  dates, not verified provider due dates, payment confirmations, or proof of
-  sufficient funds.
+  of actual totals instead. Outlook dates and amounts are local rule values, not
+  bank confirmations, actual transactions, available balance or runway,
+  guarantees, payment confirmations, or proof of sufficient funds.
 
 ## Data contract
 
@@ -359,7 +357,7 @@ POST   /api/imports/parse  (draft only; zero D1 writes)
 POST   /api/imports/ai  (preview or commit reviewed drafts, 200 rows maximum)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (recorded totals, income-source and expense breakdowns, trends, plans, and remaining recurring dates)
+GET    /api/summary?month=YYYY-MM  (monthly reports plus a current Hong Kong-date 35-day recurring outlook and cached-client monthly recurrence fields)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

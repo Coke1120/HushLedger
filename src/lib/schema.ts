@@ -633,6 +633,8 @@ export type Summary = {
   recurringForecast: ScheduledRecurringSummary[]
   /** Missing only when a cached newer app shell reads an older API response. */
   recurringTransferForecast?: ScheduledRecurringTransferSummary[]
+  /** Missing only when a cached newer app shell reads an older API response. */
+  scheduledOutlook?: ScheduledOutlookSummary
 }
 
 export type MonthlyCashFlowSummary = {
@@ -707,6 +709,13 @@ export type ScheduledRecurringTransferSummary = {
   firstOccurrenceOn: string
   occurrenceCount: number
   occurrenceDates: string[]
+}
+
+export type ScheduledOutlookSummary = {
+  startOn: string
+  endOnExclusive: string
+  recurringForecast: ScheduledRecurringSummary[]
+  recurringTransferForecast: ScheduledRecurringTransferSummary[]
 }
 
 export type PayeeSuggestion = {

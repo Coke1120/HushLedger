@@ -54,18 +54,14 @@ knowledge and explains every command and dashboard click.
   difference, and spending outside every plan. Five rows stay visible by default,
   while an explicit action reveals every plan. Plans are recurring comparison
   guardrails only: they do not reserve cash, roll balances forward, or move money.
-- A selected-month forecast of active recurring entries that have not yet been
-  generated, expanded into an exact chronological list of every scheduled date
-  with rule name, optional payee, account, category, amount, and
-  income/expense label. A fixed
-  day-1-anchored weekly view groups those exact dates into seven-day scheduled
-  income, expense, and net periods, including zero periods and a final period
-  that may be shorter. A separate expandable list shows every ungenerated
-  scheduled transfer with its exact ledger date, amount, and source-to-destination
-  account direction. Transfers never enter the monthly or weekly income, expense,
-  or net forecast totals. Forecast values never change recorded or available
-  balance, and a provider statement remains authoritative for the actual date,
-  amount, execution, and available funds.
+- A rolling 35-Hong-Kong-calendar-day outlook of active recurring entries that
+  have not yet been generated, independent of the selected report month. It shows
+  the absolute inclusive display dates, exact rule dates and amounts, and five
+  consecutive 7-day periods for scheduled income, expenses, and net totals. A
+  separate expandable list shows every ungenerated scheduled transfer with its
+  exact ledger date, amount, and source-to-destination account direction; transfers
+  never enter those totals. These local rule values are not bank confirmation,
+  actual transactions, available balance or runway, or guaranteed dates or amounts.
 - Amounts stored in the ledger's selected currency as integer minor units to
   avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
@@ -96,10 +92,11 @@ knowledge and explains every command and dashboard click.
   credit-card payments do not manufacture spending or income.
 - Schedule a fixed same-currency transfer between two owned accounts with a daily,
   weekly, monthly, or yearly cadence and an optional inclusive end date. Each due
-  occurrence is visible in the selected-month forecast until it becomes one
-  native transfer with both sides uncleared for review. This is ledger automation
-  only: HushLedger never contacts a bank, moves real funds, or claims sufficient
-  balance.
+  occurrence inside the displayed 35-day window is visible until it becomes one
+  native transfer with both sides uncleared for review. Earlier ungenerated dates
+  remain part of the rule's due-generation workflow rather than this forward-looking
+  window. This is ledger automation only: HushLedger never contacts a bank, moves
+  real funds, or claims sufficient balance.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact minor
   units, with touch-friendly operator buttons for mobile entry.
@@ -744,7 +741,7 @@ POST   /api/exports/transactions  (primary private CSV export; JSON filters in t
 POST   /api/exports/account-register  (complete account/range reconciliation CSV; JSON query in the body)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked income sources and expense categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
+GET    /api/summary?month=YYYY-MM  (monthly totals and reports plus a current Hong Kong-date 35-day recurring outlook; includes legacy monthly recurrence fields for cached clients)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

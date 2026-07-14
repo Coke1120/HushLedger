@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   currentHongKongDate,
   formatHongKongDate,
+  formatHongKongDateWithYear,
   inclusiveMonthRangeDates,
   isValidCalendarDate,
   millisecondsUntilNextHongKongDay,
@@ -100,6 +101,12 @@ describe('Hong Kong date helpers', () => {
     assert.equal(formatHongKongDate('2026-07-11', 'en'), 'July 11')
     assert.equal(formatHongKongDate('2026-07-11', 'ja'), '7月11日')
     assert.equal(formatHongKongDate('2026-07-11', 'fr'), '11 juillet')
+  })
+
+  it('keeps an absolute range date unambiguous across years', () => {
+    assert.equal(formatHongKongDateWithYear('2026-12-15', 'en'), 'December 15, 2026')
+    assert.equal(formatHongKongDateWithYear('2027-01-18', 'en'), 'January 18, 2027')
+    assert.equal(formatHongKongDateWithYear('2027-01-18', 'zh-Hant'), '2027年1月18日')
   })
 
   it('rejects an invalid month query', () => {
