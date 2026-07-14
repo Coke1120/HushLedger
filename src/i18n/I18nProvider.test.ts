@@ -82,6 +82,21 @@ describe('message catalogs', () => {
     )
   })
 
+  it('describes recurring amount differences without inferring a cause or changing data', () => {
+    assert.equal(
+      translate('en', 'recurringAmountReviewDetails', {
+        date: 'July 14',
+        recorded: 'HK$120.00',
+        future: 'HK$125.00',
+      }),
+      'Latest generated entry (July 14): HK$120.00. Future rule: HK$125.00.',
+    )
+    assert.equal(
+      translate('en', 'recurringAmountReviewHelp'),
+      'Amounts can vary. Check a statement or other source record before changing this rule. A difference alone is not an error, and HushLedger does not change either amount.',
+    )
+  })
+
   it('preserves interpolation placeholders in every locale', () => {
     const placeholders = (value: string) =>
       [...value.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((match) => match[1]).sort()

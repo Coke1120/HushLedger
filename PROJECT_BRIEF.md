@@ -160,6 +160,10 @@ not operate an independent database server or a multi-user identity system.
   distinguish dates within the next seven Hong Kong calendar days, and exclude
   paused or completed rules from the due count. These labels describe pending
   ledger generation only, not an external provider's payment status.
+- Compare each rule's future amount with its most recent remaining generated
+  transaction. When they differ, show the recorded due date and both amounts for
+  a neutral user review; never infer why they differ or update either record
+  automatically.
 - Preserve generated history when a rule changes or is deleted.
 - Create a separate scheduled transfer between two distinct same-currency accounts
   with an exact amount, cadence, start date, optional inclusive end date, active

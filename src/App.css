@@ -3765,6 +3765,41 @@ button.account-register-row:focus-visible {
   white-space: nowrap;
 }
 
+.recurring-amount-review {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px 14px;
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.recurring-amount-review > svg {
+  width: 18px;
+  color: var(--muted);
+}
+
+.recurring-amount-review strong,
+.recurring-amount-review p,
+.recurring-amount-review small {
+  display: block;
+}
+
+.recurring-amount-review p {
+  margin: 4px 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.recurring-amount-review small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .recurring-rule-actions {
   display: flex;
   gap: 8px;

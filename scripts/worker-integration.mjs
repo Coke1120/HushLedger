@@ -5905,6 +5905,60 @@ async function verifyWorkerApi() {
       .sort(),
     [today, tomorrow],
   )
+  const latestFiniteTransaction = finiteTransactions.payload.data.find(
+    ({ recurringRuleId, recurrenceDueOn }) => (
+      recurringRuleId === ruleIds.finite && recurrenceDueOn === tomorrow
+    ),
+  )
+  assert(latestFiniteTransaction)
+  const editedLatestFiniteTransaction = await api(
+    baseUrl,
+    `/api/transactions/${latestFiniteTransaction.id}`,
+    {
+      method: 'PUT',
+      body: {
+        type: latestFiniteTransaction.type,
+        amountMinor: 654,
+        currency: latestFiniteTransaction.currency,
+        accountId: latestFiniteTransaction.accountId,
+        categoryId: latestFiniteTransaction.categoryId,
+        occurredOn: latestFiniteTransaction.occurredOn,
+        cleared: latestFiniteTransaction.cleared,
+        payee: latestFiniteTransaction.payee,
+        note: latestFiniteTransaction.note,
+        updatedAt: latestFiniteTransaction.updatedAt,
+      },
+    },
+  )
+  assert.equal(
+    editedLatestFiniteTransaction.response.status,
+    200,
+    JSON.stringify(editedLatestFiniteTransaction.payload),
+  )
+  const finiteRuleWithEditedLatestAmount = await api(
+    baseUrl,
+    `/api/recurring-rules/${ruleIds.finite}`,
+  )
+  assert.equal(finiteRuleWithEditedLatestAmount.response.status, 200)
+  assert.equal(finiteRuleWithEditedLatestAmount.payload.data.latestGeneratedAmountMinor, 654)
+  assert.equal(finiteRuleWithEditedLatestAmount.payload.data.latestGeneratedDueOn, tomorrow)
+
+  const deletedLatestFiniteTransaction = await api(
+    baseUrl,
+    `/api/transactions/${latestFiniteTransaction.id}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: editedLatestFiniteTransaction.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedLatestFiniteTransaction.response.status, 200)
+  const finiteRuleAfterLatestDeletion = await api(
+    baseUrl,
+    `/api/recurring-rules/${ruleIds.finite}`,
+  )
+  assert.equal(finiteRuleAfterLatestDeletion.response.status, 200)
+  assert.equal(finiteRuleAfterLatestDeletion.payload.data.latestGeneratedAmountMinor, 456)
+  assert.equal(finiteRuleAfterLatestDeletion.payload.data.latestGeneratedDueOn, today)
   assert.equal(
     finiteTransactions.payload.data.some(
       ({ recurringRuleId }) => recurringRuleId === ruleIds.finiteSkip,
@@ -6576,6 +6630,7 @@ async function verifyWorkerApi() {
     recurringScheduleEndGuards: 2,
     recurringScheduleEndRuns: 2,
     recurringScheduleEndReferenceReleases: 2,
+    recurringAmountReviews: 2,
     payeeSuggestions: 1,
     referenceLifecycles: 2,
     referenceSafetyGuards: 4,

@@ -25,6 +25,7 @@ import {
   recurringRuleUrgency,
   type RecurringRuleUrgency,
 } from '../lib/recurringUrgency'
+import { getRecurringAmountReview } from '../lib/recurringAmountReview'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
   Account,
@@ -34,10 +35,12 @@ import type {
   RecurringRuleUpdateInput,
 } from '../lib/schema'
 import { RecurringDeleteDialog } from './RecurringDeleteDialog'
+import { RecurringAmountReview } from './RecurringAmountReview'
 import { RecurringRuleDialog } from './RecurringRuleDialog'
 import { RecurringTransferRulesPanel } from './RecurringTransferRulesPanel'
 
 type RecurringRulesPageProps = {
+  active: boolean
   accounts: Account[]
   categories: Category[]
   draft: RecurringRuleCreateInput | null
@@ -54,6 +57,7 @@ type RecurringRulesPageProps = {
 }
 
 export function RecurringRulesPage({
+  active,
   accounts,
   categories,
   draft,
@@ -69,7 +73,7 @@ export function RecurringRulesPage({
   onMutationStateChange,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
-  const recurring = useRecurringRules(onMoneyRefresh, mutable, ledgerSource)
+  const recurring = useRecurringRules(onMoneyRefresh, mutable, ledgerSource, active)
   const clearRecurringActionMessage = recurring.clearActionMessage
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
@@ -316,6 +320,9 @@ export function RecurringRulesPage({
               const busy = recurring.mutatingId === rule.id
               const urgency = recurringRuleUrgency(rule, today)
               const completed = urgency === 'completed'
+              const amountReview = completed || !recurring.reviewDataFresh
+                ? null
+                : getRecurringAmountReview(rule)
               const account = accountsById.get(rule.accountId)
               const category = categoriesById.get(rule.categoryId)
               const accountName = account
@@ -379,6 +386,10 @@ export function RecurringRulesPage({
                       <dd>{t('generatedCount', { count: rule.generatedCount })}</dd>
                     </div>
                   </dl>
+
+                  {amountReview ? (
+                    <RecurringAmountReview currency={rule.currency} review={amountReview} />
+                  ) : null}
 
                   {rule.lastErrorCode ? (
                     <p className="rule-error" role="status">

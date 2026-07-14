@@ -28,7 +28,11 @@ import type {
 } from '../lib/schema'
 import { actionData } from './actionResult'
 import { subscribeToForegroundRefresh } from './foregroundRefresh'
-import { recurringRulesForLedgerSource } from './recurringRuleSource'
+import {
+  recurringRuleReviewDataIsFresh,
+  recurringRulesForLedgerSource,
+  refreshRecurringRulesOnActivation,
+} from './recurringRuleSource'
 import type { DataSource, RefreshFailureMode } from './useMoneyData'
 
 type MutationOptions = {
@@ -88,6 +92,7 @@ export function useRecurringRules(
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>,
   mutable: boolean,
   ledgerSource: DataSource,
+  active: boolean,
 ) {
   const { t } = useI18n()
   const [rules, setRules] = useState<RecurringRule[]>(demoRules)
@@ -100,6 +105,7 @@ export function useRecurringRules(
   const [running, setRunning] = useState(false)
   const requestSequence = useRef(0)
   const submitting = useRef(false)
+  const [lastActive, setLastActive] = useState(active)
 
   const refresh = useCallback(async (failureMode: RefreshFailureMode = 'demo') => {
     const sequence = ++requestSequence.current
@@ -117,6 +123,9 @@ export function useRecurringRules(
       if (failureMode === 'demo') {
         setRules(demoRules)
         setSource('demo')
+      } else if (failureMode === 'error') {
+        setSource('error')
+        setError(message('recurringOfflineError'))
       }
       return false
     }
@@ -146,6 +155,19 @@ export function useRecurringRules(
     const timeout = window.setTimeout(() => void refresh(), 0)
     return () => window.clearTimeout(timeout)
   }, [refresh])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      const nextActive = refreshRecurringRulesOnActivation(
+        lastActive,
+        active,
+        () => setSource('loading'),
+        () => { void refresh('error') },
+      )
+      setLastActive(nextActive)
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [active, lastActive, refresh])
 
   useEffect(() => subscribeToForegroundRefresh(
     document,
@@ -322,6 +344,7 @@ export function useRecurringRules(
     error: renderMessage(t, error),
     mutatingId,
     running,
+    reviewDataFresh: recurringRuleReviewDataIsFresh(source, lastActive, active),
     refresh,
     createRule,
     editRule,

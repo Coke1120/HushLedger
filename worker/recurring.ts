@@ -46,6 +46,8 @@ type RuleRow = {
   categoryName: string | null
   categoryIsActive: number | null
   categoryType: string | null
+  latestGeneratedAmountMinor: number | null
+  latestGeneratedDueOn: string | null
 }
 
 export type RecurringRuleView = {
@@ -70,6 +72,8 @@ export type RecurringRuleView = {
   revision: number
   accountName: string
   categoryName: string
+  latestGeneratedAmountMinor: number | null
+  latestGeneratedDueOn: string | null
   createdAt: string
   updatedAt: string
 }
@@ -170,10 +174,19 @@ const recurringRuleSelect = `
     a.currency AS accountCurrency,
     category.name AS categoryName,
     category.is_active AS categoryIsActive,
-    category.type AS categoryType
+    category.type AS categoryType,
+    latest_generated.amount_minor AS latestGeneratedAmountMinor,
+    latest_generated.recurrence_due_on AS latestGeneratedDueOn
   FROM recurring_rules r
   LEFT JOIN accounts a ON a.id = r.account_id
   LEFT JOIN categories category ON category.id = r.category_id
+  LEFT JOIN transactions latest_generated ON latest_generated.id = (
+    SELECT candidate.id
+    FROM transactions candidate
+    WHERE candidate.recurring_rule_id = r.id
+    ORDER BY candidate.recurrence_due_on DESC, candidate.id DESC
+    LIMIT 1
+  )
 `
 
 export function hktCalendarDate(timestamp = Date.now()) {
@@ -766,6 +779,8 @@ function toRuleView(row: RuleRow): RecurringRuleView {
     revision: row.revision,
     accountName: row.accountName ?? '',
     categoryName: row.categoryName ?? '',
+    latestGeneratedAmountMinor: row.latestGeneratedAmountMinor,
+    latestGeneratedDueOn: row.latestGeneratedDueOn,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }

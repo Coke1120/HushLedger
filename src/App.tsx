@@ -915,6 +915,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
         <div hidden={view !== 'recurring'}>
           <RecurringRulesPage
             key={ledgerGeneration}
+            active={view === 'recurring'}
             accounts={data.accounts}
             categories={data.categories}
             draft={recurringDraft}

@@ -542,6 +542,8 @@ export type RecurringRule = Omit<RecurringRuleCreateInput, 'firstOccurrenceOn'> 
   anchorDay: number
   generatedCount: number
   lastErrorCode: string | null
+  latestGeneratedAmountMinor?: number | null
+  latestGeneratedDueOn?: string | null
   revision: number
   createdAt: string
   updatedAt: string
