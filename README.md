@@ -33,7 +33,8 @@ knowledge and explains every command and dashboard click.
 - Monthly income, expenses, balance, and recent transactions.
 - A zero-filled six-month recorded cash-flow trend comparing income, expenses,
   and net movement without treating transfers, opening balances, or forecasts as cash flow,
-  with private-screen masking and one-tap navigation to any month in the chart.
+  with exact, neutral selected-month differences from the previous calendar
+  month, private-screen masking, and one-tap navigation to any month in the chart.
 - A ranked monthly income-source breakdown by category, with exact totals,
   transaction counts, shares of recorded income, and one-tap drilldown into the
   matching income records. Five sources stay visible by default, while an

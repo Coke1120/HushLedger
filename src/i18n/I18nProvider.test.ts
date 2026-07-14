@@ -126,6 +126,21 @@ describe('message catalogs', () => {
     }
   })
 
+  it('describes monthly cash-flow differences without rating the result', () => {
+    assert.equal(
+      translate('en', 'cashFlowComparisonTitle', { month: 'June 2026' }),
+      'Change from June 2026',
+    )
+    assert.equal(
+      translate('en', 'cashFlowComparisonHelp'),
+      'Exact recorded income, expense, and net differences from the previous calendar month. Signs show direction, not a rating.',
+    )
+    assert.equal(
+      translate('en', 'cashFlowComparisonHidden'),
+      'Recorded changes are hidden.',
+    )
+  })
+
   it('limits backup health claims to browser-local preparation records', () => {
     assert.equal(
       translate('en', 'ledgerBackupHealthDue', { count: 30 }),

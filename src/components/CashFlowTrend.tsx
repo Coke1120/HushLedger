@@ -1,15 +1,22 @@
 import { TrendingUp } from 'lucide-react'
 import { useMemo } from 'react'
 import { useI18n } from '../i18n'
+import { compareSelectedMonthCashFlow } from '../lib/cashFlowTrend'
 import type { Summary } from '../lib/schema'
 
 type CashFlowTrendProps = {
   summary: Summary
+  currentMonth: string
   loading: boolean
   onSelectMonth: (month: string) => void
 }
 
-export function CashFlowTrend({ summary, loading, onSelectMonth }: CashFlowTrendProps) {
+export function CashFlowTrend({
+  summary,
+  currentMonth,
+  loading,
+  onSelectMonth,
+}: CashFlowTrendProps) {
   const { formatMoney, formatMonth, locale, privacyMode, t } = useI18n()
   const compactMonthFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { month: 'short', timeZone: 'UTC' }),
@@ -26,6 +33,16 @@ export function CashFlowTrend({ summary, loading, onSelectMonth }: CashFlowTrend
       incomeMinor === null || expenseMinor === null || netMinor === null
     ),
   )
+  const comparison = summary.month <= currentMonth
+    ? compareSelectedMonthCashFlow(summary.month, summary.cashFlowTrend)
+    : null
+
+  const formatDifference = (differenceMinor: number | null) => {
+    if (privacyMode) return formatMoney(0)
+    if (differenceMinor === null) return t('cashFlowUnavailableShort')
+    const amount = formatMoney(differenceMinor)
+    return differenceMinor > 0 ? `+${amount}` : amount
+  }
 
   const barHeight = (amountMinor: number | null) => {
     if (privacyMode) return 28
@@ -59,6 +76,38 @@ export function CashFlowTrend({ summary, loading, onSelectMonth }: CashFlowTrend
         </div>
       ) : (
         <>
+          {comparison ? (
+            <section
+              className="cash-flow-comparison"
+              aria-labelledby="cash-flow-comparison-title"
+            >
+              <header>
+                <h3 id="cash-flow-comparison-title">
+                  {t('cashFlowComparisonTitle', {
+                    month: formatMonth(comparison.previousMonth),
+                  })}
+                </h3>
+                <p>{t(privacyMode
+                  ? 'cashFlowComparisonHidden'
+                  : 'cashFlowComparisonHelp')}</p>
+              </header>
+              <dl>
+                {([
+                  ['income', comparison.incomeDifferenceMinor],
+                  ['expense', comparison.expenseDifferenceMinor],
+                  ['cashFlowComparisonNet', comparison.netDifferenceMinor],
+                ] as const).map(([label, differenceMinor]) => {
+                  const value = formatDifference(differenceMinor)
+                  return (
+                    <div key={label}>
+                      <dt>{t(label)}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  )
+                })}
+              </dl>
+            </section>
+          ) : null}
           <ul className="cash-flow-trend-legend" aria-label={t('cashFlowTrendLegend')}>
             <li>
               <span className="cash-flow-trend-swatch is-income" aria-hidden="true" />

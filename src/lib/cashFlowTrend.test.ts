@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   buildLegacySpendingTrendRows,
   buildMonthlyCashFlowTrend,
+  compareSelectedMonthCashFlow,
 } from './cashFlowTrend'
 
 describe('monthly recorded cash-flow trend', () => {
@@ -109,5 +110,79 @@ describe('monthly recorded cash-flow trend', () => {
       }]),
       /Legacy spending trend transaction count exceeds the safe integer range/,
     )
+  })
+})
+
+describe('selected-month recorded cash-flow comparison', () => {
+  const points = buildMonthlyCashFlowTrend('2026-07', [
+    { month: '2026-06', incomeMinor: 125_000, expenseMinor: 91_000, transactionCount: 7 },
+    { month: '2026-07', incomeMinor: 140_000, expenseMinor: 103_500, transactionCount: 8 },
+  ])
+
+  it('compares exact income, expense, and net amounts with the previous calendar month', () => {
+    assert.deepEqual(compareSelectedMonthCashFlow('2026-07', points), {
+      previousMonth: '2026-06',
+      incomeDifferenceMinor: 15_000,
+      expenseDifferenceMinor: 12_500,
+      netDifferenceMinor: 2_500,
+    })
+  })
+
+  it('keeps decreases and no-change values neutral and exact', () => {
+    assert.deepEqual(compareSelectedMonthCashFlow('2026-07', [
+      { month: '2026-06', incomeMinor: 100, expenseMinor: 80, netMinor: 20, transactionCount: 2 },
+      { month: '2026-07', incomeMinor: 50, expenseMinor: 80, netMinor: -30, transactionCount: 2 },
+    ]), {
+      previousMonth: '2026-06',
+      incomeDifferenceMinor: -50,
+      expenseDifferenceMinor: 0,
+      netDifferenceMinor: -50,
+    })
+  })
+
+  it('fails closed per amount when either month is unavailable or the difference is unsafe', () => {
+    assert.deepEqual(compareSelectedMonthCashFlow('2026-07', [
+      {
+        month: '2026-06',
+        incomeMinor: Number.MAX_SAFE_INTEGER,
+        expenseMinor: null,
+        netMinor: -Number.MAX_SAFE_INTEGER,
+        transactionCount: 2,
+      },
+      {
+        month: '2026-07',
+        incomeMinor: 0,
+        expenseMinor: 50,
+        netMinor: 50,
+        transactionCount: 2,
+      },
+    ]), {
+      previousMonth: '2026-06',
+      incomeDifferenceMinor: -Number.MAX_SAFE_INTEGER,
+      expenseDifferenceMinor: null,
+      netDifferenceMinor: null,
+    })
+
+    assert.equal(compareSelectedMonthCashFlow('2026-07', [
+      {
+        month: '2026-06',
+        incomeMinor: 0,
+        expenseMinor: 0,
+        netMinor: Number.MAX_SAFE_INTEGER,
+        transactionCount: 0,
+      },
+      {
+        month: '2026-07',
+        incomeMinor: 0,
+        expenseMinor: 0,
+        netMinor: Number.MIN_SAFE_INTEGER,
+        transactionCount: 0,
+      },
+    ])?.netDifferenceMinor, null)
+  })
+
+  it('omits the comparison when either calendar month is missing', () => {
+    assert.equal(compareSelectedMonthCashFlow('2026-07', points.slice(-1)), null)
+    assert.equal(compareSelectedMonthCashFlow('2026-08', points), null)
   })
 })

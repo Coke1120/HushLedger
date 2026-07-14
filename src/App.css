@@ -1252,6 +1252,67 @@ textarea:focus-visible {
   list-style: none;
 }
 
+.cash-flow-comparison {
+  margin: 0 0 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.cash-flow-comparison header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cash-flow-comparison h3,
+.cash-flow-comparison p {
+  margin: 0;
+}
+
+.cash-flow-comparison h3 {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.cash-flow-comparison p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cash-flow-comparison dl {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cash-flow-comparison dl > div {
+  min-width: 0;
+  padding: 11px 14px 12px;
+}
+
+.cash-flow-comparison dl > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.cash-flow-comparison dt {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cash-flow-comparison dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
 .cash-flow-trend-legend li {
   display: inline-flex;
   gap: 6px;
@@ -6420,6 +6481,26 @@ button.account-register-row:focus-visible {
 
   .cash-flow-trend-legend {
     justify-content: flex-start;
+  }
+
+  .cash-flow-comparison dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cash-flow-comparison dl > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  .cash-flow-comparison dl > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .cash-flow-comparison dt {
+    margin-bottom: 0;
   }
 
   .cash-flow-trend-chart {

@@ -14,6 +14,13 @@ export type MonthlyCashFlowQueryRow = MonthlyCashFlowAggregate & {
   expenseTransactionCount: number
 }
 
+export type SelectedMonthCashFlowComparison = {
+  previousMonth: string
+  incomeDifferenceMinor: number | null
+  expenseDifferenceMinor: number | null
+  netDifferenceMinor: number | null
+}
+
 /** @deprecated Retained temporarily for cached clients during the cash-flow trend transition. */
 export function buildLegacySpendingTrendRows(
   rows: readonly MonthlyCashFlowQueryRow[],
@@ -71,6 +78,29 @@ export function buildMonthlyCashFlowTrend(
   })
 }
 
+export function compareSelectedMonthCashFlow(
+  selectedMonth: string,
+  points: readonly MonthlyCashFlowSummary[],
+): SelectedMonthCashFlowComparison | null {
+  const previousMonth = shiftMonth(selectedMonth, -1)
+  const current = points.find((point) => point.month === selectedMonth)
+  const previous = points.find((point) => point.month === previousMonth)
+  if (!current || !previous) return null
+
+  return {
+    previousMonth,
+    incomeDifferenceMinor: safeOptionalDifference(
+      current.incomeMinor,
+      previous.incomeMinor,
+    ),
+    expenseDifferenceMinor: safeOptionalDifference(
+      current.expenseMinor,
+      previous.expenseMinor,
+    ),
+    netDifferenceMinor: safeOptionalDifference(current.netMinor, previous.netMinor),
+  }
+}
+
 function nonNegativeSafeIntegerOrNull(value: number) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null
 }
@@ -78,4 +108,18 @@ function nonNegativeSafeIntegerOrNull(value: number) {
 function safeDifferenceOrNull(left: number, right: number) {
   const result = left - right
   return Number.isSafeInteger(result) ? result : null
+}
+
+function safeOptionalDifference(left: number | null, right: number | null) {
+  if (
+    left === null
+    || right === null
+    || !Number.isSafeInteger(left)
+    || !Number.isSafeInteger(right)
+  ) return null
+  const result = BigInt(left) - BigInt(right)
+  if (result > BigInt(Number.MAX_SAFE_INTEGER) || result < BigInt(Number.MIN_SAFE_INTEGER)) {
+    return null
+  }
+  return Number(result)
 }

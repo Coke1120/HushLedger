@@ -696,6 +696,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 />
                 <CashFlowTrend
                   summary={data.summary}
+                  currentMonth={scheduledOutlookToday.slice(0, 7)}
                   loading={loading}
                   onSelectMonth={setMonth}
                 />
