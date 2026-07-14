@@ -74,6 +74,13 @@ export function currentHongKongDate(now = new Date()) {
   }
 }
 
+export function millisecondsUntilNextHongKongDay(now = new Date()) {
+  const { date } = currentHongKongDate(now)
+  const [year, month, day] = date.split('-').map(Number)
+  const nextMidnightUtc = Date.UTC(year, month - 1, day + 1) - 8 * 60 * 60 * 1000
+  return Math.max(1, nextMidnightUtc - now.getTime())
+}
+
 export function formatMonthLabel(month: string, locale = 'zh-Hant') {
   const { year, monthIndex } = parseMonth(month)
   return new Intl.DateTimeFormat(locale, {

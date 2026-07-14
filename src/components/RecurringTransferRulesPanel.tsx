@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRecurringTransferRules } from '../hooks/useRecurringTransferRules'
 import type { DataSource, RefreshFailureMode } from '../hooks/useMoneyData'
 import { useI18n } from '../i18n'
+import { countDueRecurringRules } from '../lib/recurringUrgency'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
   Account,
@@ -32,6 +33,7 @@ type RecurringTransferRulesPanelProps = {
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>
   onFocusRuleHandled: () => void
   onMutationStateChange: (mutating: boolean) => void
+  today: string
 }
 
 export function RecurringTransferRulesPanel({
@@ -43,6 +45,7 @@ export function RecurringTransferRulesPanel({
   onMoneyRefresh,
   onFocusRuleHandled,
   onMutationStateChange,
+  today,
 }: RecurringTransferRulesPanelProps) {
   const { t } = useI18n()
   const recurring = useRecurringTransferRules(onMoneyRefresh, mutable, ledgerSource)
@@ -51,6 +54,7 @@ export function RecurringTransferRulesPanel({
   const [editingRule, setEditingRule] = useState<RecurringTransferRule | null>(null)
   const ledgerLive = ledgerSource === 'live'
   const visibleRules = visibleRecurringTransferRules(ledgerSource, recurring.rules)
+  const dueRuleCount = countDueRecurringRules(visibleRules, today)
   const mutationInProgress = recurring.running || recurring.mutatingId !== null
   const mutationsEnabled = ledgerLive
     && mutable
@@ -187,6 +191,12 @@ export function RecurringTransferRulesPanel({
           <h3 id="scheduled-transfers-title"><ArrowRightLeft aria-hidden="true" />{t('scheduledTransfers')}</h3>
           <p>{t('scheduledTransfersDescription')}</p>
           <p>{loading ? t('loading') : t('scheduledTransferRuleCount', { count: visibleRules.length })}</p>
+          {!loading && dueRuleCount > 0 ? (
+            <p className="recurring-due-summary">
+              <CircleAlert aria-hidden="true" />
+              {t('recurringDueCount', { count: dueRuleCount })}
+            </p>
+          ) : null}
         </div>
         <div className="recurring-transfer-panel-actions">
           <button className="button button-secondary" type="button" onClick={() => void recurring.runDue()} disabled={!mutationsEnabled || recurring.running || loading}>
@@ -219,6 +229,7 @@ export function RecurringTransferRulesPanel({
         mutable={mutationsEnabled}
         mutatingId={recurring.mutatingId}
         rules={visibleRules}
+        today={today}
         onCreate={openCreate}
         onDelete={recurring.deleteRule}
         onEdit={openEdit}

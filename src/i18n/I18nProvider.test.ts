@@ -75,6 +75,13 @@ describe('message catalogs', () => {
     )
   })
 
+  it('describes due recurrence dates without promising that generation can succeed', () => {
+    assert.equal(
+      translate('en', 'recurringDueCount', { count: 2 }),
+      '2 due for generation, shown first',
+    )
+  })
+
   it('preserves interpolation placeholders in every locale', () => {
     const placeholders = (value: string) =>
       [...value.matchAll(/\{([A-Za-z][A-Za-z0-9]*)\}/g)].map((match) => match[1]).sort()

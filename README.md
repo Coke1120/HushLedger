@@ -218,6 +218,10 @@ knowledge and explains every command and dashboard click.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
   duplicate occurrence for the same rule and date. A manual run reports blocked,
   failed, or safety-limited work as incomplete instead of presenting full success.
+  Both recurring lists use the Hong Kong calendar date to put overdue and due-today
+  active rules first, distinguish the next seven days, and leave paused or completed
+  rules out of the due count. These labels describe ledger entries waiting to be
+  generated; they do not assert that an external bill was paid or move real funds.
 - Stable end-of-month anchors: a January 31 rule runs on the last day of February
   and returns to March 31 instead of drifting.
 - Stable leap-day anchors: a yearly February 29 rule runs on February's final day

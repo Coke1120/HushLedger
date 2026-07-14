@@ -5,6 +5,7 @@ import {
   formatHongKongDate,
   inclusiveMonthRangeDates,
   isValidCalendarDate,
+  millisecondsUntilNextHongKongDay,
   monthRangeDates,
   shiftMonth,
   trailingSevenDayRange,
@@ -35,6 +36,17 @@ describe('Hong Kong date helpers', () => {
       date: '2026-07-01',
       month: '2026-07',
     })
+  })
+
+  it('schedules a refresh at the next Hong Kong calendar-day boundary', () => {
+    assert.equal(
+      millisecondsUntilNextHongKongDay(new Date('2026-07-14T15:59:59.500Z')),
+      500,
+    )
+    assert.equal(
+      millisecondsUntilNextHongKongDay(new Date('2026-12-31T16:00:00.000Z')),
+      24 * 60 * 60 * 1000,
+    )
   })
 
   it('moves across year boundaries', () => {

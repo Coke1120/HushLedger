@@ -3581,6 +3581,10 @@ button.account-register-row:focus-visible {
   background: var(--surface-soft);
 }
 
+.recurring-rule.is-overdue {
+  background: linear-gradient(90deg, var(--error-bg), var(--surface) 42%);
+}
+
 .recurring-rule-main {
   display: flex;
   gap: 13px;
@@ -3661,10 +3665,38 @@ button.account-register-row:focus-visible {
   background: var(--income-soft);
 }
 
+.rule-status.is-overdue {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.rule-status.is-due-today {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.rule-status.is-due-soon {
+  color: var(--brand);
+  background: var(--income-soft);
+}
+
 .rule-status.is-paused,
 .rule-status.is-completed {
   color: var(--muted);
   background: #e8ecea;
+}
+
+.recurring-due-summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.recurring-due-summary svg {
+  width: 15px;
+  height: 15px;
 }
 
 .recurring-rule-amount {

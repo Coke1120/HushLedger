@@ -16,8 +16,15 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
+import { useHongKongToday } from '../hooks/useHongKongToday'
 import type { DataSource, RefreshFailureMode } from '../hooks/useMoneyData'
 import { useI18n } from '../i18n'
+import {
+  countDueRecurringRules,
+  orderRecurringRulesByUrgency,
+  recurringRuleUrgency,
+  type RecurringRuleUrgency,
+} from '../lib/recurringUrgency'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
   Account,
@@ -84,6 +91,23 @@ export function RecurringRulesPage({
     weekly: t('weekly'),
     monthly: t('monthly'),
     yearly: t('yearly'),
+  }
+  const today = useHongKongToday()
+  const orderedRules = useMemo(
+    () => orderRecurringRulesByUrgency(recurring.rules, today),
+    [recurring.rules, today],
+  )
+  const dueRuleCount = useMemo(
+    () => countDueRecurringRules(recurring.rules, today),
+    [recurring.rules, today],
+  )
+  const urgencyLabel = (urgency: RecurringRuleUrgency) => {
+    if (urgency === 'overdue') return t('recurringOverdue')
+    if (urgency === 'due_today') return t('recurringDueToday')
+    if (urgency === 'due_soon') return t('recurringDueSoon')
+    if (urgency === 'completed') return t('recurringCompleted')
+    if (urgency === 'paused') return t('paused')
+    return t('active')
   }
 
   const closeEditor = useCallback(() => {
@@ -256,6 +280,12 @@ export function RecurringRulesPage({
           <div>
             <h3>{t('automationSettings')}</h3>
             <p>{loading ? t('loading') : t('recurringRuleCount', { count: recurring.rules.length })}</p>
+            {!loading && dueRuleCount > 0 ? (
+              <p className="recurring-due-summary">
+                <CircleAlert aria-hidden="true" />
+                {t('recurringDueCount', { count: dueRuleCount })}
+              </p>
+            ) : null}
           </div>
           <span className="date-only-note">
             <CalendarClock aria-hidden="true" />
@@ -282,11 +312,10 @@ export function RecurringRulesPage({
           </div>
         ) : (
           <ul className="recurring-list" aria-label={t('recurringRuleList')}>
-            {recurring.rules.map((rule) => {
+            {orderedRules.map((rule) => {
               const busy = recurring.mutatingId === rule.id
-              const completed = Boolean(
-                rule.scheduleEndsOn && rule.nextOccurrenceOn > rule.scheduleEndsOn,
-              )
+              const urgency = recurringRuleUrgency(rule, today)
+              const completed = urgency === 'completed'
               const account = accountsById.get(rule.accountId)
               const category = categoriesById.get(rule.categoryId)
               const accountName = account
@@ -297,7 +326,7 @@ export function RecurringRulesPage({
                 : t('unknownCategory')
               return (
                 <li
-                  className={`recurring-rule ${completed ? 'is-completed' : rule.isActive ? '' : 'is-paused'}`}
+                  className={`recurring-rule is-${urgency.replace('_', '-')}`}
                   key={rule.id}
                 >
                   <div className="recurring-rule-main">
@@ -305,8 +334,8 @@ export function RecurringRulesPage({
                       <Repeat />
                     </span>
                     <div className="recurring-rule-title">
-                      <span className={`rule-status ${completed ? 'is-completed' : rule.isActive ? 'is-active' : 'is-paused'}`}>
-                        {completed ? t('recurringCompleted') : rule.isActive ? t('active') : t('paused')}
+                      <span className={`rule-status is-${urgency.replace('_', '-')}`}>
+                        {urgencyLabel(urgency)}
                       </span>
                       <strong>{rule.name}</strong>
                       <small>{rule.payee || `${categoryName} · ${accountName}`}</small>
@@ -427,6 +456,7 @@ export function RecurringRulesPage({
         onMoneyRefresh={onMoneyRefresh}
         onFocusRuleHandled={onFocusTransferRuleHandled}
         onMutationStateChange={setTransferMutationInProgress}
+        today={today}
       />
 
       {ledgerLive && (editorOpen || draft) ? (

@@ -88,6 +88,7 @@ function renderRules(rules: RecurringTransferRule[], accountOptions = accounts) 
       mutable: true,
       mutatingId: null,
       rules,
+      today: '2026-07-14',
       onCreate: () => undefined,
       onDelete: async () => true,
       onEdit: () => undefined,
@@ -133,5 +134,29 @@ describe('scheduled transfer rule cards', () => {
     assert.equal(markup.match(/>Edit</g)?.length, 2)
     assert.equal(markup.match(/>Delete</g)?.length, 2)
     assert.doesNotMatch(markup, />Resume</)
+  })
+
+  it('puts ready-to-generate schedules first and labels calendar urgency precisely', () => {
+    const markup = renderRules([
+      rule({ name: 'Future transfer', nextOccurrenceOn: '2026-08-15' }),
+      rule({ name: 'Paused transfer', isActive: false, nextOccurrenceOn: '2026-07-01' }),
+      rule({ name: 'Due today transfer', nextOccurrenceOn: '2026-07-14' }),
+      rule({ name: 'Overdue transfer', nextOccurrenceOn: '2026-07-10' }),
+      rule({ name: 'Soon transfer', nextOccurrenceOn: '2026-07-20' }),
+    ])
+
+    const positions = [
+      'Overdue transfer',
+      'Due today transfer',
+      'Soon transfer',
+      'Future transfer',
+      'Paused transfer',
+    ].map((name) => markup.indexOf(name))
+
+    assert.ok(positions.every((position) => position >= 0))
+    assert.deepEqual(positions, [...positions].sort((left, right) => left - right))
+    assert.match(markup, />Overdue to generate</)
+    assert.match(markup, />Due today</)
+    assert.match(markup, />Within 7 days</)
   })
 })

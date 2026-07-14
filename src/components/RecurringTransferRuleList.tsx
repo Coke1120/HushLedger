@@ -11,6 +11,11 @@ import {
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useI18n } from '../i18n'
+import {
+  orderRecurringRulesByUrgency,
+  recurringRuleUrgency,
+  type RecurringRuleUrgency,
+} from '../lib/recurringUrgency'
 import type { Account, RecurrenceFrequency, RecurringTransferRule } from '../lib/schema'
 
 type RecurringTransferRuleListProps = {
@@ -19,6 +24,7 @@ type RecurringTransferRuleListProps = {
   mutable: boolean
   mutatingId: string | null
   rules: RecurringTransferRule[]
+  today: string
   onCreate: () => void
   onDelete: (rule: RecurringTransferRule) => Promise<boolean>
   onEdit: (rule: RecurringTransferRule) => void
@@ -32,6 +38,7 @@ export function RecurringTransferRuleList({
   mutable,
   mutatingId,
   rules,
+  today,
   onCreate,
   onDelete,
   onEdit,
@@ -50,6 +57,19 @@ export function RecurringTransferRuleList({
     yearly: t('yearly'),
   }
   const canCreate = mutable && accounts.filter(({ isActive }) => isActive).length >= 2
+  const orderedRules = useMemo(
+    () => orderRecurringRulesByUrgency(rules, today),
+    [rules, today],
+  )
+
+  const urgencyLabel = (urgency: RecurringRuleUrgency) => {
+    if (urgency === 'overdue') return t('recurringOverdue')
+    if (urgency === 'due_today') return t('recurringDueToday')
+    if (urgency === 'due_soon') return t('recurringDueSoon')
+    if (urgency === 'completed') return t('recurringCompleted')
+    if (urgency === 'paused') return t('paused')
+    return t('active')
+  }
 
   if (loading) {
     return (
@@ -76,11 +96,10 @@ export function RecurringTransferRuleList({
 
   return (
     <ul className="recurring-list" aria-label={t('scheduledTransferRuleList')}>
-      {rules.map((rule) => {
+      {orderedRules.map((rule) => {
         const busy = mutatingId === rule.id
-        const completed = Boolean(
-          rule.scheduleEndsOn && rule.nextOccurrenceOn > rule.scheduleEndsOn,
-        )
+        const urgency = recurringRuleUrgency(rule, today)
+        const completed = urgency === 'completed'
         const source = accountsById.get(rule.fromAccountId)
         const destination = accountsById.get(rule.toAccountId)
         const sourceName = source
@@ -93,14 +112,14 @@ export function RecurringTransferRuleList({
 
         return (
           <li
-            className={`recurring-rule recurring-transfer-rule ${completed ? 'is-completed' : rule.isActive ? '' : 'is-paused'}`}
+            className={`recurring-rule recurring-transfer-rule is-${urgency.replace('_', '-')}`}
             key={rule.id}
           >
             <div className="recurring-rule-main">
               <span className="recurring-rule-icon transfer" aria-hidden="true"><ArrowRightLeft /></span>
               <div className="recurring-rule-title">
-                <span className={`rule-status ${completed ? 'is-completed' : rule.isActive ? 'is-active' : 'is-paused'}`}>
-                  {completed ? t('recurringCompleted') : rule.isActive ? t('active') : t('paused')}
+                <span className={`rule-status is-${urgency.replace('_', '-')}`}>
+                  {urgencyLabel(urgency)}
                 </span>
                 <strong>{rule.name}</strong>
                 <small>{direction}</small>

@@ -156,6 +156,10 @@ not operate an independent database server or a multi-user identity system.
   stale tab cannot silently skip a different occurrence; create no transaction.
 - Generate due transactions from Cloudflare Cron or the authenticated manual
   action.
+- Prioritize active rules whose next ledger-generation date is overdue or today,
+  distinguish dates within the next seven Hong Kong calendar days, and exclude
+  paused or completed rules from the due count. These labels describe pending
+  ledger generation only, not an external provider's payment status.
 - Preserve generated history when a rule changes or is deleted.
 - Create a separate scheduled transfer between two distinct same-currency accounts
   with an exact amount, cadence, start date, optional inclusive end date, active
