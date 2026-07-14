@@ -306,9 +306,29 @@ export async function setAccountReferenceStatus(
           AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
       ))
       AND (? = 1 OR NOT EXISTS (
+        SELECT 1
+        FROM recurring_transfer_rules
+        WHERE (from_account_id = ? OR to_account_id = ?)
+          AND is_active = 1
+          AND deleted_at IS NULL
+          AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
+      ))
+      AND (? = 1 OR NOT EXISTS (
         SELECT 1 FROM emergency_fund_goals WHERE account_id = ?
       ))
-  `).bind(active, id, input.updatedAt, active, active, id, active, id).run()
+  `).bind(
+    active,
+    id,
+    input.updatedAt,
+    active,
+    active,
+    id,
+    active,
+    id,
+    id,
+    active,
+    id,
+  ).run()
 
   if (Number(updated.meta.changes) === 0) {
     return diagnoseAccountStatus(database, id, input.updatedAt)
@@ -535,6 +555,7 @@ async function diagnoseAccountStatus(
   if (!existing) return { kind: 'not_found' }
   if (existing.updatedAt !== updatedAt) return { kind: 'version_conflict' }
   if (await hasActiveRules(database, 'account_id', id)) return { kind: 'active_rules' }
+  if (await hasActiveTransferRules(database, id)) return { kind: 'active_rules' }
   if (await hasEmergencyFundGoal(database, id)) return { kind: 'emergency_fund_goal' }
   const active = await database.prepare('SELECT COUNT(*) AS count FROM accounts WHERE is_active = 1')
     .first<{ count: number }>()
@@ -569,6 +590,19 @@ async function hasActiveRules(database: D1Database, column: 'account_id' | 'cate
       AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
     LIMIT 1
   `).bind(id).first<{ found: number }>()
+  return row?.found === 1
+}
+
+async function hasActiveTransferRules(database: D1Database, accountId: number) {
+  const row = await database.prepare(`
+    SELECT 1 AS found
+    FROM recurring_transfer_rules
+    WHERE (from_account_id = ? OR to_account_id = ?)
+      AND is_active = 1
+      AND deleted_at IS NULL
+      AND (schedule_ends_on IS NULL OR next_occurrence_on <= schedule_ends_on)
+    LIMIT 1
+  `).bind(accountId, accountId).first<{ found: number }>()
   return row?.found === 1
 }
 

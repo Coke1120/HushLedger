@@ -395,6 +395,10 @@ export type AccountTransfer = AccountTransferInput & {
   fromAccountLocalizationKey: AccountLocalizationKey | null
   toAccountName: string
   toAccountLocalizationKey: AccountLocalizationKey | null
+  recurringTransferRuleId?: string | null
+  recurringTransferRuleName?: string | null
+  recurrenceDueOn?: string | null
+  recurringOccurrenceKey?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -490,6 +494,62 @@ export type RecurringRule = Omit<RecurringRuleCreateInput, 'firstOccurrenceOn'> 
   updatedAt: string
 }
 
+const recurringTransferRuleFieldsSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+  currency: supportedCurrencySchema,
+  fromAccountId: z.number().int().positive(),
+  toAccountId: z.number().int().positive(),
+  frequency: recurrenceFrequencySchema,
+  scheduleStartsOn: calendarDateSchema,
+  /** Omitted only when an older cached app shell updates a newer API. */
+  scheduleEndsOn: calendarDateSchema.nullable().optional(),
+  isActive: z.boolean().default(true),
+  note: z.string().trim().max(200).default(''),
+})
+
+export const recurringTransferRuleIdSchema = z
+  .string()
+  .uuid('週期轉帳 ID 必須是 UUID')
+
+export const recurringTransferRuleCreateSchema = recurringTransferRuleFieldsSchema.extend({
+  id: recurringTransferRuleIdSchema,
+}).strict().superRefine((value, context) => {
+  validateTransferAccounts(value, context)
+  validateRecurringSchedule(value, context)
+})
+
+export const recurringTransferRuleUpdateSchema = recurringTransferRuleFieldsSchema.extend({
+  revision: z.number().int().positive(),
+}).strict().superRefine((value, context) => {
+  validateTransferAccounts(value, context)
+  validateRecurringSchedule(value, context)
+})
+
+export const recurringTransferRuleStatusSchema = recurringRuleStatusSchema
+export const recurringTransferRuleSkipSchema = recurringRuleSkipSchema
+export const recurringTransferRuleDeleteSchema = recurringRuleDeleteSchema
+
+export type RecurringTransferRuleCreateInput = z.infer<typeof recurringTransferRuleCreateSchema>
+export type RecurringTransferRuleUpdateInput = z.infer<typeof recurringTransferRuleUpdateSchema>
+export type RecurringTransferRuleSkipInput = z.infer<typeof recurringTransferRuleSkipSchema>
+export type RecurringTransferRule = Omit<
+  RecurringTransferRuleCreateInput,
+  'scheduleEndsOn'
+> & {
+  scheduleEndsOn: string | null
+  nextOccurrenceOn: string
+  lastOccurrenceOn: string | null
+  anchorDay: number
+  generatedCount: number
+  lastErrorCode: string | null
+  revision: number
+  fromAccountName: string
+  toAccountName: string
+  createdAt: string
+  updatedAt: string
+}
+
 export type RecurringGenerationResult = {
   asOf: string
   scanned: number
@@ -499,6 +559,8 @@ export type RecurringGenerationResult = {
   truncated: number
   failed: number
 }
+
+export type RecurringTransferGenerationResult = RecurringGenerationResult
 
 export type Summary = {
   month: string

@@ -839,6 +839,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             draft={recurringDraft}
             focusRuleId={recurringRuleFocusId}
             ledgerContext={data.ledgerSettings.updatedAt}
+            ledgerSource={data.source}
             mutable={data.source === 'live' && data.online}
             onMoneyRefresh={data.refresh}
             onDraftClose={closeRecurringDraft}

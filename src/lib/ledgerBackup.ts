@@ -16,7 +16,8 @@ export const PREVIOUS_LEDGER_SCHEMA_VERSION = 12 as const
 export const PRE_CURRENCY_LEDGER_SCHEMA_VERSION = 13 as const
 export const PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION = 14 as const
 export const PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION = 15 as const
-export const LEDGER_SCHEMA_VERSION = 16 as const
+export const PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION = 16 as const
+export const LEDGER_SCHEMA_VERSION = 17 as const
 export const LEDGER_BACKUP_CONFIRMATION = 'RESTORE' as const
 export const MAX_LEDGER_BACKUP_FILE_BYTES = 7 * 1024 * 1024
 export const MAX_LEDGER_BACKUP_REQUEST_BYTES = 8 * 1024 * 1024
@@ -159,6 +160,57 @@ const preYearlyRecurringLedgerBackupRuleSchema = z.object({
   frequency: z.enum(['daily', 'weekly', 'monthly']),
 }).strict()
 
+const ledgerBackupRecurringTransferRuleFields = {
+  id: uuidSchema,
+  name: trimmedNameSchema,
+  amountMinor: safePositiveIntegerSchema,
+  currency: supportedCurrencySchema,
+  fromAccountId: safePositiveIntegerSchema,
+  toAccountId: safePositiveIntegerSchema,
+  frequency: z.enum(['daily', 'weekly', 'monthly', 'yearly']),
+  scheduleStartsOn: calendarDateSchema,
+  scheduleEndsOn: calendarDateSchema.nullable(),
+  nextOccurrenceOn: calendarDateSchema,
+  lastOccurrenceOn: calendarDateSchema.nullable(),
+  anchorDay: z.number().int().min(1).max(31),
+  isActive: z.boolean(),
+  note: z.string().max(200),
+  generatedCount: safeNonNegativeIntegerSchema,
+  lastErrorCode: z.string().min(1).max(64).nullable(),
+  lastErrorAt: timestampSchema.nullable(),
+  revision: safePositiveIntegerSchema,
+  cursorVersion: safePositiveIntegerSchema,
+  deletedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+}
+
+export const ledgerBackupRecurringTransferRuleSchema = z.object(
+  ledgerBackupRecurringTransferRuleFields,
+).strict().superRefine((rule, context) => {
+  if (rule.fromAccountId === rule.toAccountId) {
+    context.addIssue({
+      code: 'custom',
+      path: ['toAccountId'],
+      message: 'Destination account must differ from source account',
+    })
+  }
+  if (rule.scheduleEndsOn && rule.scheduleEndsOn < rule.scheduleStartsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['scheduleEndsOn'],
+      message: 'Schedule end cannot be before the schedule start',
+    })
+  }
+  if (rule.scheduleEndsOn && rule.isActive && rule.nextOccurrenceOn > rule.scheduleEndsOn) {
+    context.addIssue({
+      code: 'custom',
+      path: ['isActive'],
+      message: 'A completed recurring transfer schedule cannot remain active',
+    })
+  }
+})
+
 const ledgerBackupTransactionFields = {
   id: uuidSchema,
   type: z.enum(['expense', 'income']),
@@ -229,7 +281,7 @@ export const ledgerBackupImportKeySchema = z.object({
   importedAt: timestampSchema,
 }).strict()
 
-export const ledgerBackupAccountTransferSchema = z.object({
+const ledgerBackupAccountTransferFields = {
   id: uuidSchema,
   amountMinor: safePositiveIntegerSchema,
   currency: supportedCurrencySchema,
@@ -241,12 +293,57 @@ export const ledgerBackupAccountTransferSchema = z.object({
   note: z.string().max(200),
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
-}).strict().superRefine((transfer, context) => {
+}
+
+function validateAccountTransferAccounts(
+  transfer: { fromAccountId: number; toAccountId: number },
+  context: z.RefinementCtx,
+) {
   if (transfer.fromAccountId === transfer.toAccountId) {
     context.addIssue({
       code: 'custom',
       path: ['toAccountId'],
       message: 'Destination account must differ from source account',
+    })
+  }
+}
+
+const preRecurringTransfersLedgerBackupAccountTransferSchema = z.object(
+  ledgerBackupAccountTransferFields,
+).strict().superRefine(validateAccountTransferAccounts)
+
+export const ledgerBackupAccountTransferSchema = z.object({
+  ...ledgerBackupAccountTransferFields,
+  recurringTransferRuleId: uuidSchema.nullable(),
+  recurringTransferRuleName: z.string().min(1).max(80).nullable(),
+  recurrenceDueOn: calendarDateSchema.nullable(),
+  recurringOccurrenceKey: z.string().min(1).max(64).nullable(),
+}).strict().superRefine((transfer, context) => {
+  validateAccountTransferAccounts(transfer, context)
+  const recurringFields = [
+    transfer.recurringTransferRuleId,
+    transfer.recurringTransferRuleName,
+    transfer.recurrenceDueOn,
+    transfer.recurringOccurrenceKey,
+  ]
+  const present = recurringFields.filter((value) => value !== null).length
+  if (present !== 0 && present !== recurringFields.length) {
+    context.addIssue({
+      code: 'custom',
+      path: ['recurringTransferRuleId'],
+      message: 'Recurring transfer fields must be all present or all null',
+    })
+  }
+  if (
+    transfer.recurringTransferRuleId &&
+    transfer.recurrenceDueOn &&
+    transfer.recurringOccurrenceKey !==
+      `${transfer.recurringTransferRuleId}:${transfer.recurrenceDueOn}`
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['recurringOccurrenceKey'],
+      message: 'Recurring occurrence key does not match its rule and due date',
     })
   }
 })
@@ -259,18 +356,30 @@ export const ledgerBackupEmergencyFundGoalSchema = z.object({
   updatedAt: timestampSchema,
 }).strict()
 
+const preRecurringTransfersLedgerBackupDataSchema = z.object({
+  currency: supportedCurrencySchema,
+  accounts: z.array(ledgerBackupAccountSchema),
+  categories: z.array(ledgerBackupCategorySchema),
+  recurringRules: z.array(ledgerBackupRecurringRuleSchema),
+  transactions: z.array(ledgerBackupTransactionSchema),
+  accountTransfers: z.array(preRecurringTransfersLedgerBackupAccountTransferSchema),
+  emergencyFundGoals: z.array(ledgerBackupEmergencyFundGoalSchema).max(1),
+  transactionImportKeys: z.array(ledgerBackupImportKeySchema),
+}).strict()
+
 export const ledgerBackupDataSchema = z.object({
   currency: supportedCurrencySchema,
   accounts: z.array(ledgerBackupAccountSchema),
   categories: z.array(ledgerBackupCategorySchema),
   recurringRules: z.array(ledgerBackupRecurringRuleSchema),
+  recurringTransferRules: z.array(ledgerBackupRecurringTransferRuleSchema),
   transactions: z.array(ledgerBackupTransactionSchema),
   accountTransfers: z.array(ledgerBackupAccountTransferSchema),
   emergencyFundGoals: z.array(ledgerBackupEmergencyFundGoalSchema).max(1),
   transactionImportKeys: z.array(ledgerBackupImportKeySchema),
 }).strict()
 
-const preScheduleEndLedgerBackupDataSchema = ledgerBackupDataSchema.extend({
+const preScheduleEndLedgerBackupDataSchema = preRecurringTransfersLedgerBackupDataSchema.extend({
   recurringRules: z.array(preScheduleEndLedgerBackupRuleSchema),
 }).strict()
 
@@ -327,6 +436,11 @@ const previousLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   data: previousLedgerBackupDataSchema,
 }).strict()
 
+const preRecurringTransfersLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
+  schemaVersion: z.literal(PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION),
+  data: preRecurringTransfersLedgerBackupDataSchema,
+}).strict()
+
 const preScheduleEndLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend({
   schemaVersion: z.literal(PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION),
   data: preScheduleEndLedgerBackupDataSchema,
@@ -359,6 +473,7 @@ const preMonthlyPlanLedgerBackupPayloadSchema = ledgerBackupPayloadSchema.extend
 
 export const compatibleLedgerBackupPayloadSchema = z.union([
   ledgerBackupPayloadSchema,
+  preRecurringTransfersLedgerBackupPayloadSchema,
   preScheduleEndLedgerBackupPayloadSchema,
   preYearlyRecurringLedgerBackupPayloadSchema,
   preCurrencyLedgerBackupPayloadSchema,
@@ -375,6 +490,11 @@ export const compatibleLedgerBackupPayloadSchema = z.union([
 const previousLedgerBackupSchema = ledgerBackupSchema.extend({
   schemaVersion: z.literal(PREVIOUS_LEDGER_SCHEMA_VERSION),
   data: previousLedgerBackupDataSchema,
+}).strict()
+
+const preRecurringTransfersLedgerBackupSchema = ledgerBackupSchema.extend({
+  schemaVersion: z.literal(PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION),
+  data: preRecurringTransfersLedgerBackupDataSchema,
 }).strict()
 
 const preScheduleEndLedgerBackupSchema = ledgerBackupSchema.extend({
@@ -409,6 +529,7 @@ const preMonthlyPlanLedgerBackupSchema = ledgerBackupSchema.extend({
 
 export const compatibleLedgerBackupSchema = z.union([
   ledgerBackupSchema,
+  preRecurringTransfersLedgerBackupSchema,
   preScheduleEndLedgerBackupSchema,
   preYearlyRecurringLedgerBackupSchema,
   preCurrencyLedgerBackupSchema,
@@ -443,6 +564,9 @@ export const ledgerRestoreRequestSchema = z.discriminatedUnion('mode', [
 export type LedgerBackupAccount = z.infer<typeof ledgerBackupAccountSchema>
 export type LedgerBackupCategory = z.infer<typeof ledgerBackupCategorySchema>
 export type LedgerBackupRecurringRule = z.infer<typeof ledgerBackupRecurringRuleSchema>
+export type LedgerBackupRecurringTransferRule = z.infer<
+  typeof ledgerBackupRecurringTransferRuleSchema
+>
 export type LedgerBackupTransaction = z.infer<typeof ledgerBackupTransactionSchema>
 export type LedgerBackupAccountTransfer = z.infer<typeof ledgerBackupAccountTransferSchema>
 export type LedgerBackupEmergencyFundGoal = z.infer<typeof ledgerBackupEmergencyFundGoalSchema>
@@ -460,6 +584,7 @@ export const ledgerTableCountsSchema = z.object({
   accounts: safeNonNegativeIntegerSchema,
   categories: safeNonNegativeIntegerSchema,
   recurringRules: safeNonNegativeIntegerSchema,
+  recurringTransferRules: safeNonNegativeIntegerSchema,
   transactions: safeNonNegativeIntegerSchema,
   accountTransfers: safeNonNegativeIntegerSchema,
   emergencyFundGoals: safeNonNegativeIntegerSchema,
@@ -517,16 +642,37 @@ export async function checksumLedgerBackupPayload(
 
 export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerBackupData {
   if (backup.schemaVersion === LEDGER_SCHEMA_VERSION) return backup.data
-  const recurringRules = backup.data.recurringRules.map((rule) => ({
-    ...rule,
-    scheduleEndsOn: null,
-  }))
+  const recurringRules = backup.schemaVersion >= PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION
+    ? backup.data.recurringRules
+    : backup.data.recurringRules.map((rule) => ({ ...rule, scheduleEndsOn: null }))
+  const accountTransfers = 'accountTransfers' in backup.data
+    ? backup.data.accountTransfers.map((transfer) => ({
+        ...transfer,
+        recurringTransferRuleId: null,
+        recurringTransferRuleName: null,
+        recurrenceDueOn: null,
+        recurringOccurrenceKey: null,
+      }))
+    : []
+  if (backup.schemaVersion === PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION) {
+    return ledgerBackupDataSchema.parse({
+      ...backup.data,
+      recurringTransferRules: [],
+      accountTransfers,
+    })
+  }
   if (backup.schemaVersion >= PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION) {
-    return ledgerBackupDataSchema.parse({ ...backup.data, recurringRules })
+    return ledgerBackupDataSchema.parse({
+      ...backup.data,
+      recurringRules,
+      recurringTransferRules: [],
+      accountTransfers,
+    })
   }
   return ledgerBackupDataSchema.parse({
     ...backup.data,
     recurringRules,
+    recurringTransferRules: [],
     currency: DEFAULT_LEDGER_CURRENCY,
     accounts: backup.schemaVersion >= PREVIOUS_LEDGER_SCHEMA_VERSION
       ? backup.data.accounts
@@ -535,7 +681,7 @@ export function upgradeLedgerBackupData(backup: CompatibleLedgerBackup): LedgerB
         openingBalanceMinor: null,
         openingBalanceOn: null,
       })),
-    accountTransfers: 'accountTransfers' in backup.data ? backup.data.accountTransfers : [],
+    accountTransfers,
     categories: backup.schemaVersion >= PRE_TRANSFERS_LEDGER_SCHEMA_VERSION
       ? backup.data.categories
       : backup.data.categories.map((category) => ({
@@ -560,6 +706,7 @@ export function countLedgerData(data: LedgerBackupData): LedgerTableCounts {
     accounts: data.accounts.length,
     categories: data.categories.length,
     recurringRules: data.recurringRules.length,
+    recurringTransferRules: data.recurringTransferRules.length,
     transactions: data.transactions.length,
     accountTransfers: data.accountTransfers.length,
     emergencyFundGoals: data.emergencyFundGoals.length,
@@ -572,6 +719,7 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   const accounts = new Map(data.accounts.map((account) => [account.id, account]))
   const categories = new Map(data.categories.map((category) => [category.id, category]))
   const rules = new Map(data.recurringRules.map((rule) => [rule.id, rule]))
+  const transferRules = new Map(data.recurringTransferRules.map((rule) => [rule.id, rule]))
 
   collectDuplicateIssues(data.accounts, (row) => String(row.id), 'accounts', 'id', issues)
   collectDuplicateIssues(data.accounts, (row) => row.name.toLowerCase(), 'accounts', 'name', issues)
@@ -602,12 +750,26 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
     issues,
   )
   collectDuplicateIssues(data.recurringRules, (row) => row.id, 'recurringRules', 'id', issues)
+  collectDuplicateIssues(
+    data.recurringTransferRules,
+    (row) => row.id,
+    'recurringTransferRules',
+    'id',
+    issues,
+  )
   collectDuplicateIssues(data.transactions, (row) => row.id, 'transactions', 'id', issues)
   collectDuplicateIssues(data.accountTransfers, (row) => row.id, 'accountTransfers', 'id', issues)
   collectDuplicateIssues(
     data.transactions.filter((row) => row.recurringOccurrenceKey !== null),
     (row) => row.recurringOccurrenceKey ?? '',
     'transactions',
+    'recurringOccurrenceKey',
+    issues,
+  )
+  collectDuplicateIssues(
+    data.accountTransfers.filter((row) => row.recurringOccurrenceKey !== null),
+    (row) => row.recurringOccurrenceKey ?? '',
+    'accountTransfers',
     'recurringOccurrenceKey',
     issues,
   )
@@ -653,6 +815,24 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
     }
   })
 
+  data.recurringTransferRules.forEach((rule, index) => {
+    const path = `data.recurringTransferRules.${index}`
+    validateLedgerCurrency(rule.currency, data.currency, `${path}.currency`, issues)
+    validateTransferAccountReferences(rule, path, accounts, issues)
+    if (rule.nextOccurrenceOn < rule.scheduleStartsOn) {
+      issues.push({
+        path: `${path}.nextOccurrenceOn`,
+        message: 'Next occurrence cannot be before the schedule start',
+      })
+    }
+    if (rule.lastOccurrenceOn && rule.lastOccurrenceOn >= rule.nextOccurrenceOn) {
+      issues.push({
+        path: `${path}.lastOccurrenceOn`,
+        message: 'Last occurrence must be before the next occurrence',
+      })
+    }
+  })
+
   data.transactions.forEach((transaction, index) => {
     validateLedgerCurrency(
       transaction.currency,
@@ -670,34 +850,21 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   data.accountTransfers.forEach((transfer, index) => {
+    const path = `data.accountTransfers.${index}`
     validateLedgerCurrency(
       transfer.currency,
       data.currency,
-      `data.accountTransfers.${index}.currency`,
+      `${path}.currency`,
       issues,
     )
-    const fromAccount = accounts.get(transfer.fromAccountId)
-    const toAccount = accounts.get(transfer.toAccountId)
-    if (!fromAccount) {
+    validateTransferAccountReferences(transfer, path, accounts, issues)
+    if (
+      transfer.recurringTransferRuleId &&
+      !transferRules.has(transfer.recurringTransferRuleId)
+    ) {
       issues.push({
-        path: `data.accountTransfers.${index}.fromAccountId`,
-        message: 'Referenced source account is missing',
-      })
-    } else if (fromAccount.currency !== transfer.currency) {
-      issues.push({
-        path: `data.accountTransfers.${index}.currency`,
-        message: 'Source account currency does not match the transfer',
-      })
-    }
-    if (!toAccount) {
-      issues.push({
-        path: `data.accountTransfers.${index}.toAccountId`,
-        message: 'Referenced destination account is missing',
-      })
-    } else if (toAccount.currency !== transfer.currency) {
-      issues.push({
-        path: `data.accountTransfers.${index}.currency`,
-        message: 'Destination account currency does not match the transfer',
+        path: `${path}.recurringTransferRuleId`,
+        message: 'Referenced recurring transfer rule is missing',
       })
     }
   })
@@ -751,6 +918,33 @@ function collectDuplicateIssues<T>(
       message: `Duplicates data.${collection}.${existing}.${field}`,
     })
   })
+}
+
+function validateTransferAccountReferences(
+  row: {
+    fromAccountId: number
+    toAccountId: number
+    currency: SupportedCurrency
+  },
+  path: string,
+  accounts: Map<number, LedgerBackupAccount>,
+  issues: LedgerValidationIssue[],
+) {
+  const fromAccount = accounts.get(row.fromAccountId)
+  const toAccount = accounts.get(row.toAccountId)
+  if (!fromAccount) {
+    issues.push({ path: `${path}.fromAccountId`, message: 'Referenced source account is missing' })
+  } else if (fromAccount.currency !== row.currency) {
+    issues.push({ path: `${path}.currency`, message: 'Source account currency does not match the transfer' })
+  }
+  if (!toAccount) {
+    issues.push({ path: `${path}.toAccountId`, message: 'Referenced destination account is missing' })
+  } else if (toAccount.currency !== row.currency) {
+    issues.push({
+      path: `${path}.currency`,
+      message: 'Destination account currency does not match the transfer',
+    })
+  }
 }
 
 function validateReferencePair(

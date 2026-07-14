@@ -12,7 +12,7 @@ HushLedger is a single-user, online-first personal finance tool with interfaces 
 Traditional Chinese, English, Japanese, and French. Built with the Next.js App
 Router and deployed through OpenNext to Cloudflare Workers and D1, it focuses on
 fast transaction entry, clear monthly summaries, and dependable daily, weekly,
-monthly, and yearly recurring transactions.
+monthly, and yearly recurring transactions and account transfers.
 Production deployments must be protected by Cloudflare Access.
 
 **Live demo:** [Try HushLedger in your browser](https://hushledger-demo.howailoklineage.workers.dev/).
@@ -81,6 +81,11 @@ knowledge and explains every command and dashboard click.
   source and destination posting states. Transfers stay outside income, expense,
   balance, category, plan, trend, and CSV transaction reports, so withdrawals and
   credit-card payments do not manufacture spending or income.
+- Schedule a fixed same-currency transfer between two owned accounts with a daily,
+  weekly, monthly, or yearly cadence and an optional inclusive end date. Each due
+  occurrence is one native transfer with both sides uncleared for review. This is
+  ledger automation only: HushLedger never contacts a bank, moves real funds, or
+  claims sufficient balance.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact minor
   units, with touch-friendly operator buttons for mobile entry.
@@ -171,8 +176,9 @@ knowledge and explains every command and dashboard click.
   accounts within the same status and categories within the same type/status.
   Accounts can also store an optional signed opening balance and its effective
   date; credit-card debt can therefore begin below zero without a fake expense.
-  Active recurring rules and the last usable account/category are protected
-  from accidental disabling.
+  Active recurring transaction rules protect their account and category, while
+  active scheduled transfers protect both accounts. The last usable references
+  are also protected from accidental disabling.
 - Custom payees and notes, with private suggestions that can reuse a known
   payee's latest still-active account and category without sending ledger data
   to a third party.
@@ -180,6 +186,10 @@ knowledge and explains every command and dashboard click.
   edited, paused, resumed, skipped once without creating a transaction, and deleted.
   An optional inclusive end date automatically completes a rule after its final
   scheduled occurrence without deleting generated history.
+- Daily, weekly, monthly, and yearly scheduled account transfers with distinct
+  source/destination accounts, exact amount, note, start date, optional inclusive
+  end date, pause/resume, one-occurrence skip, completion, and preserved generated
+  history. Offline and demo views expose no live mutations and store no rule draft.
 - Due-transaction generation through Cloudflare Cron or a manual action, with no
   duplicate occurrence for the same rule and date. A manual run reports blocked,
   failed, or safety-limited work as incomplete instead of presenting full success.
@@ -189,7 +199,7 @@ knowledge and explains every command and dashboard click.
   in non-leap years and returns to February 29 in the next leap year.
 - A PWA app shell, mobile bottom sheets, and responsive tablet and desktop layouts.
 - One silent data recheck when an already-loaded live ledger tab returns from hidden state.
-  Successful responses replace stale money and recurring-rule views; failed
+  Successful responses replace stale money and both recurring-rule views; failed
   rechecks preserve the current view and never substitute demo data. HushLedger
   adds no polling timer or background-sync service for this check.
 - A one-tap screen privacy mode that masks every formatted amount, category-share
@@ -223,7 +233,7 @@ credit card, or a digital wallet. It is not an additional transaction type.
   SEK, SGD, THB, TRY, TWD, USD, or ZAR; every supported currency uses two decimal
   minor units in HushLedger.
 - Currency can change only while the ledger has no transactions, transfers,
-  recurring rules, import tombstones, opening balances, category plans, or
+  recurring transaction or transfer rules, import tombstones, opening balances, category plans, or
   emergency-fund checkpoint. A change relabels that pristine ledger and never
   converts amounts or applies an exchange rate.
 - An amount of 123.45 is stored as `12345` in `amount_minor`.
@@ -299,7 +309,9 @@ credit card, or a digital wallet. It is not an additional transaction type.
 - Account transfers use client-generated UUIDs, require two distinct compatible
   accounts, and use `updated_at` conflict detection. A transfer is one atomic row,
   not a pair of income/expense transactions; its two clearing flags can represent
-  money that has left one account but has not yet reached the other.
+  money that has left one account but has not yet reached the other. Generated
+  transfers also retain an immutable rule-name, due-date, and occurrence-key
+  snapshot that ordinary transfer edits cannot replace.
 - Account activity drilldown filters transactions and transfers on the server.
   The 200-transfer display limit is applied after the account filter, rather than
   fetching an unrelated global slice and hiding rows in the browser.
@@ -313,7 +325,7 @@ credit card, or a digital wallet. It is not an additional transaction type.
   explicitly reassigns them to active ones.
 - A recurring rule occurrence date is an immutable idempotency key. Editing a rule
   affects only future occurrences that have not been generated. Pausing or deleting
-  a rule never deletes historical transactions.
+  a rule never deletes historical transactions or transfers.
 - A recurring rule end date is inclusive: an occurrence may be generated on that
   date, and the rule is complete only after its generation cursor advances beyond it.
 - Every API input is validated with Zod and checked again against server-side
@@ -323,7 +335,7 @@ credit card, or a digital wallet. It is not an additional transaction type.
   or ambiguous duplicates require an explicit checkbox; invalid or archived
   references are never silently substituted.
 - Full-ledger backups cover the ledger currency, accounts, categories, the
-  emergency-fund checkpoint, recurring rules, transactions, account transfers,
+  emergency-fund checkpoint, recurring transaction and transfer rules, transactions, account transfers,
   and import tombstones. A
   SHA-256 checksum detects modification, and a monotonic
   ledger revision rejects restore previews that became stale before commit.
@@ -397,8 +409,8 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 ## Ledger backup and restore
 
 Settings can download one versioned JSON file containing the ledger currency and
-every account, category, optional emergency-fund checkpoint, recurring rule
-(including soft-deleted rule history), transaction, account transfer, and import
+every account, category, optional emergency-fund checkpoint, recurring transaction
+or transfer rule (including soft-deleted rule history), transaction, account transfer, and import
 tombstone. AI provider credentials, pasted bank text, language preferences,
 update preferences, saved transaction views, remembered bank CSV layouts, and
 screen privacy state are intentionally excluded.
@@ -417,10 +429,10 @@ Restore is preview-first:
 1. Choose a HushLedger JSON backup of at most 7 MiB.
 2. HushLedger validates the format and schema version, checksum, unique keys,
    account/category references, recurring provenance, and active reference minimums.
-3. Review the current-versus-backup row counts for all seven tables.
+3. Review the current-versus-backup row counts for all eight collections.
 4. Download a fresh backup, then type `RESTORE` to enable the destructive action.
 5. HushLedger rechecks the live ledger revision and replaces the currency and all
-   seven ledger collections in one D1 transaction. A stale preview or any
+   eight ledger collections in one D1 transaction. A stale preview or any
    constraint failure writes nothing.
 
 After a successful replacement, HushLedger removes saved transaction views from
@@ -432,15 +444,16 @@ warns the user to clear the site's browser data before reloading or reusing save
 views.
 
 The in-app format is for practical personal-ledger portability. The running build
-writes schema 16 and accepts schemas 8 through 16. Schema 8 through schema 15
+writes schema 17 and accepts schemas 8 through 17. Schema 8 through schema 16
 backups upgrade in memory; schema 8 through schema 13 default the ledger currency
 to HKD, while schema 8 through schema 12 also upgrade without inventing an
 emergency-fund checkpoint. Their existing version-specific defaults for clearing
 state, monthly plans, transfers, and opening balances still apply. Schema-14 through
-schema-16 restores carry their currency with the rest of the ledger instead of
-converting any amount. Only schema 15 and schema 16 can contain yearly recurring
-rules, and only schema 16 can store recurring-rule end dates; older backups upgrade
-with no end date. For a
+schema-17 restores carry their currency with the rest of the ledger instead of
+converting any amount. Only schemas 15–17 can contain yearly recurring transaction
+rules, only schemas 16–17 can store their end dates, and only schema 17 stores
+scheduled-transfer rules and generated-transfer provenance. Older backups upgrade
+without inventing either. For a
 backup larger than 7 MiB, long-term disaster recovery,
 or a database-level archive, use the encrypted Wrangler D1 export, restore, and
 recovery process in
@@ -625,6 +638,7 @@ npm run types:worker
 | `0014_ledger_currency.sql` | Adds one ledger-wide two-decimal currency setting, migrates existing ledgers as HKD, cascades pristine currency changes across dependent rows, and blocks relabeling after monetary history exists. |
 | `0015_yearly_recurring_rules.sql` | Allows yearly recurring rules while preserving existing schedules and generated-transaction provenance. |
 | `0016_recurring_rule_end_dates.sql` | Adds optional inclusive end dates so recurring rules can complete automatically without deleting generated history. |
+| `0017_recurring_transfer_rules.sql` | Adds scheduled account-transfer rules plus immutable generated-transfer provenance while preserving manual transfers and report neutrality. |
 
 Apply migrations locally:
 
@@ -692,6 +706,14 @@ PATCH  /api/recurring-rules/:id/status
 POST   /api/recurring-rules/:id/skip
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
+GET    /api/recurring-transfer-rules
+GET    /api/recurring-transfer-rules/:id
+POST   /api/recurring-transfer-rules
+PUT    /api/recurring-transfer-rules/:id
+PATCH  /api/recurring-transfer-rules/:id/status
+POST   /api/recurring-transfer-rules/:id/skip
+DELETE /api/recurring-transfer-rules/:id
+POST   /api/recurring-transfer-rules/run-due
 POST   /api/ai/models
 POST   /api/imports/parse  (create untrusted AI drafts; never writes D1)
 POST   /api/imports/ai  (preview or commit reviewed AI drafts, maximum 200 rows)
@@ -705,7 +727,8 @@ balance/date. Mutations use `updatedAt`
 for optimistic concurrency. Reordering normalizes positions in one guarded SQL
 statement, so a stale or partial list writes nothing. There is no account/category
 `DELETE`: disabling preserves historical foreign-key links, and the server rejects
-disabling the last active choice or a choice used by an active recurring rule.
+disabling the last active choice, a choice used by an active recurring transaction
+rule, or either account used by an active scheduled transfer.
 
 Transactions default to newest-first and accept only the documented date,
 amount, or payee ordering values. A response contains at most 200 transactions.
@@ -723,7 +746,9 @@ must not affect income or expense reporting. New transfers require two active
 accounts in the ledger currency. Editing preserves an existing archived source or
 destination, uses the same optimistic `updatedAt` guard as transactions, and
 records source and destination posting independently. Transfer routes are strict,
-same-origin, and never included in transaction CSV exports.
+same-origin, and never included in transaction CSV exports. Scheduled generation
+uses the same native transfer row, leaves both posting states uncleared, preserves
+its rule/date provenance, and remains outside income and expense reporting.
 
 Account balance aggregation is read-only and uses the end of the requested month
 as an exclusive cutoff. It includes transfers in each account but never feeds

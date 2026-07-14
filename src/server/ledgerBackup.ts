@@ -28,6 +28,10 @@ import type { SupportedCurrency } from '../lib/currency'
 type RawAccount = Omit<LedgerBackupData['accounts'][number], 'isActive'> & { isActive: number }
 type RawCategory = Omit<LedgerBackupData['categories'][number], 'isActive'> & { isActive: number }
 type RawRecurringRule = Omit<LedgerBackupData['recurringRules'][number], 'isActive'> & { isActive: number }
+type RawRecurringTransferRule = Omit<
+  LedgerBackupData['recurringTransferRules'][number],
+  'isActive'
+> & { isActive: number }
 type RawTransaction = Omit<LedgerBackupData['transactions'][number], 'cleared'> & { cleared: number }
 type RawAccountTransfer = Omit<
   LedgerBackupData['accountTransfers'][number],
@@ -65,6 +69,7 @@ type LedgerRestoreChunks = {
   accounts: string[]
   categories: string[]
   recurringRules: string[]
+  recurringTransferRules: string[]
   transactions: string[]
   accountTransfers: string[]
   emergencyFundGoals: string[]
@@ -135,6 +140,34 @@ const recurringRuleQuery = `
   ORDER BY id ASC
 `
 
+const recurringTransferRuleQuery = `
+  SELECT
+    id,
+    name,
+    amount_minor AS amountMinor,
+    currency,
+    from_account_id AS fromAccountId,
+    to_account_id AS toAccountId,
+    frequency,
+    schedule_starts_on AS scheduleStartsOn,
+    schedule_ends_on AS scheduleEndsOn,
+    next_occurrence_on AS nextOccurrenceOn,
+    last_occurrence_on AS lastOccurrenceOn,
+    anchor_day AS anchorDay,
+    is_active AS isActive,
+    note,
+    generated_count AS generatedCount,
+    last_error_code AS lastErrorCode,
+    last_error_at AS lastErrorAt,
+    revision,
+    cursor_version AS cursorVersion,
+    deleted_at AS deletedAt,
+    created_at AS createdAt,
+    updated_at AS updatedAt
+  FROM recurring_transfer_rules
+  ORDER BY id ASC
+`
+
 const transactionQuery = `
   SELECT
     id,
@@ -168,6 +201,10 @@ const accountTransferQuery = `
     from_cleared AS fromCleared,
     to_cleared AS toCleared,
     note,
+    recurring_transfer_rule_id AS recurringTransferRuleId,
+    recurring_transfer_rule_name AS recurringTransferRuleName,
+    recurrence_due_on AS recurrenceDueOn,
+    recurring_occurrence_key AS recurringOccurrenceKey,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM account_transfers
@@ -279,6 +316,39 @@ const recurringRuleInsert = `
   FROM json_each(?)
 `
 
+const recurringTransferRuleInsert = `
+  INSERT INTO recurring_transfer_rules(
+    id, name, amount_minor, currency, from_account_id, to_account_id, frequency,
+    schedule_starts_on, schedule_ends_on, next_occurrence_on, last_occurrence_on,
+    anchor_day, is_active, note, generated_count, last_error_code, last_error_at,
+    revision, cursor_version, deleted_at, created_at, updated_at
+  )
+  SELECT
+    json_extract(value, '$.id'),
+    json_extract(value, '$.name'),
+    json_extract(value, '$.amountMinor'),
+    json_extract(value, '$.currency'),
+    json_extract(value, '$.fromAccountId'),
+    json_extract(value, '$.toAccountId'),
+    json_extract(value, '$.frequency'),
+    json_extract(value, '$.scheduleStartsOn'),
+    json_extract(value, '$.scheduleEndsOn'),
+    json_extract(value, '$.nextOccurrenceOn'),
+    json_extract(value, '$.lastOccurrenceOn'),
+    json_extract(value, '$.anchorDay'),
+    json_extract(value, '$.isActive'),
+    json_extract(value, '$.note'),
+    json_extract(value, '$.generatedCount'),
+    json_extract(value, '$.lastErrorCode'),
+    json_extract(value, '$.lastErrorAt'),
+    json_extract(value, '$.revision'),
+    json_extract(value, '$.cursorVersion'),
+    json_extract(value, '$.deletedAt'),
+    json_extract(value, '$.createdAt'),
+    json_extract(value, '$.updatedAt')
+  FROM json_each(?)
+`
+
 const transactionInsert = `
   INSERT INTO transactions(
     id, type, amount_minor, currency, account_id, category_id, occurred_on, cleared, payee, note,
@@ -308,7 +378,9 @@ const transactionInsert = `
 const accountTransferInsert = `
   INSERT INTO account_transfers(
     id, amount_minor, currency, from_account_id, to_account_id, occurred_on,
-    from_cleared, to_cleared, note, created_at, updated_at
+    from_cleared, to_cleared, note, recurring_transfer_rule_id,
+    recurring_transfer_rule_name, recurrence_due_on, recurring_occurrence_key,
+    created_at, updated_at
   )
   SELECT
     json_extract(value, '$.id'),
@@ -320,6 +392,10 @@ const accountTransferInsert = `
     json_extract(value, '$.fromCleared'),
     json_extract(value, '$.toCleared'),
     json_extract(value, '$.note'),
+    json_extract(value, '$.recurringTransferRuleId'),
+    json_extract(value, '$.recurringTransferRuleName'),
+    json_extract(value, '$.recurrenceDueOn'),
+    json_extract(value, '$.recurringOccurrenceKey'),
     json_extract(value, '$.createdAt'),
     json_extract(value, '$.updatedAt')
   FROM json_each(?)
@@ -350,6 +426,7 @@ const countQuery = `
     (SELECT COUNT(*) FROM accounts) AS accounts,
     (SELECT COUNT(*) FROM categories) AS categories,
     (SELECT COUNT(*) FROM recurring_rules) AS recurringRules,
+    (SELECT COUNT(*) FROM recurring_transfer_rules) AS recurringTransferRules,
     (SELECT COUNT(*) FROM transactions) AS transactions,
     (SELECT COUNT(*) FROM account_transfers) AS accountTransfers,
     (SELECT COUNT(*) FROM emergency_fund_goals) AS emergencyFundGoals,
@@ -370,6 +447,7 @@ const countGuardQuery = `
     accounts <> ?
     OR categories <> ?
     OR recurringRules <> ?
+    OR recurringTransferRules <> ?
     OR transactions <> ?
     OR accountTransfers <> ?
     OR emergencyFundGoals <> ?
@@ -509,6 +587,7 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
     accounts: chunkRows(data.accounts),
     categories: chunkRows(data.categories),
     recurringRules: chunkRows(data.recurringRules),
+    recurringTransferRules: chunkRows(data.recurringTransferRules),
     transactions: chunkRows(data.transactions),
     accountTransfers: chunkRows(data.accountTransfers),
     emergencyFundGoals: chunkRows(data.emergencyFundGoals),
@@ -517,7 +596,7 @@ export function createRestoreChunks(data: LedgerBackupData): LedgerRestoreChunks
 }
 
 export function countRestoreStatements(chunks: LedgerRestoreChunks) {
-  return 11 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
+  return 12 + Object.values(chunks).reduce((total, tableChunks) => total + tableChunks.length, 0)
 }
 
 async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot> {
@@ -525,6 +604,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
     accounts,
     categories,
     recurringRules,
+    recurringTransferRules,
     transactions,
     accountTransfers,
     emergencyFundGoals,
@@ -536,6 +616,7 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       database.prepare(accountQuery),
       database.prepare(categoryQuery),
       database.prepare(recurringRuleQuery),
+      database.prepare(recurringTransferRuleQuery),
       database.prepare(transactionQuery),
       database.prepare(accountTransferQuery),
       database.prepare(emergencyFundGoalQuery),
@@ -563,6 +644,9 @@ async function loadLedgerSnapshot(database: D1Database): Promise<LedgerSnapshot>
       ...row,
       isActive: row.isActive === 1,
     })),
+    recurringTransferRules: (
+      recurringTransferRules.results as RawRecurringTransferRule[]
+    ).map((row) => ({ ...row, isActive: row.isActive === 1 })),
     transactions: (transactions.results as RawTransaction[]).map((row) => ({
       ...row,
       cleared: row.cleared === 1,
@@ -635,6 +719,7 @@ function buildRestoreStatements(
     database.prepare('DELETE FROM transaction_import_keys'),
     database.prepare('DELETE FROM transactions'),
     database.prepare('DELETE FROM account_transfers'),
+    database.prepare('DELETE FROM recurring_transfer_rules'),
     database.prepare('DELETE FROM recurring_rules'),
     database.prepare('DELETE FROM emergency_fund_goals'),
     database.prepare('DELETE FROM categories'),
@@ -650,6 +735,12 @@ function buildRestoreStatements(
   appendChunkStatements(statements, database, emergencyFundGoalInsert, chunks.emergencyFundGoals)
   appendChunkStatements(statements, database, categoryInsert, chunks.categories)
   appendChunkStatements(statements, database, recurringRuleInsert, chunks.recurringRules)
+  appendChunkStatements(
+    statements,
+    database,
+    recurringTransferRuleInsert,
+    chunks.recurringTransferRules,
+  )
   appendChunkStatements(statements, database, transactionInsert, chunks.transactions)
   appendChunkStatements(statements, database, accountTransferInsert, chunks.accountTransfers)
   appendChunkStatements(statements, database, importKeyInsert, chunks.transactionImportKeys)
@@ -657,6 +748,7 @@ function buildRestoreStatements(
     expectedCounts.accounts,
     expectedCounts.categories,
     expectedCounts.recurringRules,
+    expectedCounts.recurringTransferRules,
     expectedCounts.transactions,
     expectedCounts.accountTransfers,
     expectedCounts.emergencyFundGoals,
@@ -680,6 +772,7 @@ function sameCounts(left: LedgerTableCounts, right: LedgerTableCounts) {
     left.accounts === right.accounts &&
     left.categories === right.categories &&
     left.recurringRules === right.recurringRules &&
+    left.recurringTransferRules === right.recurringTransferRules &&
     left.transactions === right.transactions &&
     left.accountTransfers === right.accountTransfers &&
     left.emergencyFundGoals === right.emergencyFundGoals &&

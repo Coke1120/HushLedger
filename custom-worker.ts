@@ -4,7 +4,8 @@ import {
   REQUEST_ORIGIN_HEADER,
   verifyCloudflareAccess,
 } from './worker/access'
-import { hktCalendarDate, runDueRecurringRules } from './worker/recurring'
+import { hktCalendarDate } from './worker/recurring'
+import { runScheduledRecurringRules } from './worker/recurringCron'
 import {
   accessFailureResponse,
   contentSecurityPolicy,
@@ -39,8 +40,8 @@ const worker = {
   },
 
   async scheduled(controller: ScheduledController, env: Env) {
-    const result = await runDueRecurringRules(env.DB, hktCalendarDate(controller.scheduledTime))
-    console.info('recurring_rules_run', { trigger: 'cron', ...result })
+    const asOf = hktCalendarDate(controller.scheduledTime)
+    await runScheduledRecurringRules(env.DB, asOf)
   },
 } satisfies ExportedHandler<Env>
 

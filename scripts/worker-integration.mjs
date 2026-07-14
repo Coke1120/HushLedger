@@ -13,6 +13,7 @@ const wrangler = join(projectRoot, 'node_modules', '.bin', 'wrangler')
 const openNext = join(projectRoot, 'node_modules', '.bin', 'opennextjs-cloudflare')
 const next = join(projectRoot, 'node_modules', '.bin', 'next')
 const skipBuild = process.argv.includes('--skip-build')
+const supportsProcessGroups = process.platform !== 'win32'
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hushledger-integration-'))
 const freshState = join(temporaryRoot, 'fresh-state')
 const upgradeState = join(temporaryRoot, 'upgrade-state')
@@ -68,8 +69,29 @@ function withoutAccountOpeningBalances(accounts) {
   })
 }
 
-function withoutRecurringScheduleEnds(backup) {
+function withoutRecurringTransferData(backup) {
   const compatible = structuredClone(backup)
+  const recurringTransferRules = compatible.data.recurringTransferRules
+  assert(Array.isArray(recurringTransferRules))
+  delete compatible.data.recurringTransferRules
+  compatible.data.accountTransfers = compatible.data.accountTransfers.map(({
+    recurringTransferRuleId,
+    recurringTransferRuleName,
+    recurrenceDueOn,
+    recurringOccurrenceKey,
+    ...transfer
+  }) => {
+    assert(recurringTransferRuleId === null || typeof recurringTransferRuleId === 'string')
+    assert(recurringTransferRuleName === null || typeof recurringTransferRuleName === 'string')
+    assert(recurrenceDueOn === null || typeof recurrenceDueOn === 'string')
+    assert(recurringOccurrenceKey === null || typeof recurringOccurrenceKey === 'string')
+    return transfer
+  })
+  return compatible
+}
+
+function withoutRecurringScheduleEnds(backup) {
+  const compatible = withoutRecurringTransferData(backup)
   compatible.data.recurringRules = compatible.data.recurringRules.map(({
     scheduleEndsOn,
     ...rule
@@ -216,10 +238,12 @@ async function verifyUpgradeMigration() {
   ))
   const yearlyMigrationNames = allMigrationNames.filter((name) => /^0015_/.test(name))
   const scheduleEndMigrationNames = allMigrationNames.filter((name) => /^0016_/.test(name))
+  const recurringTransferMigrationNames = allMigrationNames.filter((name) => /^0017_/.test(name))
   assert.equal(initialMigrationNames.length, 4)
   assert.equal(preYearlyMigrationNames.length, 10)
   assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
   assert.deepEqual(scheduleEndMigrationNames, ['0016_recurring_rule_end_dates.sql'])
+  assert.deepEqual(recurringTransferMigrationNames, ['0017_recurring_transfer_rules.sql'])
   await Promise.all(
     initialMigrationNames.map((name) => (
       copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
@@ -357,6 +381,44 @@ async function verifyUpgradeMigration() {
     upgradeConfig,
   ])
 
+  const transferSentinelId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    `INSERT INTO account_transfers(
+       id,amount_minor,currency,from_account_id,to_account_id,occurred_on,
+       from_cleared,to_cleared,note,created_at,updated_at
+     ) VALUES (
+       '${transferSentinelId}',333,'HKD',1,2,'2026-07-11',1,0,
+       'preserve manual transfer','2026-07-11T01:02:03.000Z','2026-07-12T04:05:06.000Z'
+     );`,
+    '--yes',
+  ])
+
+  await Promise.all(
+    recurringTransferMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
   const verification = await runWrangler([
     'd1',
     'execute',
@@ -381,10 +443,29 @@ async function verifyUpgradeMigration() {
        recurrence_due_on AS recurrenceDueOn,
        recurring_occurrence_key AS recurringOccurrenceKey, cleared
      FROM transactions WHERE id = '${recurringTransactionId}';
+     SELECT
+       id,
+       amount_minor AS amountMinor,
+       currency,
+       from_account_id AS fromAccountId,
+       to_account_id AS toAccountId,
+       occurred_on AS occurredOn,
+       from_cleared AS fromCleared,
+       to_cleared AS toCleared,
+       note,
+       recurring_transfer_rule_id AS recurringTransferRuleId,
+       recurring_transfer_rule_name AS recurringTransferRuleName,
+       recurrence_due_on AS recurrenceDueOn,
+       recurring_occurrence_key AS recurringOccurrenceKey,
+       created_at AS createdAt,
+       updated_at AS updatedAt
+     FROM account_transfers WHERE id = '${transferSentinelId}';
      SELECT COUNT(*) AS importKeys FROM transaction_import_keys;
      SELECT revision FROM ledger_state WHERE id = 1;
      SELECT name FROM sqlite_master
-     WHERE type = 'table' AND name IN ('account_transfers', 'emergency_fund_goals', 'ledger_settings')
+     WHERE type = 'table' AND name IN (
+       'account_transfers', 'emergency_fund_goals', 'ledger_settings', 'recurring_transfer_rules'
+     )
      ORDER BY name;
      SELECT COUNT(*) AS emergencyFundRevisionTriggers
      FROM sqlite_master
@@ -403,11 +484,27 @@ async function verifyUpgradeMigration() {
        name LIKE 'ledger_revision_recurring_rules_%'
        OR name LIKE 'ledger_revision_transactions_%'
      );
+     SELECT COUNT(*) AS recurringTransferIndexes
+     FROM sqlite_master
+     WHERE type = 'index' AND name IN (
+       'idx_recurring_transfer_rules_due',
+       'idx_recurring_transfer_rules_from_account',
+       'idx_recurring_transfer_rules_to_account',
+       'idx_account_transfers_recurring_transfer_rule'
+     );
+     SELECT COUNT(*) AS recurringTransferTriggers
+     FROM sqlite_master
+     WHERE type = 'trigger' AND (
+       name LIKE 'ledger_revision_recurring_transfer_rules_%'
+       OR name LIKE 'ledger_revision_account_transfers_%'
+       OR name = 'account_transfers_recurring_provenance_update_guard'
+     );
      SELECT currency, updated_at AS updatedAt FROM ledger_settings WHERE id = 1;
      SELECT
        (SELECT COUNT(*) FROM accounts WHERE currency <> ledger_settings.currency) AS accountMismatches,
        (SELECT COUNT(*) FROM transactions WHERE currency <> ledger_settings.currency) AS transactionMismatches,
        (SELECT COUNT(*) FROM recurring_rules WHERE currency <> ledger_settings.currency) AS recurringRuleMismatches,
+       (SELECT COUNT(*) FROM recurring_transfer_rules WHERE currency <> ledger_settings.currency) AS recurringTransferRuleMismatches,
        (SELECT COUNT(*) FROM account_transfers WHERE currency <> ledger_settings.currency) AS transferMismatches
      FROM ledger_settings WHERE id = 1;
      PRAGMA foreign_key_check;`,
@@ -444,25 +541,46 @@ async function verifyUpgradeMigration() {
     recurringOccurrenceKey: `${recurringSentinelId}:2026-06-30`,
     cleared: 0,
   }])
-  assert.equal(statements[5].results[0].importKeys, 0)
-  assert.equal(statements[6].results[0].revision, 3)
-  assert.deepEqual(statements[7].results, [
+  assert.deepEqual(statements[5].results, [{
+    id: transferSentinelId,
+    amountMinor: 333,
+    currency: 'HKD',
+    fromAccountId: 1,
+    toAccountId: 2,
+    occurredOn: '2026-07-11',
+    fromCleared: 1,
+    toCleared: 0,
+    note: 'preserve manual transfer',
+    recurringTransferRuleId: null,
+    recurringTransferRuleName: null,
+    recurrenceDueOn: null,
+    recurringOccurrenceKey: null,
+    createdAt: '2026-07-11T01:02:03.000Z',
+    updatedAt: '2026-07-12T04:05:06.000Z',
+  }])
+  assert.equal(statements[6].results[0].importKeys, 0)
+  assert.equal(statements[7].results[0].revision, 4)
+  assert.deepEqual(statements[8].results, [
     { name: 'account_transfers' },
     { name: 'emergency_fund_goals' },
     { name: 'ledger_settings' },
+    { name: 'recurring_transfer_rules' },
   ])
-  assert.equal(statements[8].results[0].emergencyFundRevisionTriggers, 3)
-  assert.equal(statements[9].results[0].recurringAndTransactionIndexes, 9)
-  assert.equal(statements[10].results[0].recurringAndTransactionRevisionTriggers, 6)
-  assert.equal(statements[11].results[0].currency, 'HKD')
-  assert.match(statements[11].results[0].updatedAt, /Z$/)
-  assert.deepEqual(statements[12].results, [{
+  assert.equal(statements[9].results[0].emergencyFundRevisionTriggers, 3)
+  assert.equal(statements[10].results[0].recurringAndTransactionIndexes, 9)
+  assert.equal(statements[11].results[0].recurringAndTransactionRevisionTriggers, 6)
+  assert.equal(statements[12].results[0].recurringTransferIndexes, 4)
+  assert.equal(statements[13].results[0].recurringTransferTriggers, 7)
+  assert.equal(statements[14].results[0].currency, 'HKD')
+  assert.match(statements[14].results[0].updatedAt, /Z$/)
+  assert.deepEqual(statements[15].results, [{
     accountMismatches: 0,
     transactionMismatches: 0,
     recurringRuleMismatches: 0,
+    recurringTransferRuleMismatches: 0,
     transferMismatches: 0,
   }])
-  assert.deepEqual(statements[13].results, [])
+  assert.deepEqual(statements[16].results, [])
 
   await runWrangler([
     'd1',
@@ -507,6 +625,127 @@ async function verifyUpgradeMigration() {
       '--yes',
     ]),
     /CHECK constraint failed/,
+  )
+
+  const migrationTransferRuleId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+    '--command',
+    `INSERT INTO recurring_transfer_rules(
+       id,name,amount_minor,currency,from_account_id,to_account_id,frequency,
+       schedule_starts_on,schedule_ends_on,next_occurrence_on,anchor_day,is_active,note
+     ) VALUES (
+       '${migrationTransferRuleId}','migration transfer rule',100,'HKD',1,2,'monthly',
+       '2026-07-01','2026-07-31','2026-07-31',1,1,''
+     );`,
+    '--yes',
+  ])
+
+  for (const invalidRuleSql of [
+    `INSERT INTO recurring_transfer_rules(
+       id,name,amount_minor,currency,from_account_id,to_account_id,frequency,
+       schedule_starts_on,next_occurrence_on,anchor_day,is_active,note
+     ) VALUES (
+       'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1','same account',100,'HKD',1,1,'daily',
+       '2026-07-01','2026-07-01',1,1,''
+     );`,
+    `INSERT INTO recurring_transfer_rules(
+       id,name,amount_minor,currency,from_account_id,to_account_id,frequency,
+       schedule_starts_on,schedule_ends_on,next_occurrence_on,anchor_day,is_active,note
+     ) VALUES (
+       'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2','bad end',100,'HKD',1,2,'daily',
+       '2026-07-02','2026-07-01','2026-07-02',2,1,''
+     );`,
+    `INSERT INTO recurring_transfer_rules(
+       id,name,amount_minor,currency,from_account_id,to_account_id,frequency,
+       schedule_starts_on,next_occurrence_on,anchor_day,is_active,note
+     ) VALUES (
+       'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3','unsafe amount',9007199254740992,'HKD',1,2,'daily',
+       '2026-07-01','2026-07-01',1,1,''
+     );`,
+  ]) {
+    await assert.rejects(
+      runWrangler([
+        'd1',
+        'execute',
+        'hushledger',
+        '--local',
+        '--persist-to',
+        upgradeState,
+        '--config',
+        upgradeConfig,
+        '--command',
+        invalidRuleSql,
+        '--yes',
+      ]),
+      /CHECK constraint failed/,
+    )
+  }
+
+  for (const invalidTransferSql of [
+    `INSERT INTO account_transfers(
+       id,amount_minor,currency,from_account_id,to_account_id,occurred_on,
+       recurring_transfer_rule_id,note
+     ) VALUES (
+       'ffffffff-ffff-4fff-8fff-fffffffffff1',100,'HKD',1,2,'2026-07-31',
+       '${migrationTransferRuleId}','partial provenance'
+     );`,
+    `INSERT INTO account_transfers(
+       id,amount_minor,currency,from_account_id,to_account_id,occurred_on,
+       recurring_transfer_rule_id,recurring_transfer_rule_name,recurrence_due_on,
+       recurring_occurrence_key,note
+     ) VALUES (
+       'ffffffff-ffff-4fff-8fff-fffffffffff2',100,'HKD',1,2,'2026-07-31',
+       '${migrationTransferRuleId}','migration transfer rule','2026-07-31',
+       '${migrationTransferRuleId}:2026-07-30','wrong occurrence key'
+     );`,
+  ]) {
+    await assert.rejects(
+      runWrangler([
+        'd1',
+        'execute',
+        'hushledger',
+        '--local',
+        '--persist-to',
+        upgradeState,
+        '--config',
+        upgradeConfig,
+        '--command',
+        invalidTransferSql,
+        '--yes',
+      ]),
+      /CHECK constraint failed/,
+    )
+  }
+
+  await assert.rejects(
+    runWrangler([
+      'd1',
+      'execute',
+      'hushledger',
+      '--local',
+      '--persist-to',
+      upgradeState,
+      '--config',
+      upgradeConfig,
+      '--command',
+      `UPDATE account_transfers
+       SET
+         recurring_transfer_rule_id = '${migrationTransferRuleId}',
+         recurring_transfer_rule_name = 'migration transfer rule',
+         recurrence_due_on = '2026-07-31',
+         recurring_occurrence_key = '${migrationTransferRuleId}:2026-07-31'
+       WHERE id = '${transferSentinelId}';`,
+      '--yes',
+    ]),
+    /recurring transfer provenance is immutable/,
   )
 
   await assert.rejects(
@@ -590,6 +829,7 @@ function startWorker(port, inspectorPort) {
     ],
     {
       cwd: projectRoot,
+      detached: supportsProcessGroups,
       env: { ...process.env, CI: '1', NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false' },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -611,6 +851,7 @@ function startNextDev(port) {
     ['dev', '--hostname', '127.0.0.1', '--port', String(port)],
     {
       cwd: projectRoot,
+      detached: supportsProcessGroups,
       env: {
         ...process.env,
         CI: '1',
@@ -935,7 +1176,7 @@ async function verifyPristineCurrencyApi() {
     const usdBackupDownload = await downloadLedgerBackup(baseUrl)
     assert.equal(usdBackupDownload.response.status, 200, JSON.stringify(usdBackupDownload.payload))
     const usdBackup = usdBackupDownload.payload
-    assert.equal(usdBackup.schemaVersion, 16)
+    assert.equal(usdBackup.schemaVersion, 17)
     assert.equal(usdBackup.data.currency, 'USD')
     assert(usdBackup.data.accounts.every(({ currency }) => currency === 'USD'))
     assert(usdBackup.data.accounts.every(({
@@ -945,6 +1186,7 @@ async function verifyPristineCurrencyApi() {
     assert(usdBackup.data.categories.every(({ monthlyPlanMinor }) => monthlyPlanMinor === null))
     assert.deepEqual(usdBackup.data.transactions, [])
     assert.deepEqual(usdBackup.data.recurringRules, [])
+    assert.deepEqual(usdBackup.data.recurringTransferRules, [])
     assert.deepEqual(usdBackup.data.transactionImportKeys, [])
     assert.deepEqual(usdBackup.data.accountTransfers, [])
     assert.deepEqual(usdBackup.data.emergencyFundGoals, [])
@@ -965,6 +1207,54 @@ async function verifyPristineCurrencyApi() {
     assert.equal(hkdBackupDownload.response.status, 200, JSON.stringify(hkdBackupDownload.payload))
     const hkdBackup = hkdBackupDownload.payload
     assert.equal(hkdBackup.data.currency, 'HKD')
+
+    const ruleOnlyCurrencyLock = await api(baseUrl, '/api/recurring-transfer-rules', {
+      method: 'POST',
+      body: {
+        id: '10000000-0000-4000-8000-000000000017',
+        name: 'Rule-only currency lock',
+        amountMinor: 10_000,
+        currency: 'HKD',
+        fromAccountId: existingAccount.id,
+        toAccountId: createdAccountId,
+        frequency: 'monthly',
+        scheduleStartsOn: today,
+        isActive: true,
+        note: '',
+      },
+    })
+    assert.equal(ruleOnlyCurrencyLock.response.status, 201, JSON.stringify(ruleOnlyCurrencyLock.payload))
+    const lockedByRuleSettings = await api(baseUrl, '/api/ledger-settings')
+    assert.equal(lockedByRuleSettings.response.status, 200)
+    assert.equal(lockedByRuleSettings.payload.data.currency, 'HKD')
+    assert.equal(lockedByRuleSettings.payload.data.canChangeCurrency, false)
+    const blockedByRuleCurrencyChange = await api(baseUrl, '/api/ledger-settings', {
+      method: 'PUT',
+      body: {
+        currency: 'USD',
+        expectedUpdatedAt: lockedByRuleSettings.payload.data.updatedAt,
+      },
+    })
+    assert.equal(blockedByRuleCurrencyChange.response.status, 409)
+    assert.equal(blockedByRuleCurrencyChange.payload.error.code, 'LEDGER_CURRENCY_LOCKED')
+
+    await stopWorker()
+    await assert.rejects(
+      runWrangler([
+        'd1',
+        'execute',
+        'hushledger',
+        '--local',
+        '--persist-to',
+        freshState,
+        '--command',
+        "UPDATE ledger_settings SET currency = 'USD' WHERE id = 1;",
+        '--yes',
+      ]),
+      /ledger currency is locked by monetary history/,
+    )
+    workerProcess = startWorker(port, inspectorPort)
+    await waitForHealth(baseUrl)
 
     const usdPreview = await api(baseUrl, '/api/backups/ledger', {
       method: 'POST',
@@ -1046,7 +1336,8 @@ async function verifyPristineCurrencyApi() {
 
     evidence = {
       pristineCurrencyChanges: 2,
-      currencyRequestGuards: 8,
+      currencyRequestGuards: 9,
+      recurringTransferCurrencyLocks: 1,
       currencyAccountCascades: 4,
       currencyBackupRestores: 2,
     }
@@ -1075,6 +1366,518 @@ async function verifyPristineCurrencyApi() {
   assert.deepEqual(cleanupVerification[2].results, [{ accountMismatches: 0 }])
   assert.deepEqual(cleanupVerification[3].results, [])
   return evidence
+}
+
+async function recurringTransferNeutralitySnapshot(baseUrl, month) {
+  const [summary, transactionSummary, transactionExport, netWorth, payeeSuggestions] = await Promise.all([
+    api(baseUrl, `/api/summary?month=${month}`),
+    api(baseUrl, `/api/transactions/summary?month=${month}`),
+    exportTransactionCsv(baseUrl, { month }),
+    api(baseUrl, `/api/reports/net-worth?month=${month}`),
+    api(baseUrl, '/api/payee-suggestions'),
+  ])
+  for (const result of [summary, transactionSummary, transactionExport, netWorth, payeeSuggestions]) {
+    assert.equal(result.response.status, 200, JSON.stringify(result.payload))
+  }
+  return {
+    summary: summary.payload.data,
+    transactionSummary: transactionSummary.payload.data,
+    transactionExport: transactionExport.payload,
+    netWorth: netWorth.payload.data,
+    payeeSuggestions: payeeSuggestions.payload.data,
+  }
+}
+
+async function verifyRecurringTransferRules(baseUrl, today, month) {
+  const tomorrow = shiftCalendarDay(today, 1)
+  const createAccount = async (body) => {
+    const result = await api(baseUrl, '/api/accounts', { method: 'POST', body })
+    assert.equal(result.response.status, 201, JSON.stringify(result.payload))
+    return result.payload.data
+  }
+  const source = await createAccount({
+    name: 'Scheduled savings source',
+    type: 'bank',
+    openingBalanceMinor: 120_000,
+    openingBalanceOn: today,
+  })
+  const destination = await createAccount({
+    name: 'Scheduled savings destination',
+    type: 'bank',
+    openingBalanceMinor: 30_000,
+    openingBalanceOn: today,
+  })
+  const delayed = await createAccount({
+    name: 'Future opening transfer source',
+    type: 'bank',
+    openingBalanceMinor: 50_000,
+    openingBalanceOn: tomorrow,
+  })
+  const disabled = await createAccount({
+    name: 'Disabled scheduled transfer account',
+    type: 'bank',
+  })
+  const disabledResult = await api(baseUrl, `/api/accounts/${disabled.id}`, {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: disabled.updatedAt },
+  })
+  assert.equal(disabledResult.response.status, 200, JSON.stringify(disabledResult.payload))
+
+  const ruleIds = {
+    main: '70000000-0000-4000-8000-000000000001',
+    pause: '70000000-0000-4000-8000-000000000002',
+    opening: '70000000-0000-4000-8000-000000000003',
+    race: '70000000-0000-4000-8000-000000000004',
+    cron: '70000000-0000-4000-8000-000000000005',
+  }
+  const baseRule = {
+    id: ruleIds.main,
+    name: 'Automatic emergency savings',
+    amountMinor: 15_000,
+    currency: 'HKD',
+    fromAccountId: source.id,
+    toAccountId: destination.id,
+    frequency: 'daily',
+    scheduleStartsOn: today,
+    scheduleEndsOn: today,
+    isActive: true,
+    note: 'Confirm funds and the actual bank transfer',
+  }
+
+  const crossOrigin = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: { ...baseRule, id: '70000000-0000-4000-8000-000000000006' },
+  })
+  assert.equal(crossOrigin.response.status, 403)
+  assert.equal(crossOrigin.payload.error.code, 'ORIGIN_FORBIDDEN')
+
+  for (const [body, expectedCode] of [
+    [{ ...baseRule, id: '70000000-0000-4000-8000-000000000007', toAccountId: source.id }, 'VALIDATION_ERROR'],
+    [{ ...baseRule, id: '70000000-0000-4000-8000-000000000008', fromAccountId: 999_999 }, 'ACCOUNT_INVALID'],
+    [{ ...baseRule, id: '70000000-0000-4000-8000-000000000009', toAccountId: disabled.id }, 'ACCOUNT_INVALID'],
+    [{ ...baseRule, id: '70000000-0000-4000-8000-000000000010', currency: 'USD' }, 'ACCOUNT_INVALID'],
+    [{ ...baseRule, id: '70000000-0000-4000-8000-000000000011', firstOccurrenceOn: tomorrow }, 'VALIDATION_ERROR'],
+  ]) {
+    const rejected = await api(baseUrl, '/api/recurring-transfer-rules', {
+      method: 'POST',
+      body,
+    })
+    assert.equal(rejected.response.status, 400, JSON.stringify(rejected.payload))
+    assert.equal(rejected.payload.error.code, expectedCode)
+  }
+
+  const created = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: baseRule,
+  })
+  assert.equal(created.response.status, 201, JSON.stringify(created.payload))
+  assert.equal(created.payload.data.scheduleEndsOn, today)
+  assert.equal(created.payload.data.nextOccurrenceOn, today)
+  assert.equal(created.payload.data.fromAccountName, source.name)
+  assert.equal(created.payload.data.toAccountName, destination.name)
+
+  const replayed = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: baseRule,
+  })
+  assert.equal(replayed.response.status, 200, JSON.stringify(replayed.payload))
+  const idConflict = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: { ...baseRule, amountMinor: baseRule.amountMinor + 1 },
+  })
+  assert.equal(idConflict.response.status, 409)
+  assert.equal(idConflict.payload.error.code, 'ID_CONFLICT')
+
+  const [listed, fetched] = await Promise.all([
+    api(baseUrl, '/api/recurring-transfer-rules'),
+    api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.main}`),
+  ])
+  assert.equal(listed.response.status, 200)
+  assert(listed.payload.data.some(({ id }) => id === ruleIds.main))
+  assert.equal(fetched.response.status, 200)
+  assert.deepEqual(fetched.payload.data, created.payload.data)
+
+  for (const account of [source, destination]) {
+    const guarded = await api(baseUrl, `/api/accounts/${account.id}`, {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: account.updatedAt },
+    })
+    assert.equal(guarded.response.status, 409, JSON.stringify(guarded.payload))
+    assert.equal(guarded.payload.error.code, 'REFERENCE_ACTIVE_RULES')
+  }
+
+  const incompatibleCachedUpdate = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.main}`,
+    {
+      method: 'PUT',
+      body: {
+        name: baseRule.name,
+        amountMinor: baseRule.amountMinor,
+        currency: baseRule.currency,
+        fromAccountId: baseRule.fromAccountId,
+        toAccountId: baseRule.toAccountId,
+        frequency: baseRule.frequency,
+        scheduleStartsOn: tomorrow,
+        isActive: true,
+        note: baseRule.note,
+        revision: created.payload.data.revision,
+      },
+    },
+  )
+  assert.equal(incompatibleCachedUpdate.response.status, 409)
+  assert.equal(
+    incompatibleCachedUpdate.payload.error.code,
+    'RECURRING_TRANSFER_RULE_VERSION_CONFLICT',
+  )
+  const afterRejectedCachedUpdate = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.main}`,
+  )
+  assert.equal(afterRejectedCachedUpdate.payload.data.revision, created.payload.data.revision)
+  assert.equal(afterRejectedCachedUpdate.payload.data.scheduleEndsOn, today)
+
+  const compatibleCachedUpdate = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.main}`,
+    {
+      method: 'PUT',
+      body: {
+        name: 'Automatic emergency savings (cached edit)',
+        amountMinor: baseRule.amountMinor,
+        currency: baseRule.currency,
+        fromAccountId: baseRule.fromAccountId,
+        toAccountId: baseRule.toAccountId,
+        frequency: baseRule.frequency,
+        scheduleStartsOn: today,
+        isActive: true,
+        note: baseRule.note,
+        revision: created.payload.data.revision,
+      },
+    },
+  )
+  assert.equal(compatibleCachedUpdate.response.status, 200, JSON.stringify(compatibleCachedUpdate.payload))
+  assert.equal(compatibleCachedUpdate.payload.data.scheduleEndsOn, today)
+
+  const callerProvenance = await api(baseUrl, '/api/transfers', {
+    method: 'POST',
+    body: {
+      id: '70000000-0000-4000-8000-000000000099',
+      amountMinor: 1_000,
+      currency: 'HKD',
+      fromAccountId: source.id,
+      toAccountId: destination.id,
+      occurredOn: today,
+      fromCleared: false,
+      toCleared: false,
+      note: '',
+      recurringTransferRuleId: ruleIds.main,
+      recurringTransferRuleName: baseRule.name,
+      recurrenceDueOn: today,
+      recurringOccurrenceKey: `${ruleIds.main}:${today}`,
+    },
+  })
+  assert.equal(callerProvenance.response.status, 400)
+  assert.equal(callerProvenance.payload.error.code, 'VALIDATION_ERROR')
+
+  const balancesBefore = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  assert.equal(balancesBefore.response.status, 200)
+  const sourceBefore = balancesBefore.payload.data.find(({ accountId }) => accountId === source.id)
+  const destinationBefore = balancesBefore.payload.data.find(
+    ({ accountId }) => accountId === destination.id,
+  )
+  assert(sourceBefore)
+  assert(destinationBefore)
+  const neutralityBefore = await recurringTransferNeutralitySnapshot(baseUrl, month)
+
+  const firstRun = await api(baseUrl, '/api/recurring-transfer-rules/run-due', {
+    method: 'POST',
+    body: { asOf: today },
+  })
+  assert.equal(firstRun.response.status, 200, JSON.stringify(firstRun.payload))
+  assert.equal(firstRun.payload.data.created, 1)
+  assert.equal(firstRun.payload.data.blocked, 0)
+  assert.equal(firstRun.payload.data.failed, 0)
+  const secondRun = await api(baseUrl, '/api/recurring-transfer-rules/run-due', {
+    method: 'POST',
+    body: { asOf: today },
+  })
+  assert.equal(secondRun.response.status, 200)
+  assert.equal(secondRun.payload.data.created, 0)
+
+  const transfersAfterRun = await api(baseUrl, `/api/transfers?month=${month}`)
+  assert.equal(transfersAfterRun.response.status, 200)
+  const generated = transfersAfterRun.payload.data.find(
+    ({ recurringTransferRuleId }) => recurringTransferRuleId === ruleIds.main,
+  )
+  assert(generated)
+  assert.equal(generated.amountMinor, baseRule.amountMinor)
+  assert.equal(generated.currency, 'HKD')
+  assert.equal(generated.fromAccountId, source.id)
+  assert.equal(generated.toAccountId, destination.id)
+  assert.equal(generated.occurredOn, today)
+  assert.equal(generated.fromCleared, false)
+  assert.equal(generated.toCleared, false)
+  assert.equal(generated.recurringTransferRuleName, compatibleCachedUpdate.payload.data.name)
+  assert.equal(generated.recurrenceDueOn, today)
+  assert.equal(generated.recurringOccurrenceKey, `${ruleIds.main}:${today}`)
+
+  const balancesAfter = await api(baseUrl, `/api/accounts/balances?month=${month}`)
+  const sourceAfter = balancesAfter.payload.data.find(({ accountId }) => accountId === source.id)
+  const destinationAfter = balancesAfter.payload.data.find(
+    ({ accountId }) => accountId === destination.id,
+  )
+  assert(sourceAfter)
+  assert(destinationAfter)
+  assert.equal(sourceAfter.recordedBalance, sourceBefore.recordedBalance - baseRule.amountMinor)
+  assert.equal(destinationAfter.recordedBalance, destinationBefore.recordedBalance + baseRule.amountMinor)
+  assert.equal(sourceAfter.clearedBalance, sourceBefore.clearedBalance)
+  assert.equal(destinationAfter.clearedBalance, destinationBefore.clearedBalance)
+  assert.equal(sourceAfter.unclearedCount, sourceBefore.unclearedCount + 1)
+  assert.equal(destinationAfter.unclearedCount, destinationBefore.unclearedCount + 1)
+  assert.equal(
+    sourceAfter.recordedBalance + destinationAfter.recordedBalance,
+    sourceBefore.recordedBalance + destinationBefore.recordedBalance,
+  )
+
+  for (const [account, direction, amountMinor] of [
+    [source, 'out', -baseRule.amountMinor],
+    [destination, 'in', baseRule.amountMinor],
+  ]) {
+    const register = await api(
+      baseUrl,
+      `/api/accounts/register?month=${month}&accountId=${account.id}`,
+    )
+    assert.equal(register.response.status, 200, JSON.stringify(register.payload))
+    const entry = register.payload.data.entries.find(({ sourceId }) => sourceId === generated.id)
+    assert(entry)
+    assert.equal(entry.kind, 'transfer')
+    assert.equal(entry.transferDirection, direction)
+    assert.equal(entry.amountMinor, amountMinor)
+    assert.equal(entry.cleared, false)
+  }
+
+  const neutralityAfterGeneration = await recurringTransferNeutralitySnapshot(baseUrl, month)
+  assert.deepEqual(neutralityAfterGeneration, neutralityBefore)
+  const completed = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.main}`)
+  assert.equal(completed.response.status, 200)
+  assert.equal(completed.payload.data.isActive, false)
+  assert.equal(completed.payload.data.nextOccurrenceOn, tomorrow)
+  assert.equal(completed.payload.data.lastOccurrenceOn, today)
+  assert.equal(completed.payload.data.generatedCount, 1)
+
+  const rejectedProvenanceEdit = await api(baseUrl, `/api/transfers/${generated.id}`, {
+    method: 'PUT',
+    body: {
+      amountMinor: 17_000,
+      currency: 'HKD',
+      fromAccountId: destination.id,
+      toAccountId: source.id,
+      occurredOn: tomorrow,
+      fromCleared: true,
+      toCleared: true,
+      note: 'User reconciled and materially edited this transfer',
+      updatedAt: generated.updatedAt,
+      recurringTransferRuleId: ruleIds.main,
+    },
+  })
+  assert.equal(rejectedProvenanceEdit.response.status, 400)
+  assert.equal(rejectedProvenanceEdit.payload.error.code, 'VALIDATION_ERROR')
+  const editedTransfer = await api(baseUrl, `/api/transfers/${generated.id}`, {
+    method: 'PUT',
+    body: {
+      amountMinor: 17_000,
+      currency: 'HKD',
+      fromAccountId: destination.id,
+      toAccountId: source.id,
+      occurredOn: tomorrow,
+      fromCleared: true,
+      toCleared: true,
+      note: 'User reconciled and materially edited this transfer',
+      updatedAt: generated.updatedAt,
+    },
+  })
+  assert.equal(editedTransfer.response.status, 200, JSON.stringify(editedTransfer.payload))
+  assert.equal(editedTransfer.payload.data.recurringTransferRuleId, ruleIds.main)
+  assert.equal(editedTransfer.payload.data.recurringTransferRuleName, generated.recurringTransferRuleName)
+  assert.equal(editedTransfer.payload.data.recurrenceDueOn, today)
+  assert.equal(editedTransfer.payload.data.recurringOccurrenceKey, `${ruleIds.main}:${today}`)
+
+  const editedRule = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.main}`, {
+    method: 'PUT',
+    body: {
+      name: 'Future savings plan changed after history',
+      amountMinor: 22_000,
+      currency: 'HKD',
+      fromAccountId: destination.id,
+      toAccountId: source.id,
+      frequency: 'weekly',
+      scheduleStartsOn: today,
+      scheduleEndsOn: today,
+      isActive: true,
+      note: 'Current rule no longer matches its historical transfer',
+      revision: completed.payload.data.revision,
+    },
+  })
+  assert.equal(editedRule.response.status, 200, JSON.stringify(editedRule.payload))
+  assert.equal(editedRule.payload.data.isActive, false)
+  assert.equal(editedRule.payload.data.name, 'Future savings plan changed after history')
+  const deletedRule = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.main}`, {
+    method: 'DELETE',
+    body: { revision: editedRule.payload.data.revision },
+  })
+  assert.equal(deletedRule.response.status, 200)
+  const missingDeletedRule = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.main}`,
+  )
+  assert.equal(missingDeletedRule.response.status, 404)
+  assert.equal(missingDeletedRule.payload.error.code, 'RECURRING_TRANSFER_RULE_NOT_FOUND')
+  const historicalTransfer = await api(baseUrl, `/api/transfers/${generated.id}`)
+  assert.equal(historicalTransfer.response.status, 200)
+  assert.equal(historicalTransfer.payload.data.recurringTransferRuleName, generated.recurringTransferRuleName)
+  assert.equal(historicalTransfer.payload.data.recurrenceDueOn, today)
+
+  const pauseRuleBody = {
+    ...baseRule,
+    id: ruleIds.pause,
+    name: 'Pause, resume, and skip transfer',
+  }
+  const pauseRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: pauseRuleBody,
+  })
+  assert.equal(pauseRule.response.status, 201)
+  const paused = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
+    method: 'PATCH',
+    body: { isActive: false, revision: pauseRule.payload.data.revision },
+  })
+  assert.equal(paused.response.status, 200)
+  const stalePause = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
+    method: 'PATCH',
+    body: { isActive: true, revision: pauseRule.payload.data.revision },
+  })
+  assert.equal(stalePause.response.status, 409)
+  const resumed = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
+    method: 'PATCH',
+    body: { isActive: true, revision: paused.payload.data.revision },
+  })
+  assert.equal(resumed.response.status, 200)
+  const skipped = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/skip`, {
+    method: 'POST',
+    body: { revision: resumed.payload.data.revision, nextOccurrenceOn: today },
+  })
+  assert.equal(skipped.response.status, 200)
+  assert.equal(skipped.payload.data.nextOccurrenceOn, tomorrow)
+  assert.equal(skipped.payload.data.isActive, false)
+  assert.equal(skipped.payload.data.generatedCount, 0)
+
+  const openingRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.opening,
+      name: 'Opening boundary transfer',
+      fromAccountId: delayed.id,
+      toAccountId: source.id,
+    },
+  })
+  assert.equal(openingRule.response.status, 201, JSON.stringify(openingRule.payload))
+  const blockedOpeningRun = await api(baseUrl, '/api/recurring-transfer-rules/run-due', {
+    method: 'POST',
+    body: { asOf: today },
+  })
+  assert.equal(blockedOpeningRun.response.status, 200)
+  assert.equal(blockedOpeningRun.payload.data.created, 0)
+  assert.equal(blockedOpeningRun.payload.data.blocked, 1)
+  const blockedOpeningRule = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.opening}`,
+  )
+  assert.equal(blockedOpeningRule.payload.data.lastErrorCode, 'ACCOUNT_OPENING_DATE_AFTER_DUE')
+  assert.equal(blockedOpeningRule.payload.data.nextOccurrenceOn, today)
+  assert.equal(blockedOpeningRule.payload.data.generatedCount, 0)
+  assert.equal(
+    (await api(baseUrl, `/api/transfers?month=${month}`)).payload.data.some(
+      ({ recurringTransferRuleId }) => recurringTransferRuleId === ruleIds.opening,
+    ),
+    false,
+  )
+  const skippedOpening = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.opening}/skip`, {
+    method: 'POST',
+    body: { revision: blockedOpeningRule.payload.data.revision, nextOccurrenceOn: today },
+  })
+  assert.equal(skippedOpening.response.status, 200)
+  assert.equal(skippedOpening.payload.data.isActive, false)
+
+  const raceRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: { ...baseRule, id: ruleIds.race, name: 'Concurrent transfer run' },
+  })
+  assert.equal(raceRule.response.status, 201)
+  const concurrentRuns = await Promise.all([
+    api(baseUrl, '/api/recurring-transfer-rules/run-due', { method: 'POST', body: { asOf: today } }),
+    api(baseUrl, '/api/recurring-transfer-rules/run-due', { method: 'POST', body: { asOf: today } }),
+  ])
+  assert(concurrentRuns.every(({ response }) => response.status === 200))
+  assert.equal(
+    concurrentRuns.reduce((total, result) => total + result.payload.data.created, 0),
+    1,
+  )
+  const raceTransfers = (await api(baseUrl, `/api/transfers?month=${month}`)).payload.data.filter(
+    ({ recurringTransferRuleId }) => recurringTransferRuleId === ruleIds.race,
+  )
+  assert.equal(raceTransfers.length, 1)
+
+  const cronRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: { ...baseRule, id: ruleIds.cron, name: 'Scheduled worker transfer' },
+  })
+  assert.equal(cronRule.response.status, 201)
+  const scheduled = await fetch(`${baseUrl}/__scheduled?cron=5+16+*+*+*`)
+  assert.equal(scheduled.status, 200)
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+  const cronTransfers = (await api(baseUrl, `/api/transfers?month=${month}`)).payload.data.filter(
+    ({ recurringTransferRuleId }) => recurringTransferRuleId === ruleIds.cron,
+  )
+  assert.equal(cronTransfers.length, 1)
+  const repeatedScheduled = await fetch(`${baseUrl}/__scheduled?cron=5+16+*+*+*`)
+  assert.equal(repeatedScheduled.status, 200)
+  await new Promise((resolveDelay) => setTimeout(resolveDelay, 100))
+  assert.equal(
+    (await api(baseUrl, `/api/transfers?month=${month}`)).payload.data.filter(
+      ({ recurringTransferRuleId }) => recurringTransferRuleId === ruleIds.cron,
+    ).length,
+    1,
+  )
+
+  const neutralityAfterAll = await recurringTransferNeutralitySnapshot(baseUrl, month)
+  assert.deepEqual(neutralityAfterAll, neutralityBefore)
+  for (const account of [source, destination]) {
+    const released = await api(baseUrl, `/api/accounts/${account.id}`, {
+      method: 'PATCH',
+      body: { isActive: false, updatedAt: account.updatedAt },
+    })
+    assert.equal(released.response.status, 200, JSON.stringify(released.payload))
+  }
+
+  return {
+    ruleIds,
+    generatedTransferIds: [generated.id, raceTransfers[0].id, cronTransfers[0].id],
+    historicalTransfer: historicalTransfer.payload.data,
+    evidence: {
+      recurringTransferRuleLifecycles: 5,
+      recurringTransferRuleGuards: 13,
+      recurringTransferRuns: 8,
+      recurringTransferOccurrences: 3,
+      recurringTransferAccountingChecks: 8,
+      recurringTransferReportNeutralityChecks: 5,
+      recurringTransferReferenceReleases: 2,
+      recurringTransferOpeningDateBlocks: 1,
+      recurringTransferCronRuns: 2,
+    },
+  }
 }
 
 async function verifyWorkerApi() {
@@ -4316,6 +5119,8 @@ async function verifyWorkerApi() {
   const afterRepeatedCron = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterRepeatedCron.payload.data.filter((item) => item.recurringRuleId === ruleIds.cron).length, 1)
 
+  const recurringTransfers = await verifyRecurringTransferRules(baseUrl, today, month)
+
   const navigationBackupDownload = await api(baseUrl, '/api/backups/ledger')
   assert.equal(navigationBackupDownload.response.status, 404)
   assert.equal(navigationBackupDownload.payload.error.code, 'NOT_FOUND')
@@ -4333,7 +5138,7 @@ async function verifyWorkerApi() {
   const backup = backupDownload.payload
   assert.equal(backup.format, 'hushledger-ledger-backup')
   assert.equal(backup.version, 1)
-  assert.equal(backup.schemaVersion, 16)
+  assert.equal(backup.schemaVersion, 17)
   assert.equal(backup.data.currency, 'HKD')
   assert.match(backup.checksum.digest, /^[0-9a-f]{64}$/)
   assert(backup.data.transactions.length > 200)
@@ -4348,10 +5153,59 @@ async function verifyWorkerApi() {
   assert(backup.data.accounts.some(({ openingBalanceMinor, openingBalanceOn }) => (
     openingBalanceMinor === 100_000 && openingBalanceOn === today
   )))
-  assert.equal(backup.data.accountTransfers.length, 1)
-  assert.equal(backup.data.accountTransfers[0].id, transferBody.id)
-  assert.equal(backup.data.accountTransfers[0].fromCleared, true)
-  assert.equal(backup.data.accountTransfers[0].toCleared, true)
+  assert.equal(backup.data.accountTransfers.length, 4)
+  const manualBackupTransfer = backup.data.accountTransfers.find(({ id }) => id === transferBody.id)
+  assert(manualBackupTransfer)
+  assert.equal(manualBackupTransfer.fromCleared, true)
+  assert.equal(manualBackupTransfer.toCleared, true)
+  assert.equal(manualBackupTransfer.recurringTransferRuleId, null)
+  assert.equal(manualBackupTransfer.recurringTransferRuleName, null)
+  assert.equal(manualBackupTransfer.recurrenceDueOn, null)
+  assert.equal(manualBackupTransfer.recurringOccurrenceKey, null)
+  const historicalBackupTransfer = backup.data.accountTransfers.find(
+    ({ id }) => id === recurringTransfers.historicalTransfer.id,
+  )
+  assert(historicalBackupTransfer)
+  assert.equal(historicalBackupTransfer.amountMinor, recurringTransfers.historicalTransfer.amountMinor)
+  assert.equal(historicalBackupTransfer.fromAccountId, recurringTransfers.historicalTransfer.fromAccountId)
+  assert.equal(historicalBackupTransfer.toAccountId, recurringTransfers.historicalTransfer.toAccountId)
+  assert.equal(historicalBackupTransfer.occurredOn, recurringTransfers.historicalTransfer.occurredOn)
+  assert.equal(historicalBackupTransfer.fromCleared, true)
+  assert.equal(historicalBackupTransfer.toCleared, true)
+  assert.equal(historicalBackupTransfer.recurringTransferRuleId, recurringTransfers.ruleIds.main)
+  assert.equal(
+    historicalBackupTransfer.recurringTransferRuleName,
+    recurringTransfers.historicalTransfer.recurringTransferRuleName,
+  )
+  assert.equal(historicalBackupTransfer.recurrenceDueOn, today)
+  assert.equal(
+    historicalBackupTransfer.recurringOccurrenceKey,
+    `${recurringTransfers.ruleIds.main}:${today}`,
+  )
+  assert.deepEqual(
+    backup.data.accountTransfers
+      .filter(({ id }) => recurringTransfers.generatedTransferIds.includes(id))
+      .map(({ recurringTransferRuleId }) => recurringTransferRuleId)
+      .sort(),
+    [
+      recurringTransfers.ruleIds.cron,
+      recurringTransfers.ruleIds.main,
+      recurringTransfers.ruleIds.race,
+    ].sort(),
+  )
+  const historicalRuleSnapshot = backup.data.recurringTransferRules.find(
+    ({ id }) => id === recurringTransfers.ruleIds.main,
+  )
+  assert(historicalRuleSnapshot)
+  assert.equal(historicalRuleSnapshot.name, 'Future savings plan changed after history')
+  assert.equal(historicalRuleSnapshot.amountMinor, 22_000)
+  assert.equal(historicalRuleSnapshot.frequency, 'weekly')
+  assert.equal(historicalRuleSnapshot.isActive, false)
+  assert.match(historicalRuleSnapshot.deletedAt, /Z$/)
+  assert.notEqual(
+    historicalRuleSnapshot.name,
+    historicalBackupTransfer.recurringTransferRuleName,
+  )
   assert.equal(backup.data.emergencyFundGoals.length, 1)
   assert.equal(backup.data.emergencyFundGoals[0].id, 1)
   assert.equal(
@@ -4401,7 +5255,14 @@ async function verifyWorkerApi() {
   assert.equal(originalPreview.payload.data.currentCurrency, 'HKD')
   assert.equal(originalPreview.payload.data.backupCurrency, 'HKD')
   assert.equal(originalPreview.payload.data.backupCounts.transactions, backup.data.transactions.length)
-  assert.equal(originalPreview.payload.data.backupCounts.accountTransfers, 1)
+  assert.equal(
+    originalPreview.payload.data.backupCounts.accountTransfers,
+    backup.data.accountTransfers.length,
+  )
+  assert.equal(
+    originalPreview.payload.data.backupCounts.recurringTransferRules,
+    backup.data.recurringTransferRules.length,
+  )
   assert.equal(originalPreview.payload.data.backupCounts.emergencyFundGoals, 1)
   assert.equal(originalPreview.payload.data.currentDigest, originalPreview.payload.data.backupDigest)
 
@@ -4508,6 +5369,40 @@ async function verifyWorkerApi() {
   const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
 
+  const schema16Backup = withoutRecurringTransferData(backup)
+  schema16Backup.schemaVersion = 16
+  schema16Backup.checksum.digest = backupChecksum(schema16Backup)
+  const schema16Preview = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: schema16Backup },
+  })
+  assert.equal(schema16Preview.response.status, 200, JSON.stringify(schema16Preview.payload))
+  const schema16Restore = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: {
+      mode: 'commit',
+      backup: schema16Backup,
+      expectedCurrentDigest: schema16Preview.payload.data.currentDigest,
+      expectedRevision: schema16Preview.payload.data.currentRevision,
+      confirmation: 'RESTORE',
+    },
+  })
+  assert.equal(schema16Restore.response.status, 200, JSON.stringify(schema16Restore.payload))
+  const upgradedSchema16Backup = await downloadLedgerBackup(baseUrl)
+  assert.equal(upgradedSchema16Backup.payload.schemaVersion, 17)
+  assert.deepEqual(upgradedSchema16Backup.payload.data.recurringTransferRules, [])
+  assert(upgradedSchema16Backup.payload.data.accountTransfers.every(({
+    recurringTransferRuleId,
+    recurringTransferRuleName,
+    recurrenceDueOn,
+    recurringOccurrenceKey,
+  }) => (
+    recurringTransferRuleId === null
+    && recurringTransferRuleName === null
+    && recurrenceDueOn === null
+    && recurringOccurrenceKey === null
+  )))
+
   const schema15Backup = withoutRecurringScheduleEnds(backup)
   schema15Backup.schemaVersion = 15
   schema15Backup.checksum.digest = backupChecksum(schema15Backup)
@@ -4528,7 +5423,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema15Restore.response.status, 200, JSON.stringify(schema15Restore.payload))
   const upgradedSchema15Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 16)
+  assert.equal(upgradedSchema15Backup.payload.schemaVersion, 17)
   assert(upgradedSchema15Backup.payload.data.recurringRules.every(
     ({ scheduleEndsOn }) => scheduleEndsOn === null,
   ))
@@ -4564,7 +5459,7 @@ async function verifyWorkerApi() {
   })
   assert.equal(schema13Restore.response.status, 200, JSON.stringify(schema13Restore.payload))
   const upgradedSchema13Backup = await downloadLedgerBackup(baseUrl)
-  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 16)
+  assert.equal(upgradedSchema13Backup.payload.schemaVersion, 17)
   assert.equal(upgradedSchema13Backup.payload.data.currency, 'HKD')
 
   const schema12Backup = withoutYearlyRecurringData(backup)
@@ -4604,7 +5499,10 @@ async function verifyWorkerApi() {
     body: { mode: 'preview', backup: schema11Backup },
   })
   assert.equal(schema11Preview.response.status, 200, JSON.stringify(schema11Preview.payload))
-  assert.equal(schema11Preview.payload.data.backupCounts.accountTransfers, 1)
+  assert.equal(
+    schema11Preview.payload.data.backupCounts.accountTransfers,
+    backup.data.accountTransfers.length,
+  )
   assert.equal(schema11Preview.payload.data.backupCounts.emergencyFundGoals, 0)
   const schema11Restore = await api(baseUrl, '/api/backups/ledger', {
     method: 'POST',
@@ -4619,7 +5517,10 @@ async function verifyWorkerApi() {
   assert.equal(schema11Restore.response.status, 200, JSON.stringify(schema11Restore.payload))
   const upgradedSchema11Backup = await downloadLedgerBackup(baseUrl)
   assert.equal(upgradedSchema11Backup.payload.data.currency, 'HKD')
-  assert.equal(upgradedSchema11Backup.payload.data.accountTransfers.length, 1)
+  assert.equal(
+    upgradedSchema11Backup.payload.data.accountTransfers.length,
+    backup.data.accountTransfers.length,
+  )
   assert.deepEqual(upgradedSchema11Backup.payload.data.emergencyFundGoals, [])
   assert(upgradedSchema11Backup.payload.data.accounts.every(({
     openingBalanceMinor,
@@ -4797,7 +5698,8 @@ async function verifyWorkerApi() {
     accountRegisterGuards: 9,
     netWorthTrendQueries: 2,
     netWorthTrendGuards: 3,
-    ledgerBackupTables: 7,
+    ledgerBackupTables: 8,
+    ledgerSchema16Restores: 1,
     ledgerSchema15Restores: 1,
     lockedCurrencyChanges: 1,
     ledgerSchema13Restores: 1,
@@ -4808,6 +5710,7 @@ async function verifyWorkerApi() {
     ledgerSchema8Restores: 1,
     ledgerRestoreStaleGuards: 2,
     ledgerRestoreTransactions: 1,
+    ...recurringTransfers.evidence,
   }
 }
 
@@ -4970,31 +5873,47 @@ async function verifyNextAiDrafts() {
 }
 
 async function stopWorker() {
-  if (!workerProcess || workerProcess.exitCode !== null) return
-  workerProcess.kill('SIGINT')
-  await Promise.race([
-    new Promise((resolveExit) => workerProcess.once('exit', resolveExit)),
-    new Promise((resolveTimeout) =>
-      setTimeout(() => {
-        if (workerProcess.exitCode === null) workerProcess.kill('SIGKILL')
-        resolveTimeout()
-      }, 3_000),
-    ),
-  ])
+  await stopProcessTree(workerProcess)
 }
 
 async function stopNext() {
-  if (!nextProcess || nextProcess.exitCode !== null) return
-  nextProcess.kill('SIGINT')
-  await Promise.race([
-    new Promise((resolveExit) => nextProcess.once('exit', resolveExit)),
-    new Promise((resolveTimeout) =>
-      setTimeout(() => {
-        if (nextProcess.exitCode === null) nextProcess.kill('SIGKILL')
-        resolveTimeout()
-      }, 3_000),
-    ),
-  ])
+  await stopProcessTree(nextProcess)
+}
+
+function processTreeRunning(child) {
+  if (!child?.pid) return false
+  if (!supportsProcessGroups) return child.exitCode === null
+  try {
+    process.kill(-child.pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function signalProcessTree(child, signal) {
+  if (!child?.pid) return
+  try {
+    if (supportsProcessGroups) process.kill(-child.pid, signal)
+    else if (child.exitCode === null) child.kill(signal)
+  } catch {
+    // The process tree already stopped between the liveness check and signal.
+  }
+}
+
+async function stopProcessTree(child) {
+  if (!processTreeRunning(child)) return
+  signalProcessTree(child, 'SIGINT')
+  const gracefulDeadline = Date.now() + 3_000
+  while (processTreeRunning(child) && Date.now() < gracefulDeadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 50))
+  }
+  if (!processTreeRunning(child)) return
+  signalProcessTree(child, 'SIGKILL')
+  const forcedDeadline = Date.now() + 1_000
+  while (processTreeRunning(child) && Date.now() < forcedDeadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25))
+  }
 }
 
 async function stopProvider() {
@@ -5017,8 +5936,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0016',
-      upgradeMigration: '0004-to-0016-preserved-data-fks-indexes-triggers-yearly-and-end-dates',
+      freshMigrations: '0001-0017',
+      upgradeMigration: '0004-to-0017-preserved-data-fks-indexes-triggers-yearly-end-dates-and-recurring-transfers',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

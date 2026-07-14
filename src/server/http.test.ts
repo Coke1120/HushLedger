@@ -4,6 +4,8 @@ import {
   apiRoute,
   guardMutationRequest,
   isLocalDevelopmentRequest,
+  jsonReferenceMutationResult,
+  jsonRecurringTransferMutationResult,
   MAX_JSON_BODY_BYTES,
   queryObject,
   readApiJson,
@@ -137,5 +139,31 @@ describe('API request helpers', () => {
     })
     assert.deepEqual(error.mock.calls[0]?.arguments, ['request_failed', { method: 'GET' }])
     assert.ok(!JSON.stringify(error.mock.calls).includes('secret database detail'))
+  })
+
+  it('returns a no-write conflict response for stale recurring-transfer mutations', async () => {
+    const response = jsonRecurringTransferMutationResult({ kind: 'version_conflict' })
+
+    assert.equal(response.status, 409)
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      error: {
+        code: 'RECURRING_TRANSFER_RULE_VERSION_CONFLICT',
+        message: '週期轉帳已被修改，請重新載入後再試',
+      },
+    })
+  })
+
+  it('names both recurring transactions and scheduled transfers in account remediation', async () => {
+    const response = jsonReferenceMutationResult({ kind: 'active_rules' })
+
+    assert.equal(response.status, 409)
+    assert.deepEqual(await response.json(), {
+      ok: false,
+      error: {
+        code: 'REFERENCE_ACTIVE_RULES',
+        message: '請先暫停或修改使用此項目的週期交易或排程轉帳',
+      },
+    })
   })
 })

@@ -17,6 +17,12 @@ import {
   recurringRuleSkipSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
+  recurringTransferRuleCreateSchema,
+  recurringTransferRuleDeleteSchema,
+  recurringTransferRuleIdSchema,
+  recurringTransferRuleSkipSchema,
+  recurringTransferRuleStatusSchema,
+  recurringTransferRuleUpdateSchema,
   transactionDeleteSchema,
   transactionCategoryBatchSchema,
   transactionClearingBatchSchema,
@@ -24,6 +30,7 @@ import {
   transactionInputSchema,
   transactionUpdateSchema,
   type RecurringGenerationResult,
+  type RecurringTransferGenerationResult,
   type Account,
   type AccountTransfer,
   type Category,
@@ -68,6 +75,17 @@ import {
   type ReferenceErrorCode,
   type UpdateRuleResult,
 } from '../server/recurring'
+import {
+  createRecurringTransferRule,
+  deleteRecurringTransferRule,
+  runDueRecurringTransferRules,
+  setRecurringTransferRuleStatus,
+  skipRecurringTransferRuleOccurrence,
+  updateRecurringTransferRule,
+  type RecurringTransferReferenceErrorCode,
+  type RecurringTransferRuleView,
+  type UpdateRecurringTransferRuleResult,
+} from '../server/recurringTransfers'
 import {
   createAccountTransfer,
   deleteAccountTransfer,
@@ -502,6 +520,146 @@ export async function runDueRecurringRulesAction(
   })
 }
 
+export async function createRecurringTransferRuleAction(
+  input: unknown,
+): Promise<ActionResult<RecurringTransferRuleView>> {
+  const denied = await accessDenied<RecurringTransferRuleView>()
+  if (denied) return denied
+
+  const parsed = recurringTransferRuleCreateSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('週期轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('create_recurring_transfer_rule', async () => {
+    const result = await createRecurringTransferRule(await getDatabase(), parsed.data)
+    if (result.kind === 'id_conflict') {
+      return actionError('ID_CONFLICT', '週期轉帳 ID 已用於另一筆資料')
+    }
+    if (result.kind === 'reference_invalid') {
+      return recurringTransferReferenceError(result.code)
+    }
+    return revalidatedSuccess(result.rule)
+  })
+}
+
+export async function updateRecurringTransferRuleAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<RecurringTransferRuleView>> {
+  const denied = await accessDenied<RecurringTransferRuleView>()
+  if (denied) return denied
+
+  const id = recurringTransferRuleIdSchema.safeParse(idInput)
+  if (!id.success) return invalidRecurringTransferRuleId(id.error.issues)
+
+  const parsed = recurringTransferRuleUpdateSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('週期轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('update_recurring_transfer_rule', async () =>
+    recurringTransferMutationResult(
+      await updateRecurringTransferRule(await getDatabase(), id.data, parsed.data),
+    ),
+  )
+}
+
+export async function setRecurringTransferRuleStatusAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<RecurringTransferRuleView>> {
+  const denied = await accessDenied<RecurringTransferRuleView>()
+  if (denied) return denied
+
+  const id = recurringTransferRuleIdSchema.safeParse(idInput)
+  if (!id.success) return invalidRecurringTransferRuleId(id.error.issues)
+
+  const parsed = recurringTransferRuleStatusSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('週期轉帳狀態不正確', parsed.error.issues)
+  }
+
+  return runAction('set_recurring_transfer_rule_status', async () =>
+    recurringTransferMutationResult(
+      await setRecurringTransferRuleStatus(await getDatabase(), id.data, parsed.data),
+    ),
+  )
+}
+
+export async function skipRecurringTransferRuleOccurrenceAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<RecurringTransferRuleView>> {
+  const denied = await accessDenied<RecurringTransferRuleView>()
+  if (denied) return denied
+
+  const id = recurringTransferRuleIdSchema.safeParse(idInput)
+  if (!id.success) return invalidRecurringTransferRuleId(id.error.issues)
+
+  const parsed = recurringTransferRuleSkipSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('略過週期轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('skip_recurring_transfer_rule_occurrence', async () =>
+    recurringTransferMutationResult(
+      await skipRecurringTransferRuleOccurrence(await getDatabase(), id.data, parsed.data),
+    ),
+  )
+}
+
+export async function deleteRecurringTransferRuleAction(
+  idInput: unknown,
+  input: unknown,
+): Promise<ActionResult<DeletedRule>> {
+  const denied = await accessDenied<DeletedRule>()
+  if (denied) return denied
+
+  const id = recurringTransferRuleIdSchema.safeParse(idInput)
+  if (!id.success) return invalidRecurringTransferRuleId(id.error.issues)
+
+  const parsed = recurringTransferRuleDeleteSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('刪除週期轉帳資料不正確', parsed.error.issues)
+  }
+
+  return runAction('delete_recurring_transfer_rule', async () => {
+    const result = await deleteRecurringTransferRule(
+      await getDatabase(),
+      id.data,
+      parsed.data.revision,
+    )
+    if (result.kind === 'not_found') {
+      return actionError('RECURRING_TRANSFER_RULE_NOT_FOUND', '找不到指定的週期轉帳')
+    }
+    if (result.kind === 'version_conflict') {
+      return actionError(
+        'RECURRING_TRANSFER_RULE_VERSION_CONFLICT',
+        '週期轉帳已被修改，請重新載入後再試',
+      )
+    }
+    return revalidatedSuccess({ id: result.id, deleted: true, revision: result.revision })
+  })
+}
+
+export async function runDueRecurringTransferRulesAction(
+  input: unknown = {},
+): Promise<ActionResult<RecurringTransferGenerationResult>> {
+  const denied = await accessDenied<RecurringTransferGenerationResult>()
+  if (denied) return denied
+
+  const parsed = emptyActionSchema.safeParse(input)
+  if (!parsed.success) {
+    return validationError('週期轉帳執行資料不正確', parsed.error.issues)
+  }
+
+  return runAction('run_due_recurring_transfer_rules', async () => {
+    const result = await runDueRecurringTransferRules(await getDatabase())
+    return revalidatedSuccess(result)
+  })
+}
+
 async function runAction<T>(
   name: string,
   operation: () => Promise<ActionResult<T>>,
@@ -527,6 +685,16 @@ function invalidRuleId<T>(issues: Parameters<typeof sanitizeValidationIssues>[0]
   return actionError<T>(
     'INVALID_RULE_ID',
     '週期交易 ID 不正確',
+    sanitizeValidationIssues(issues),
+  )
+}
+
+function invalidRecurringTransferRuleId<T>(
+  issues: Parameters<typeof sanitizeValidationIssues>[0],
+) {
+  return actionError<T>(
+    'INVALID_RULE_ID',
+    '週期轉帳 ID 不正確',
     sanitizeValidationIssues(issues),
   )
 }
@@ -575,7 +743,7 @@ function referenceMutationResult<T>(result: ReferenceMutationResult<T>): ActionR
     return actionError('REFERENCE_LAST_ACTIVE', '必須保留至少一個可用項目')
   }
   if (result.kind === 'active_rules') {
-    return actionError('REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
+    return actionError('REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易或排程轉帳')
   }
   if (result.kind === 'emergency_fund_goal') {
     return actionError('REFERENCE_EMERGENCY_FUND_GOAL', '請先移動或移除使用此帳戶的緊急備用金目標')
@@ -606,6 +774,32 @@ function recurringMutationResult(result: UpdateRuleResult): ActionResult<Recurri
     return actionError('RULE_VERSION_CONFLICT', '週期交易已被修改，請重新載入後再試')
   }
   if (result.kind === 'reference_invalid') return referenceError(result.code)
+  return revalidatedSuccess(result.rule)
+}
+
+function recurringTransferReferenceError<T>(
+  code: RecurringTransferReferenceErrorCode,
+): ActionResult<T> {
+  return code === 'ACCOUNT_OPENING_DATE_AFTER_DUE'
+    ? actionError(code, '週期轉帳日期不得早於帳戶期初結餘日期')
+    : actionError(code, '帳戶不存在、已停用或幣別不相符')
+}
+
+function recurringTransferMutationResult(
+  result: UpdateRecurringTransferRuleResult,
+): ActionResult<RecurringTransferRuleView> {
+  if (result.kind === 'not_found') {
+    return actionError('RECURRING_TRANSFER_RULE_NOT_FOUND', '找不到指定的週期轉帳')
+  }
+  if (result.kind === 'version_conflict') {
+    return actionError(
+      'RECURRING_TRANSFER_RULE_VERSION_CONFLICT',
+      '週期轉帳已被修改，請重新載入後再試',
+    )
+  }
+  if (result.kind === 'reference_invalid') {
+    return recurringTransferReferenceError(result.code)
+  }
   return revalidatedSuccess(result.rule)
 }
 

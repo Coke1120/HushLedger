@@ -18,6 +18,11 @@ import {
   recurringRuleSkipSchema,
   recurringRuleStatusSchema,
   recurringRuleUpdateSchema,
+  recurringTransferRuleCreateSchema,
+  recurringTransferRuleDeleteSchema,
+  recurringTransferRuleSkipSchema,
+  recurringTransferRuleStatusSchema,
+  recurringTransferRuleUpdateSchema,
   transactionDeleteSchema,
   transactionCategoryBatchSchema,
   transactionClearingBatchSchema,
@@ -419,6 +424,13 @@ describe('account transfer validation', () => {
       occurredOn: '2026-07-11T10:30:00.000Z',
     }).success, false)
     assert.equal(accountTransferInputSchema.safeParse({ ...transfer, categoryId: 3 }).success, false)
+    assert.equal(accountTransferInputSchema.safeParse({
+      ...transfer,
+      recurringTransferRuleId: '019f5087-229b-7ce3-a76f-95c833dcf254',
+      recurringTransferRuleName: 'Savings',
+      recurrenceDueOn: '2026-07-11',
+      recurringOccurrenceKey: '019f5087-229b-7ce3-a76f-95c833dcf254:2026-07-11',
+    }).success, false)
   })
 
   it('uses a conflict token without allowing an ID replacement', () => {
@@ -426,6 +438,11 @@ describe('account transfer validation', () => {
     const updatedAt = '2026-07-11T10:30:00.000Z'
     assert.equal(accountTransferUpdateSchema.safeParse({ ...fields, updatedAt }).success, true)
     assert.equal(accountTransferUpdateSchema.safeParse({ ...fields, id, updatedAt }).success, false)
+    assert.equal(accountTransferUpdateSchema.safeParse({
+      ...fields,
+      recurringTransferRuleId: '019f5087-229b-7ce3-a76f-95c833dcf254',
+      updatedAt,
+    }).success, false)
     const { toCleared: _toCleared, ...missingPostingState } = fields
     assert.equal(_toCleared, false)
     assert.equal(accountTransferUpdateSchema.safeParse({ ...missingPostingState, updatedAt }).success, false)
@@ -459,6 +476,97 @@ describe('account transfer validation', () => {
     ] as const) {
       assert.equal(accountTransferQuerySchema.safeParse(query).success, false)
     }
+  })
+})
+
+const validRecurringTransferRule = {
+  id: '019f5087-229b-7ce3-a76f-95c833dcf254',
+  name: 'Emergency savings',
+  amountMinor: 50_000,
+  currency: 'HKD',
+  fromAccountId: 1,
+  toAccountId: 2,
+  frequency: 'monthly',
+  scheduleStartsOn: '2026-08-01',
+  isActive: true,
+  note: '',
+} as const
+
+describe('recurring transfer rule validation', () => {
+  it('accepts strict create, update, status, skip, and delete payloads', () => {
+    for (const frequency of ['daily', 'weekly', 'monthly', 'yearly'] as const) {
+      assert.equal(recurringTransferRuleCreateSchema.safeParse({
+        ...validRecurringTransferRule,
+        frequency,
+      }).success, true)
+    }
+    assert.equal(recurringTransferRuleCreateSchema.safeParse({
+      ...validRecurringTransferRule,
+      scheduleEndsOn: null,
+    }).success, true)
+
+    const { id, ...update } = validRecurringTransferRule
+    assert.match(id, /-/)
+    assert.equal(recurringTransferRuleUpdateSchema.safeParse({
+      ...update,
+      revision: 1,
+    }).success, true)
+    assert.equal(recurringTransferRuleStatusSchema.safeParse({
+      isActive: false,
+      revision: 1,
+    }).success, true)
+    assert.equal(recurringTransferRuleSkipSchema.safeParse({
+      revision: 1,
+      nextOccurrenceOn: '2026-08-01',
+    }).success, true)
+    assert.equal(recurringTransferRuleDeleteSchema.safeParse({ revision: 1 }).success, true)
+  })
+
+  for (const [label, patch] of [
+    ['same account', { toAccountId: 1 }],
+    ['zero amount', { amountMinor: 0 }],
+    ['unsafe amount', { amountMinor: Number.MAX_SAFE_INTEGER + 1 }],
+    ['unsupported currency', { currency: 'JPY' }],
+    ['unsupported frequency', { frequency: 'quarterly' }],
+    ['invalid start date', { scheduleStartsOn: '2026-02-30' }],
+    ['end before start', { scheduleEndsOn: '2026-07-31' }],
+    ['caller-supplied provenance', {
+      recurringTransferRuleId: '019f5087-229b-7ce3-a76f-95c833dcf254',
+      recurrenceDueOn: '2026-08-01',
+    }],
+  ] as const) {
+    it(`rejects ${label}`, () => {
+      assert.equal(recurringTransferRuleCreateSchema.safeParse({
+        ...validRecurringTransferRule,
+        ...patch,
+      }).success, false)
+    })
+  }
+
+  it('accepts an omitted end on update but rejects a supplied end before start', () => {
+    const { id, ...update } = validRecurringTransferRule
+    assert.match(id, /-/)
+    assert.equal(recurringTransferRuleUpdateSchema.safeParse({
+      ...update,
+      revision: 1,
+    }).success, true)
+    assert.equal(recurringTransferRuleUpdateSchema.safeParse({
+      ...update,
+      scheduleEndsOn: '2026-07-31',
+      revision: 1,
+    }).success, false)
+    assert.equal(recurringTransferRuleUpdateSchema.safeParse({
+      ...update,
+      recurringOccurrenceKey: 'caller-value',
+      revision: 1,
+    }).success, false)
+  })
+
+  it('rejects a same-ID replay that tries to vary the first date outside the canonical schedule', () => {
+    assert.equal(recurringTransferRuleCreateSchema.safeParse({
+      ...validRecurringTransferRule,
+      firstOccurrenceOn: '2026-09-01',
+    }).success, false)
   })
 })
 

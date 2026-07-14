@@ -1,8 +1,8 @@
 # HushLedger product brief
 
-> Updated: 2026-07-13 (HKT)
+> Updated: 2026-07-14 (HKT)
 >
-> Status: core transaction and recurring-rule release implemented locally
+> Status: core transaction, recurring-rule, and scheduled-transfer release implemented locally
 >
 > Product languages: Traditional Chinese (`zh-Hant`), English (`en`), Japanese
 > (`ja`), and French (`fr`)
@@ -140,6 +140,13 @@ not operate an independent database server or a multi-user identity system.
 - Generate due transactions from Cloudflare Cron or the authenticated manual
   action.
 - Preserve generated history when a rule changes or is deleted.
+- Create a separate scheduled transfer between two distinct same-currency accounts
+  with an exact amount, cadence, start date, optional inclusive end date, active
+  state, and note. Pause, resume, skip once, edit, or delete it without changing
+  earlier transfer history.
+- Record each due transfer as one native account-transfer row with both posting
+  states uncleared. Explain that this automates only the ledger: the user must
+  confirm funds and complete the real bank or wallet transfer independently.
 - Use the overview forecast to see every ungenerated occurrence in the selected
   month in stable date order, with an explicit expansion control, exact monthly
   totals, and fixed day-1-anchored seven-day cash-flow periods. Generated ledger
@@ -242,12 +249,18 @@ to_cleared         destination posting-review state
 note               optional custom text
 created_at         internal UTC audit timestamp
 updated_at         optimistic concurrency token
+recurring_transfer_rule_id    nullable scheduled-transfer provenance
+recurring_transfer_rule_name  nullable immutable name snapshot
+recurrence_due_on              nullable immutable scheduled date
+recurring_occurrence_key       nullable immutable idempotency key
 ```
 
 A transfer is one atomic record, not paired income and expense rows. It is omitted
 from monthly totals, category reports, plans, trends, and transaction CSV export.
 New records require two active compatible accounts; an existing record may retain
-its archived references while being reviewed or corrected.
+its archived references while being reviewed or corrected. Ordinary edits preserve
+all scheduled-transfer provenance. Generated transfers start with both sides
+uncleared and remain outside income, expense, category, plan, trend, and CSV totals.
 
 ### Recurring rules
 
@@ -265,6 +278,12 @@ its archived references while being reviewed or corrected.
   internal scheduler cursor version to withstand retries and races.
 - Editing affects only ungenerated dates. Soft deletion never removes generated
   transactions.
+- Transaction rules and scheduled-transfer rules stay in separate tables and API
+  surfaces. Both share the calendar cadence and bounded cursor behavior, while a
+  scheduled-transfer occurrence creates exactly one native transfer and never a
+  synthetic income/expense pair.
+- An optional end date is inclusive. Once the cursor advances beyond it, the rule
+  is completed and inactive while its generated history stays editable.
 
 ## API surface
 
@@ -320,6 +339,14 @@ PATCH  /api/recurring-rules/:id/status
 POST   /api/recurring-rules/:id/skip
 DELETE /api/recurring-rules/:id
 POST   /api/recurring-rules/run-due
+GET    /api/recurring-transfer-rules
+GET    /api/recurring-transfer-rules/:id
+POST   /api/recurring-transfer-rules
+PUT    /api/recurring-transfer-rules/:id
+PATCH  /api/recurring-transfer-rules/:id/status
+POST   /api/recurring-transfer-rules/:id/skip
+DELETE /api/recurring-transfer-rules/:id
+POST   /api/recurring-transfer-rules/run-due
 ```
 
 Responses use one success/error envelope except the CSV and ledger-backup download
@@ -340,18 +367,20 @@ keys intentionally survive transaction deletion to prevent an accidental
 re-import. CSV remains a portable transaction view, not a full D1 backup or
 restore format.
 
-The schema-15 ledger JSON format covers the ledger currency and seven collections:
-accounts, categories, the emergency-fund checkpoint, recurring rules,
+The schema-17 ledger JSON format covers the ledger currency and eight collections:
+accounts, categories, the emergency-fund checkpoint, recurring transaction rules,
+scheduled-transfer rules,
 transactions, account transfers, and import tombstones. It excludes browser
 preferences and AI credentials. Its SHA-256
 checksum detects modification. Restore validates internal references, returns a
 no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-the currency and all seven collections. Schema-8 through schema-14 backups remain
+the currency and all eight collections. Schema-8 through schema-16 backups remain
 compatible; pre-schema-14 backups upgrade to HKD, and schema-8 through schema-12
-do not invent an emergency-fund checkpoint. Schema-14 and schema-15 restores
-preserve the selected currency and never convert amounts. Only schema 15 can
-contain yearly recurring rules. The in-app file limit is 7 MiB;
+do not invent an emergency-fund checkpoint. Schema-14 through schema-17 restores
+preserve the selected currency and never convert amounts. Only schema 17 contains
+scheduled-transfer rules or generated-transfer provenance; older formats upgrade
+without inventing either. The in-app file limit is 7 MiB;
 larger or database-level recovery uses Wrangler D1 export and restore. The browser
 stores only the most recent backup-preparation and integrity-check dates; this
 reminder does not prove that a backup file was retained off-platform.
@@ -424,9 +453,10 @@ reminder does not prove that a backup file was retained off-platform.
   atomic account transfers with two-sided posting review, plus migration 0013's
   optional single account-backed emergency-fund checkpoint and migration 0014's
   singleton ledger currency with database-enforced change locks, plus migration
-  0015's yearly recurring-rule frequency constraint.
+  0015's yearly recurring-rule frequency constraint, migration 0016's inclusive
+  recurring end dates, and migration 0017's scheduled account transfers.
 - Account/category create, rename, disable/re-enable/reorder, transaction,
-  summary, recurring-rule, and emergency-fund checkpoint APIs.
+  summary, recurring transaction/transfer rule, and emergency-fund checkpoint APIs.
 - Responsive dashboard, conflict-safe transaction create/edit/delete,
   selected-month, fixed-range, or all-history account/category/payee/type/clearing/search filters,
   conflict-safe bulk clearing and same-type recategorization,
@@ -439,10 +469,10 @@ reminder does not prove that a backup file was retained off-platform.
   recorded-balance emergency-fund progress,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,
-  recurring-rule management, language settings, and the pristine-ledger currency
+  recurring transaction and scheduled-transfer management, language settings, and the pristine-ledger currency
   setting.
-- Versioned schema-15 currency-plus-seven-collection JSON backup with schema-8
-  through schema-14 compatibility, SHA-256 integrity checking, preview-only
+- Versioned schema-17 currency-plus-eight-collection JSON backup with schema-8
+  through schema-16 compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only

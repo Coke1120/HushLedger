@@ -24,6 +24,8 @@ const apiErrorMessageKeys: Readonly<Record<string, MessageKey>> = {
   TRANSACTION_VERSION_CONFLICT: 'errorTransactionVersionConflict',
   RULE_NOT_FOUND: 'errorRuleNotFound',
   RULE_VERSION_CONFLICT: 'errorRuleVersionConflict',
+  RECURRING_TRANSFER_RULE_NOT_FOUND: 'errorRecurringTransferRuleNotFound',
+  RECURRING_TRANSFER_RULE_VERSION_CONFLICT: 'errorRecurringTransferRuleVersionConflict',
   REFERENCE_NOT_FOUND: 'errorReferenceNotFound',
   REFERENCE_VERSION_CONFLICT: 'errorReferenceVersionConflict',
   REFERENCE_NAME_CONFLICT: 'errorReferenceNameConflict',

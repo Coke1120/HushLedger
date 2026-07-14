@@ -1,5 +1,8 @@
 import type { ZodIssue } from 'zod'
 import type { ReferenceErrorCode, UpdateRuleResult } from './recurring'
+import type {
+  UpdateRecurringTransferRuleResult,
+} from './recurringTransfers'
 import type { ReferenceMutationResult, ReferenceOrderResult } from './referenceData'
 
 export const MAX_JSON_BODY_BYTES = 16 * 1024
@@ -222,6 +225,26 @@ export function jsonRecurringMutationResult(result: UpdateRuleResult) {
   return jsonSuccess(result.rule)
 }
 
+export function jsonRecurringTransferMutationResult(result: UpdateRecurringTransferRuleResult) {
+  if (result.kind === 'not_found') {
+    return jsonError(404, 'RECURRING_TRANSFER_RULE_NOT_FOUND', '找不到指定的週期轉帳')
+  }
+  if (result.kind === 'version_conflict') {
+    return jsonError(
+      409,
+      'RECURRING_TRANSFER_RULE_VERSION_CONFLICT',
+      '週期轉帳已被修改，請重新載入後再試',
+    )
+  }
+  if (result.kind === 'reference_invalid') {
+    const message = result.code === 'ACCOUNT_OPENING_DATE_AFTER_DUE'
+      ? '週期轉帳日期不得早於帳戶期初結餘日期'
+      : '帳戶不存在、已停用或幣別不相符'
+    return jsonError(400, result.code, message)
+  }
+  return jsonSuccess(result.rule)
+}
+
 export function jsonReferenceMutationResult<T>(result: ReferenceMutationResult<T>, created = false) {
   if (result.kind === 'created' || result.kind === 'updated') {
     return jsonSuccess(result.item, created ? 201 : 200)
@@ -242,7 +265,7 @@ export function jsonReferenceMutationResult<T>(result: ReferenceMutationResult<T
     return jsonError(409, 'REFERENCE_LAST_ACTIVE', '必須保留至少一個可用項目')
   }
   if (result.kind === 'active_rules') {
-    return jsonError(409, 'REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易')
+    return jsonError(409, 'REFERENCE_ACTIVE_RULES', '請先暫停或修改使用此項目的週期交易或排程轉帳')
   }
   if (result.kind === 'emergency_fund_goal') {
     return jsonError(409, 'REFERENCE_EMERGENCY_FUND_GOAL', '請先移動或移除使用此帳戶的緊急備用金目標')

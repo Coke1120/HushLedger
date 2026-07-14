@@ -20,6 +20,7 @@ const currencyCanChange = `
   NOT EXISTS (SELECT 1 FROM transactions)
   AND NOT EXISTS (SELECT 1 FROM account_transfers)
   AND NOT EXISTS (SELECT 1 FROM recurring_rules)
+  AND NOT EXISTS (SELECT 1 FROM recurring_transfer_rules)
   AND NOT EXISTS (SELECT 1 FROM transaction_import_keys)
   AND NOT EXISTS (SELECT 1 FROM accounts WHERE opening_balance_minor IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM categories WHERE monthly_plan_minor IS NOT NULL)

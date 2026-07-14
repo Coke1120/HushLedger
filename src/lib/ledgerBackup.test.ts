@@ -8,6 +8,7 @@ import {
   PRE_MONTHLY_PLAN_LEDGER_SCHEMA_VERSION,
   PRE_OPENING_BALANCE_LEDGER_SCHEMA_VERSION,
   PRE_CURRENCY_LEDGER_SCHEMA_VERSION,
+  PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION,
   PRE_SCHEDULE_END_LEDGER_SCHEMA_VERSION,
   PRE_YEARLY_RECURRING_LEDGER_SCHEMA_VERSION,
   PRE_TRANSFERS_LEDGER_SCHEMA_VERSION,
@@ -18,7 +19,9 @@ import {
   countLedgerData,
   digestLedgerData,
   ledgerBackupExportRequestSchema,
+  ledgerBackupAccountTransferSchema,
   ledgerBackupRecurringRuleSchema,
+  ledgerBackupRecurringTransferRuleSchema,
   ledgerBackupTransactionSchema,
   ledgerRestorePreviewSchema,
   upgradeLedgerBackupData,
@@ -114,6 +117,30 @@ function ledgerData(): LedgerBackupData {
       createdAt: timestamp,
       updatedAt: timestamp,
     }],
+    recurringTransferRules: [{
+      id: '40000000-0000-4000-8000-000000000001',
+      name: 'Future savings',
+      amountMinor: 30_000,
+      currency: 'HKD',
+      fromAccountId: 2,
+      toAccountId: 1,
+      frequency: 'monthly',
+      scheduleStartsOn: '2026-07-13',
+      scheduleEndsOn: '2026-12-13',
+      nextOccurrenceOn: '2026-08-13',
+      lastOccurrenceOn: '2026-07-13',
+      anchorDay: 13,
+      isActive: true,
+      note: 'Renamed after the first transfer',
+      generatedCount: 1,
+      lastErrorCode: null,
+      lastErrorAt: null,
+      revision: 2,
+      cursorVersion: 2,
+      deletedAt: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
     transactions: [{
       id: '10000000-0000-4000-8000-000000000001',
       type: 'expense',
@@ -138,10 +165,14 @@ function ledgerData(): LedgerBackupData {
       currency: 'HKD',
       fromAccountId: 1,
       toAccountId: 2,
-      occurredOn: '2026-07-13',
+      occurredOn: '2026-07-14',
       fromCleared: true,
       toCleared: false,
       note: 'Cash withdrawal',
+      recurringTransferRuleId: '40000000-0000-4000-8000-000000000001',
+      recurringTransferRuleName: 'Automatic savings',
+      recurrenceDueOn: '2026-07-13',
+      recurringOccurrenceKey: '40000000-0000-4000-8000-000000000001:2026-07-13',
       createdAt: timestamp,
       updatedAt: timestamp,
     }],
@@ -160,14 +191,45 @@ function ledgerData(): LedgerBackupData {
   }
 }
 
-function ledgerDataBeforeScheduleEnd(data: LedgerBackupData) {
+function ledgerDataBeforeRecurringTransfers(data: LedgerBackupData) {
   return {
-    ...data,
-    recurringRules: data.recurringRules.map(({
+    currency: data.currency,
+    accounts: data.accounts,
+    categories: data.categories,
+    recurringRules: data.recurringRules,
+    transactions: data.transactions,
+    accountTransfers: data.accountTransfers.map(({
+      recurringTransferRuleId: _recurringTransferRuleId,
+      recurringTransferRuleName: _recurringTransferRuleName,
+      recurrenceDueOn: _recurrenceDueOn,
+      recurringOccurrenceKey: _recurringOccurrenceKey,
+      ...transfer
+    }) => transfer),
+    emergencyFundGoals: data.emergencyFundGoals,
+    transactionImportKeys: data.transactionImportKeys,
+  }
+}
+
+function ledgerDataBeforeScheduleEnd(data: LedgerBackupData) {
+  const beforeRecurringTransfers = ledgerDataBeforeRecurringTransfers(data)
+  return {
+    ...beforeRecurringTransfers,
+    recurringRules: beforeRecurringTransfers.recurringRules.map(({
       scheduleEndsOn: _scheduleEndsOn,
       ...rule
     }) => rule),
   }
+}
+
+function assertNoInventedRecurringTransfers(data: LedgerBackupData, expectedTransfers: number) {
+  assert.deepEqual(data.recurringTransferRules, [])
+  assert.equal(data.accountTransfers.length, expectedTransfers)
+  data.accountTransfers.forEach((transfer) => {
+    assert.equal(transfer.recurringTransferRuleId, null)
+    assert.equal(transfer.recurringTransferRuleName, null)
+    assert.equal(transfer.recurrenceDueOn, null)
+    assert.equal(transfer.recurringOccurrenceKey, null)
+  })
 }
 
 function ledgerDataBeforeYearly(data: LedgerBackupData) {
@@ -274,6 +336,7 @@ describe('ledger backups', () => {
       accounts: 2,
       categories: 2,
       recurringRules: 1,
+      recurringTransferRules: 1,
       transactions: 1,
       accountTransfers: 1,
       emergencyFundGoals: 1,
@@ -309,6 +372,7 @@ describe('ledger backups', () => {
       accounts: 2,
       categories: 2,
       recurringRules: 1,
+      recurringTransferRules: 1,
       transactions: 1,
       accountTransfers: 1,
       emergencyFundGoals: 1,
@@ -322,6 +386,7 @@ describe('ledger backups', () => {
     data.currency = 'USD'
     data.accounts.forEach((row) => { row.currency = 'USD' })
     data.recurringRules.forEach((row) => { row.currency = 'USD' })
+    data.recurringTransferRules.forEach((row) => { row.currency = 'USD' })
     data.transactions.forEach((row) => { row.currency = 'USD' })
     data.accountTransfers.forEach((row) => { row.currency = 'USD' })
 
@@ -358,6 +423,71 @@ describe('ledger backups', () => {
     assert.equal(upgradeLedgerBackupData(backup).recurringRules[0]?.scheduleEndsOn, '2026-07-31')
   })
 
+  it('validates recurring transfer rules and immutable occurrence provenance independently', () => {
+    const data = ledgerData()
+    const rule = data.recurringTransferRules[0]
+    const transfer = data.accountTransfers[0]
+
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse(rule).success, true)
+    assert.equal(ledgerBackupAccountTransferSchema.safeParse(transfer).success, true)
+    assert.notEqual(transfer.occurredOn, transfer.recurrenceDueOn)
+    assert.notEqual(rule.name, transfer.recurringTransferRuleName)
+    assert.notEqual(rule.amountMinor, transfer.amountMinor)
+    assert.notEqual(rule.fromAccountId, transfer.fromAccountId)
+    assert.deepEqual(validateLedgerDataRelations(data), [])
+    assert.equal(ledgerBackupAccountTransferSchema.safeParse({
+      ...transfer,
+      recurringTransferRuleName: null,
+    }).success, false)
+    assert.equal(ledgerBackupAccountTransferSchema.safeParse({
+      ...transfer,
+      recurringOccurrenceKey: `${transfer.recurringTransferRuleId}:2026-07-12`,
+    }).success, false)
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse({
+      ...rule,
+      nextOccurrenceOn: '2027-01-13',
+    }).success, false)
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse({
+      ...rule,
+      isActive: false,
+    }).success, true)
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse({
+      ...rule,
+      nextOccurrenceOn: '2027-01-13',
+      isActive: false,
+    }).success, true)
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse({
+      ...rule,
+      isActive: false,
+      deletedAt: timestamp,
+    }).success, true)
+  })
+
+  it('upgrades schema 16 without inventing transfer rules or provenance', async () => {
+    const current = ledgerData()
+    const previousData = ledgerDataBeforeRecurringTransfers(current)
+    const previousPayload = {
+      format: LEDGER_BACKUP_FORMAT,
+      version: LEDGER_BACKUP_VERSION,
+      exportedAt: timestamp,
+      schemaVersion: PRE_RECURRING_TRANSFERS_LEDGER_SCHEMA_VERSION,
+      data: previousData,
+    } as const
+    const backup = compatibleLedgerBackupSchema.parse({
+      ...previousPayload,
+      checksum: {
+        algorithm: 'SHA-256',
+        digest: await checksumLedgerBackupPayload(previousPayload),
+      },
+    })
+
+    const upgraded = upgradeLedgerBackupData(backup)
+    assertNoInventedRecurringTransfers(upgraded, 1)
+    assert.equal(upgraded.accountTransfers[0]?.fromCleared, true)
+    assert.equal(upgraded.accountTransfers[0]?.toCleared, false)
+    assert.equal(upgraded.accountTransfers[0]?.note, 'Cash withdrawal')
+  })
+
   it('upgrades schema 15 recurring rules as perpetual without changing yearly schedules', async () => {
     const current = ledgerData()
     current.recurringRules[0].frequency = 'yearly'
@@ -380,6 +510,7 @@ describe('ledger backups', () => {
     const upgraded = upgradeLedgerBackupData(backup)
     assert.equal(upgraded.recurringRules[0]?.frequency, 'yearly')
     assert.equal(upgraded.recurringRules[0]?.scheduleEndsOn, null)
+    assertNoInventedRecurringTransfers(upgraded, 1)
   })
 
   it('upgrades schema 14 backups without changing their currency or recurring rules', async () => {
@@ -408,6 +539,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.currency, 'USD')
     assert.equal(upgraded.recurringRules[0]?.frequency, 'daily')
     assert.equal(upgraded.recurringRules[0]?.scheduleEndsOn, null)
+    assertNoInventedRecurringTransfers(upgraded, 1)
   })
 
   it('keeps yearly rules in current backups without accepting them as schemas 8 through 14', () => {
@@ -487,6 +619,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.currency, 'HKD')
     assert.deepEqual(upgraded.emergencyFundGoals, previousData.emergencyFundGoals)
     assert.equal(upgraded.accountTransfers.length, 1)
+    assertNoInventedRecurringTransfers(upgraded, 1)
   })
 
   it('upgrades schema 12 backups without inventing an emergency fund goal', async () => {
@@ -512,6 +645,7 @@ describe('ledger backups', () => {
     assert.deepEqual(upgraded.emergencyFundGoals, [])
     assert.equal(upgraded.accountTransfers.length, 1)
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, 125_000)
+    assertNoInventedRecurringTransfers(upgraded, 1)
   })
 
   it('upgrades schema 11 backups without inventing opening balances or a goal', async () => {
@@ -540,6 +674,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.accounts[0]?.openingBalanceOn, null)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
     assert.equal(upgraded.transactions[0]?.cleared, false)
+    assertNoInventedRecurringTransfers(upgraded, 1)
   })
 
   it('upgrades schema 10 backups without inventing transfers or opening balances', async () => {
@@ -567,6 +702,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.accounts[0]?.openingBalanceMinor, null)
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, 50_000)
     assert.equal(upgraded.transactions[0]?.cleared, false)
+    assertNoInventedRecurringTransfers(upgraded, 0)
   })
 
   it('upgrades schema 9 backups without inventing category plans or transfers', async () => {
@@ -597,6 +733,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, false)
     assert.deepEqual(upgraded.accountTransfers, [])
+    assertNoInventedRecurringTransfers(upgraded, 0)
   })
 
   it('upgrades schema 8 backups with cleared history and no invented category plans', async () => {
@@ -628,6 +765,7 @@ describe('ledger backups', () => {
     assert.equal(upgraded.categories[0]?.monthlyPlanMinor, null)
     assert.equal(upgraded.transactions[0]?.cleared, true)
     assert.deepEqual(upgraded.accountTransfers, [])
+    assertNoInventedRecurringTransfers(upgraded, 0)
   })
 
   it('rejects broken references, duplicate tombstones, and unusable reference data', () => {
@@ -669,6 +807,33 @@ describe('ledger backups', () => {
     assert(issues.some(({ message }) => message === 'Referenced destination account is missing'))
   })
 
+  it('rejects missing recurring transfer rules and duplicate historical occurrences', () => {
+    const data = ledgerData()
+    data.accountTransfers.push({
+      ...data.accountTransfers[0],
+      id: '30000000-0000-4000-8000-000000000002',
+    })
+    data.recurringTransferRules = []
+
+    const issues = validateLedgerDataRelations(data)
+    assert(issues.some(({ path }) => path.endsWith('.recurringOccurrenceKey')))
+    assert(issues.some(({ message }) => message === 'Referenced recurring transfer rule is missing'))
+  })
+
+  it('rejects recurring transfer rule references that cannot form a valid account movement', () => {
+    const data = ledgerData()
+    data.recurringTransferRules[0].fromAccountId = 999
+
+    assert(validateLedgerDataRelations(data).some(
+      ({ message }) => message === 'Referenced source account is missing',
+    ))
+    assert.equal(ledgerBackupRecurringTransferRuleSchema.safeParse({
+      ...data.recurringTransferRules[0],
+      fromAccountId: 1,
+      toAccountId: 1,
+    }).success, false)
+  })
+
   it('rejects rows whose currency differs from the ledger currency', () => {
     const data = ledgerData()
     data.currency = 'USD'
@@ -676,6 +841,7 @@ describe('ledger backups', () => {
     const paths = validateLedgerDataRelations(data).map(({ path }) => path)
     assert(paths.includes('data.accounts.0.currency'))
     assert(paths.includes('data.recurringRules.0.currency'))
+    assert(paths.includes('data.recurringTransferRules.0.currency'))
     assert(paths.includes('data.transactions.0.currency'))
     assert(paths.includes('data.accountTransfers.0.currency'))
   })

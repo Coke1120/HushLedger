@@ -24,6 +24,10 @@ type AccountTransferRow = {
   fromAccountLocalizationKey: AccountLocalizationKey | null
   toAccountName: string
   toAccountLocalizationKey: AccountLocalizationKey | null
+  recurringTransferRuleId: string | null
+  recurringTransferRuleName: string | null
+  recurrenceDueOn: string | null
+  recurringOccurrenceKey: string | null
   createdAt: string
   updatedAt: string
 }
@@ -65,6 +69,10 @@ const accountTransferSelect = `
     source.localization_key AS fromAccountLocalizationKey,
     destination.name AS toAccountName,
     destination.localization_key AS toAccountLocalizationKey,
+    transfer.recurring_transfer_rule_id AS recurringTransferRuleId,
+    transfer.recurring_transfer_rule_name AS recurringTransferRuleName,
+    transfer.recurrence_due_on AS recurrenceDueOn,
+    transfer.recurring_occurrence_key AS recurringOccurrenceKey,
     transfer.created_at AS createdAt,
     transfer.updated_at AS updatedAt
   FROM account_transfers transfer

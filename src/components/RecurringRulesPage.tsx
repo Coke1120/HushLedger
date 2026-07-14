@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRecurringRules } from '../hooks/useRecurringRules'
-import type { RefreshFailureMode } from '../hooks/useMoneyData'
+import type { DataSource, RefreshFailureMode } from '../hooks/useMoneyData'
 import { useI18n } from '../i18n'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
@@ -28,6 +28,7 @@ import type {
 } from '../lib/schema'
 import { RecurringDeleteDialog } from './RecurringDeleteDialog'
 import { RecurringRuleDialog } from './RecurringRuleDialog'
+import { RecurringTransferRulesPanel } from './RecurringTransferRulesPanel'
 
 type RecurringRulesPageProps = {
   accounts: Account[]
@@ -35,6 +36,7 @@ type RecurringRulesPageProps = {
   draft: RecurringRuleCreateInput | null
   focusRuleId: string | null
   ledgerContext: string
+  ledgerSource: DataSource
   mutable: boolean
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>
   onDraftClose: () => void
@@ -48,6 +50,7 @@ export function RecurringRulesPage({
   draft,
   focusRuleId,
   ledgerContext,
+  ledgerSource,
   mutable,
   onMoneyRefresh,
   onDraftClose,
@@ -55,13 +58,20 @@ export function RecurringRulesPage({
   onMutationStateChange,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
-  const recurring = useRecurringRules(onMoneyRefresh, mutable)
+  const recurring = useRecurringRules(onMoneyRefresh, mutable, ledgerSource)
   const clearRecurringActionMessage = recurring.clearActionMessage
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
-  const mutationsEnabled = mutable && recurring.online && recurring.source === 'live'
-  const mutationInProgress = recurring.running || recurring.mutatingId !== null
+  const [transferMutationInProgress, setTransferMutationInProgress] = useState(false)
+  const ledgerLive = ledgerSource === 'live'
+  const mutationsEnabled = ledgerLive
+    && mutable
+    && recurring.online
+    && recurring.source === 'live'
+    && !transferMutationInProgress
+  const transactionMutationInProgress = recurring.running || recurring.mutatingId !== null
+  const mutationInProgress = transactionMutationInProgress || transferMutationInProgress
 
   const accountsById = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts])
   const categoriesById = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories])
@@ -78,6 +88,15 @@ export function RecurringRulesPage({
     onDraftClose()
   }, [onDraftClose])
   const closeDelete = useCallback(() => setDeletingRule(null), [])
+
+  useEffect(() => {
+    if (ledgerLive) return
+    const timeout = window.setTimeout(() => {
+      closeEditor()
+      closeDelete()
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [closeDelete, closeEditor, ledgerLive])
 
   useEffect(() => {
     if (mutationsEnabled) return
@@ -148,11 +167,18 @@ export function RecurringRulesPage({
         text: t('recurringOfflineStatus'),
       }
     }
-    if (recurring.source === 'loading') {
+    if (ledgerSource === 'loading' || (ledgerLive && recurring.source === 'loading')) {
       return {
         className: 'recurring-status',
         icon: <LoaderCircle className="spin" aria-hidden="true" />,
         text: t('recurringLoadingStatus'),
+      }
+    }
+    if (!ledgerLive) {
+      return {
+        className: 'recurring-status status-warning',
+        icon: <Sparkles aria-hidden="true" />,
+        text: t('recurringDemoStatus'),
       }
     }
     if (recurring.source === 'error' || recurring.error) {
@@ -181,7 +207,8 @@ export function RecurringRulesPage({
     return null
   })()
 
-  const loading = recurring.source === 'loading'
+  const loading = ledgerSource === 'loading'
+    || (ledgerLive && recurring.source === 'loading')
 
   return (
     <section className="recurring-page" aria-labelledby="recurring-page-title">
@@ -387,7 +414,16 @@ export function RecurringRulesPage({
         )}
       </div>
 
-      {editorOpen || draft ? (
+      <RecurringTransferRulesPanel
+        accounts={accounts}
+        ledgerContext={ledgerContext}
+        ledgerSource={ledgerSource}
+        mutable={mutable && !transactionMutationInProgress}
+        onMoneyRefresh={onMoneyRefresh}
+        onMutationStateChange={setTransferMutationInProgress}
+      />
+
+      {ledgerLive && (editorOpen || draft) ? (
         <RecurringRuleDialog
           key={draft?.id ?? editingRule?.id ?? 'new'}
           rule={draft ? null : editingRule}
@@ -404,7 +440,7 @@ export function RecurringRulesPage({
         />
       ) : null}
 
-      {deletingRule ? (
+      {ledgerLive && deletingRule ? (
         <RecurringDeleteDialog
           rule={deletingRule}
           deleting={recurring.mutatingId === deletingRule.id}

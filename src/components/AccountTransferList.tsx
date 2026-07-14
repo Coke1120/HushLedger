@@ -55,6 +55,11 @@ export function AccountTransferList({
                     <small>
                       <span className={transfer.fromCleared ? 'is-cleared' : undefined}>{t('transferSourceStatus', { status: t(transfer.fromCleared ? 'cleared' : 'uncleared') })}</span>
                       <span className={transfer.toCleared ? 'is-cleared' : undefined}>{t('transferDestinationStatus', { status: t(transfer.toCleared ? 'cleared' : 'uncleared') })}</span>
+                      {transfer.recurringTransferRuleName ? (
+                        <span className="recurring-transfer-badge">
+                          {t('recurringTransferBadge', { name: transfer.recurringTransferRuleName })}
+                        </span>
+                      ) : null}
                     </small>
                     {transfer.note ? <span className="account-transfer-note">{transfer.note}</span> : null}
                   </span>

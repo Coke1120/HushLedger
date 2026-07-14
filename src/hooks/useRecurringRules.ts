@@ -28,6 +28,7 @@ import type {
 } from '../lib/schema'
 import { actionData } from './actionResult'
 import { subscribeToForegroundRefresh } from './foregroundRefresh'
+import { recurringRulesForLedgerSource } from './recurringRuleSource'
 import type { DataSource, RefreshFailureMode } from './useMoneyData'
 
 type MutationOptions = {
@@ -86,6 +87,7 @@ function resolveSuccessMessage(messageValue: MutationOptions['successMessage'], 
 export function useRecurringRules(
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>,
   mutable: boolean,
+  ledgerSource: DataSource,
 ) {
   const { t } = useI18n()
   const [rules, setRules] = useState<RecurringRule[]>(demoRules)
@@ -103,6 +105,13 @@ export function useRecurringRules(
     const sequence = ++requestSequence.current
     if (failureMode !== 'preserve') setError(null)
 
+    if (ledgerSource !== 'live') {
+      setRules(demoRules)
+      setSource(ledgerSource === 'loading' ? 'loading' : 'demo')
+      setOnline(navigator.onLine)
+      return false
+    }
+
     if (!navigator.onLine) {
       setOnline(false)
       if (failureMode === 'demo') {
@@ -118,6 +127,7 @@ export function useRecurringRules(
       setRules(nextRules)
       setSource('live')
       setOnline(true)
+      setError(null)
       return true
     } catch (requestError) {
       if (sequence !== requestSequence.current) return false
@@ -130,7 +140,7 @@ export function useRecurringRules(
       }
       return false
     }
-  }, [])
+  }, [ledgerSource])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void refresh(), 0)
@@ -292,7 +302,11 @@ export function useRecurringRules(
     return result
   }, [mutable, mutate, source])
 
-  const visibleRules = useMemo(() => rules.map((rule) => localizeDemoRule(rule, t)), [rules, t])
+  const visibleRules = useMemo(
+    () => recurringRulesForLedgerSource(ledgerSource, rules, demoRules)
+      .map((rule) => localizeDemoRule(rule, t)),
+    [ledgerSource, rules, t],
+  )
   const clearActionMessage = useCallback(() => {
     setActionMessage(null)
     setActionWarning(false)

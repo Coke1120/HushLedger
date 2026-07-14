@@ -2121,6 +2121,14 @@ textarea:focus-visible {
   color: var(--income);
 }
 
+.account-transfer-main small .recurring-transfer-badge {
+  padding: 2px 6px;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border-radius: 999px;
+  font-weight: 700;
+}
+
 .account-transfer-note {
   color: var(--muted);
   font-size: 11px;
@@ -3325,6 +3333,27 @@ button.account-register-row:focus-visible {
   font-weight: 760;
 }
 
+.recurring-transfer-panel-heading h3,
+.recurring-transfer-panel-actions {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.recurring-transfer-panel-heading h3 svg,
+.recurring-transfer-panel-actions svg {
+  width: 19px;
+}
+
+.recurring-transfer-panel-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.recurring-transfer-status {
+  margin: 14px 24px;
+}
+
 .recurring-panel-heading p {
   margin: 4px 0 0;
   color: var(--muted);
@@ -3400,6 +3429,11 @@ button.account-register-row:focus-visible {
 
 .recurring-rule-icon.income {
   color: var(--income);
+  background: var(--income-soft);
+}
+
+.recurring-rule-icon.transfer {
+  color: var(--brand);
   background: var(--income-soft);
 }
 
@@ -3482,6 +3516,10 @@ button.account-register-row:focus-visible {
   color: var(--expense);
 }
 
+.recurring-rule-amount strong.transfer {
+  color: var(--brand-strong);
+}
+
 .recurring-rule-details {
   display: grid;
   grid-template-columns:
@@ -3549,6 +3587,17 @@ button.account-register-row:focus-visible {
   font-size: 12px;
 }
 
+.recurring-rule-details .recurring-transfer-note-detail {
+  grid-column: 1 / -1;
+}
+
+.recurring-rule-details .recurring-transfer-note-detail dd {
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .rule-error svg {
   width: 16px;
   min-width: 16px;
@@ -3581,6 +3630,10 @@ button.account-register-row:focus-visible {
   margin-bottom: 5px;
   color: var(--brand);
   background: var(--income-soft);
+}
+
+.recurring-transfer-empty {
+  min-height: 210px;
 }
 
 .recurring-rule-dialog {
@@ -6482,6 +6535,19 @@ button.account-register-row:focus-visible {
     font-size: 20px;
   }
 
+  .recurring-transfer-panel-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .recurring-transfer-panel-actions .button {
+    flex: 1 1 180px;
+  }
+
+  .recurring-transfer-status {
+    margin: 12px 14px;
+  }
+
   .date-only-note {
     min-height: 34px;
   }
@@ -6716,6 +6782,15 @@ button.account-register-row:focus-visible {
   }
 
   .recurring-rule-actions .button {
+    width: 100%;
+  }
+
+  .recurring-transfer-panel-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .recurring-transfer-panel-actions .button {
     width: 100%;
   }
 
