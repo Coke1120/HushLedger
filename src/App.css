@@ -473,6 +473,11 @@ textarea:focus-visible {
   height: 22px;
 }
 
+.income-sources-heading-icon {
+  color: var(--income);
+  background: var(--income-soft);
+}
+
 .category-spending-switch {
   display: inline-grid;
   padding: 3px;

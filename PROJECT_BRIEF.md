@@ -35,6 +35,11 @@ not operate an independent database server or a multi-user identity system.
 - Compare a zero-filled six-month recorded cash-flow trend across income,
   expenses, and net movement, then select any month to review that calendar
   month; hide relative bar heights when privacy mode is enabled.
+- Review the top five recorded income categories by exact total, transaction
+  count, and share of selected-month income; explicitly reveal every remaining
+  source and select one to open the exact month + income + category filter.
+  Include inactive historical categories, but never mix transfers, opening
+  balances, or recurring forecasts into recorded income.
 - Review the top five expense categories or named payees by exact total and
   transaction count; select one to open the corresponding exact transaction
   filter without turning a payee into a broad text search.
@@ -339,7 +344,7 @@ POST   /api/imports/parse  (draft only; zero D1 writes)
 POST   /api/imports/ai  (preview or commit reviewed drafts, 200 rows maximum)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM
+GET    /api/summary?month=YYYY-MM  (recorded totals, income-source and expense breakdowns, trends, plans, and remaining recurring dates)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id
@@ -485,7 +490,8 @@ reminder does not prove that a backup file was retained off-platform.
   aggregate and ordered CSV export, with monthly and filtered money totals failing
   closed instead of publishing rounded values outside exact safe-integer precision,
   browser-local saved review views,
-  ranked category-or-payee spending drilldown, monthly plan-versus-actual review,
+  ranked recorded income-source and category-or-payee spending drilldowns,
+  monthly plan-versus-actual review,
   recorded-balance emergency-fund progress,
   deterministic preview-first HushLedger and
   generic bank CSV import, private payee memory,

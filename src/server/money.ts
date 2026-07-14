@@ -838,6 +838,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
   const [
     row,
     cashFlowTrendResult,
+    incomeByCategoryResult,
     expenseByCategoryResult,
     expenseByPayeeResult,
     monthlySpendingPlansResult,
@@ -867,6 +868,29 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     `)
       .bind(trendStart, end)
       .all<MonthlyCashFlowQueryRow>(),
+    database.prepare(`
+      SELECT
+        category.id AS categoryId,
+        category.name AS categoryName,
+        category.localization_key AS categoryLocalizationKey,
+        category.icon AS categoryIcon,
+        category.color AS categoryColor,
+        TOTAL(t.amount_minor) AS amountMinor,
+        COUNT(*) AS transactionCount
+      FROM transactions t
+      INNER JOIN categories category ON category.id = t.category_id
+      WHERE t.type = 'income' AND t.occurred_on >= ? AND t.occurred_on < ?
+      GROUP BY
+        category.id,
+        category.name,
+        category.localization_key,
+        category.icon,
+        category.color,
+        category.sort_order
+      ORDER BY amountMinor DESC, category.sort_order ASC, category.id ASC
+    `)
+      .bind(start, end)
+      .all<ExpenseCategorySummary>(),
     database.prepare(`
       SELECT
         category.id AS categoryId,
@@ -994,6 +1018,10 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     { type: 'expense', amountMinor: row.expense },
   ])
   const cashFlowTrend = buildMonthlyCashFlowTrend(month, cashFlowTrendResult.results)
+  const incomeByCategory = normalizeIncomeCategoryRows(
+    incomeByCategoryResult.results,
+    totals.income,
+  )
   return {
     month,
     income: totals.income,
@@ -1004,6 +1032,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
       month,
       buildLegacySpendingTrendRows(cashFlowTrendResult.results),
     ),
+    incomeByCategory,
     expenseByCategory: normalizeExpenseCategoryRows(expenseByCategoryResult.results),
     expenseByPayee: mergePayeeSummaries(expenseByPayeeResult.results),
     monthlySpendingPlans: monthlySpendingPlansResult.results,
@@ -1015,24 +1044,41 @@ export async function getSummary(database: D1Database, month: string): Promise<S
   }
 }
 
-function normalizeExpenseCategoryRows(rows: ExpenseCategoryQueryRow[]): ExpenseCategorySummary[] {
+function validateCategoryRows(
+  rows: ExpenseCategorySummary[],
+  type: TransactionType,
+  label: string,
+) {
   let transactionCount = 0n
   for (const row of rows) {
     if (!Number.isSafeInteger(row.categoryId) || row.categoryId <= 0) {
-      throw new Error('Category spending category ID must be a positive safe integer')
+      throw new Error(`${label} category ID must be a positive safe integer`)
     }
-    if (!Number.isSafeInteger(row.transactionCount) || row.transactionCount < 0) {
-      throw new Error('Category spending transaction count exceeds the safe integer range')
+    if (!Number.isSafeInteger(row.transactionCount) || row.transactionCount <= 0) {
+      throw new Error(`${label} transaction count must be a positive safe integer`)
     }
     transactionCount += BigInt(row.transactionCount)
   }
   if (transactionCount > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new Error('Category spending transaction count exceeds the safe integer range')
+    throw new Error(`${label} transaction count exceeds the safe integer range`)
   }
-  exactTransactionTotals(rows.map(({ amountMinor }) => ({
-    type: 'expense' as const,
-    amountMinor,
-  })))
+
+  return exactTransactionTotals(rows.map(({ amountMinor }) => ({ type, amountMinor })))
+}
+
+function normalizeIncomeCategoryRows(
+  rows: ExpenseCategorySummary[],
+  expectedIncome: number,
+): ExpenseCategorySummary[] {
+  const totals = validateCategoryRows(rows, 'income', 'Category income')
+  if (totals.income !== expectedIncome) {
+    throw new Error('Category income does not match the monthly income total')
+  }
+  return rows
+}
+
+function normalizeExpenseCategoryRows(rows: ExpenseCategoryQueryRow[]): ExpenseCategorySummary[] {
+  validateCategoryRows(rows, 'expense', 'Category spending')
 
   return rows.map((row) => ({
     ...row,

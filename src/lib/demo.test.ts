@@ -335,11 +335,19 @@ describe('localized demo data', () => {
     }
   })
 
-  it('ranks monthly expense categories by exact total and retains transaction counts', () => {
+  it('ranks monthly category totals and retains transaction counts', () => {
     const summary = demoSummary('2026-07')
 
     assert.equal(summary.expense, 1_717_950)
     assert.deepEqual(summary.recurringTransferForecast, [])
+    assert.deepEqual(
+      summary.incomeByCategory?.map(({ categoryId, amountMinor, transactionCount }) => ({
+        categoryId,
+        amountMinor,
+        transactionCount,
+      })),
+      [{ categoryId: 1, amountMinor: 5_200_000, transactionCount: 1 }],
+    )
     assert.deepEqual(
       summary.expenseByCategory.map(({ categoryId, amountMinor, transactionCount }) => ({
         categoryId,
@@ -387,6 +395,65 @@ describe('localized demo data', () => {
         { categoryId: 7, plannedMinor: 120_000, spentMinor: 118_300 },
       ],
     )
+  })
+
+  it('orders demo income categories by total then reference order and keeps inactive history', () => {
+    const otherIncome = demoCategories.find(({ id }) => id === 2)
+    assert(otherIncome)
+    const originalActive = otherIncome.isActive
+    const createdIds: string[] = []
+    const addIncome = (id: string, amountMinor: number, day: number) => {
+      addDemo({
+        id,
+        type: 'income',
+        amountMinor,
+        currency: 'HKD',
+        accountId: 1,
+        categoryId: otherIncome.id,
+        occurredOn: `2026-07-${day}`,
+        cleared: false,
+        payee: 'Demo category income',
+        note: '',
+      })
+      createdIds.push(id)
+    }
+
+    try {
+      addIncome('56000000-0000-4000-8000-000000000001', 2_600_000, 20)
+      addIncome('56000000-0000-4000-8000-000000000002', 2_600_000, 21)
+      assert.deepEqual(
+        demoSummary('2026-07').incomeByCategory?.map(
+          ({ categoryId, amountMinor, transactionCount }) => ({
+            categoryId,
+            amountMinor,
+            transactionCount,
+          }),
+        ),
+        [
+          { categoryId: 1, amountMinor: 5_200_000, transactionCount: 1 },
+          { categoryId: 2, amountMinor: 5_200_000, transactionCount: 2 },
+        ],
+      )
+
+      addIncome('56000000-0000-4000-8000-000000000003', 1, 22)
+      otherIncome.isActive = false
+      assert.deepEqual(
+        demoSummary('2026-07').incomeByCategory?.map(
+          ({ categoryId, amountMinor, transactionCount }) => ({
+            categoryId,
+            amountMinor,
+            transactionCount,
+          }),
+        ),
+        [
+          { categoryId: 2, amountMinor: 5_200_001, transactionCount: 3 },
+          { categoryId: 1, amountMinor: 5_200_000, transactionCount: 1 },
+        ],
+      )
+    } finally {
+      otherIncome.isActive = originalActive
+      for (const id of createdIds) deleteDemo(id)
+    }
   })
 
   it('attaches exact previous-calendar-month totals to current demo categories', () => {

@@ -513,9 +513,9 @@ export function deleteDemo(id: string) {
   demoTransactions = demoTransactions.filter((transaction) => transaction.id !== id)
 }
 
-function demoExpenseByCategory(rows: Transaction[]) {
+function demoByCategory(rows: Transaction[], type: TransactionType) {
   return [...rows.reduce((categories, transaction) => {
-    if (transaction.type !== 'expense') return categories
+    if (transaction.type !== type) return categories
     const existing = categories.get(transaction.categoryId)
     if (existing) {
       existing.amountMinor += transaction.amountMinor
@@ -534,17 +534,24 @@ function demoExpenseByCategory(rows: Transaction[]) {
     })
     return categories
   }, new Map<number, ExpenseCategorySummary>()).values()]
-    .sort((left, right) => right.amountMinor - left.amountMinor || left.categoryId - right.categoryId)
+    .sort((left, right) => {
+      const amountOrder = right.amountMinor - left.amountMinor
+      if (amountOrder !== 0) return amountOrder
+      const leftOrder = demoCategories.find(({ id }) => id === left.categoryId)?.sortOrder
+      const rightOrder = demoCategories.find(({ id }) => id === right.categoryId)?.sortOrder
+      return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+        || left.categoryId - right.categoryId
+    })
 }
 
 export function demoSummary(month: string, t?: Translator): Summary {
   const rows = getDemoTransactions(month, 'all', '', t)
   const totals = exactTransactionTotals(rows)
   const previousByCategory = new Map(
-    demoExpenseByCategory(getDemoTransactions(shiftMonth(month, -1), 'all', '', t))
+    demoByCategory(getDemoTransactions(shiftMonth(month, -1), 'all', '', t), 'expense')
       .map(({ categoryId, amountMinor }) => [categoryId, amountMinor]),
   )
-  const expenseByCategory = demoExpenseByCategory(rows).map((category) => ({
+  const expenseByCategory = demoByCategory(rows, 'expense').map((category) => ({
     ...category,
     previousMonthAmountMinor: previousByCategory.get(category.categoryId) ?? 0,
   }))
@@ -588,6 +595,7 @@ export function demoSummary(month: string, t?: Translator): Summary {
       month,
       buildLegacySpendingTrendRows(cashFlowTrendRows),
     ),
+    incomeByCategory: demoByCategory(rows, 'income'),
     expenseByCategory,
     expenseByPayee,
     monthlySpendingPlans: demoCategories

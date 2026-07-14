@@ -802,6 +802,16 @@ async function seedCsvExportRows() {
      FROM sequence;
      INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
      VALUES('30000000-0000-4000-8000-000000999999','expense',12345,'HKD',1,3,'${previousMonth}-15','export bulk','historical trend');
+     WITH RECURSIVE sequence(value) AS (
+       SELECT 1
+       UNION ALL
+       SELECT value + 1 FROM sequence WHERE value < 205
+     )
+     INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
+     SELECT printf('31000000-0000-4000-8000-%012d', value),'income',100 + value,'HKD',1,1,'${today}','',''
+     FROM sequence;
+     INSERT INTO transactions(id,type,amount_minor,currency,account_id,category_id,occurred_on,payee,note)
+     VALUES('31000000-0000-4000-8000-000000999999','income',50000,'HKD',1,2,'${today}','','');
      UPDATE transactions SET note = 'Trip planning #Summer2026' WHERE id = '30000000-0000-4000-8000-000000000001';
      UPDATE transactions SET note = 'Near miss #Summer20260' WHERE id = '30000000-0000-4000-8000-000000000002';
      UPDATE transactions SET note = 'Escaped ##Summer2026' WHERE id = '30000000-0000-4000-8000-000000000003';
@@ -2058,9 +2068,53 @@ async function verifyWorkerApi() {
 
   const categorySummary = await api(baseUrl, `/api/summary?month=${month}`)
   assert.equal(categorySummary.response.status, 200)
-  assert.equal(categorySummary.payload.data.income, 0)
+  assert.equal(categorySummary.payload.data.income, 91_615)
   assert.equal(categorySummary.payload.data.expense, 41_615)
-  assert.equal(categorySummary.payload.data.balance, -41_615)
+  assert.equal(categorySummary.payload.data.balance, 50_000)
+  assert.deepEqual(categorySummary.payload.data.incomeByCategory, [
+    {
+      categoryId: 2,
+      categoryName: '其他收入',
+      categoryLocalizationKey: 'category.other_income',
+      categoryIcon: 'circle-dollar-sign',
+      categoryColor: '#5B7C6F',
+      amountMinor: 50_000,
+      transactionCount: 1,
+    },
+    {
+      categoryId: 1,
+      categoryName: '薪資',
+      categoryLocalizationKey: 'category.salary',
+      categoryIcon: 'banknote',
+      categoryColor: '#2F766D',
+      amountMinor: 41_615,
+      transactionCount: 205,
+    },
+  ])
+  const cappedIncomeRows = await api(
+    baseUrl,
+    `/api/transactions?month=${month}&type=income&categoryId=1`,
+  )
+  assert.equal(cappedIncomeRows.response.status, 200)
+  assert.equal(cappedIncomeRows.payload.data.length, 200)
+  const salaryCategory = categoriesResult.payload.data.find(({ id }) => id === 1)
+  assert(salaryCategory)
+  const disabledSalaryCategory = await api(baseUrl, '/api/categories/1', {
+    method: 'PATCH',
+    body: { isActive: false, updatedAt: salaryCategory.updatedAt },
+  })
+  assert.equal(disabledSalaryCategory.response.status, 200)
+  const inactiveIncomeSummary = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.deepEqual(
+    inactiveIncomeSummary.payload.data.incomeByCategory,
+    categorySummary.payload.data.incomeByCategory,
+  )
+  const reenabledSalaryCategory = await api(baseUrl, '/api/categories/1', {
+    method: 'PATCH',
+    body: { isActive: true, updatedAt: disabledSalaryCategory.payload.data.updatedAt },
+  })
+  assert.equal(reenabledSalaryCategory.response.status, 200)
+  Object.assign(salaryCategory, reenabledSalaryCategory.payload.data)
   assert.deepEqual(categorySummary.payload.data.expenseByCategory, [{
     categoryId: 3,
     categoryName: '餐飲',
@@ -2121,10 +2175,10 @@ async function verifyWorkerApi() {
     },
     {
       month,
-      incomeMinor: 0,
+      incomeMinor: 91_615,
       expenseMinor: 41_615,
-      netMinor: -41_615,
-      transactionCount: 205,
+      netMinor: 50_000,
+      transactionCount: 411,
     },
   ])
   assert.deepEqual(categorySummary.payload.data.spendingTrend.slice(-2), [
@@ -2930,7 +2984,7 @@ async function verifyWorkerApi() {
     `/api/accounts/register?month=${month}&accountId=1`,
   )
   assert.equal(cappedRegister.response.status, 200, JSON.stringify(cappedRegister.payload))
-  assert.equal(cappedRegister.payload.data.entryCount, 205)
+  assert.equal(cappedRegister.payload.data.entryCount, 411)
   assert.equal(cappedRegister.payload.data.entries.length, 200)
   assert.equal(cappedRegister.payload.data.dateFrom, `${month}-01`)
   assert.equal(
@@ -3000,7 +3054,7 @@ async function verifyWorkerApi() {
   assert(accountRegisterCsvLines.every((line) => line.split(',').length === 15))
   assert.match(accountRegisterCsvLines[1], new RegExp(`^${month}-01,range_start,,HKD,,`))
   const cappedAccountRegisterActivityRows = accountRegisterCsvLines.slice(2)
-  assert.equal(cappedAccountRegisterActivityRows.length, 205)
+  assert.equal(cappedAccountRegisterActivityRows.length, 411)
   assert.equal(
     cappedAccountRegisterActivityRows[0].endsWith(
       `transaction:${oldestBulkTransactionId},${oldestBulkTransactionId}`,
@@ -6018,6 +6072,7 @@ async function verifyWorkerApi() {
     transactionSortQueries: 4,
     transactionTagQueries: 4,
     categorySummaries: 1,
+    incomeCategorySummaries: 2,
     payeeSummaries: 2,
     payeeExports: 1,
     cashFlowTrendQueries: 4,

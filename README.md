@@ -34,6 +34,12 @@ knowledge and explains every command and dashboard click.
 - A zero-filled six-month recorded cash-flow trend comparing income, expenses,
   and net movement without treating transfers, opening balances, or forecasts as cash flow,
   with private-screen masking and one-tap navigation to any month in the chart.
+- A ranked monthly income-source breakdown by category, with exact totals,
+  transaction counts, shares of recorded income, and one-tap drilldown into the
+  matching income records. Five sources stay visible by default, while an
+  explicit action reveals every source, including inactive historical categories.
+  Transfers, opening balances, and recurring forecasts never become recorded
+  income, and privacy mode masks amounts, shares, and relative bar lengths.
 - A ranked monthly expense breakdown switchable between categories and named
   payees, with exact totals, transaction counts, and one-tap drilldown into
   matching ledger records. Category rows compare each recorded total with the
@@ -709,7 +715,7 @@ POST   /api/exports/transactions  (primary private CSV export; JSON filters in t
 POST   /api/exports/account-register  (complete account/range reconciliation CSV; JSON query in the body)
 POST   /api/backups/ledger  (`export`: same-origin versioned full-ledger JSON attachment)
 POST   /api/backups/ledger  (`preview` or `commit`: preview or explicitly confirmed transactional restore)
-GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
+GET    /api/summary?month=YYYY-MM  (totals, six-month recorded cash-flow trend, ranked income sources and expense categories/payees, and exact remaining recurring dates; includes a temporary legacy spending trend for cached clients)
 
 GET    /api/recurring-rules
 GET    /api/recurring-rules/:id

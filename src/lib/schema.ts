@@ -570,6 +570,8 @@ export type Summary = {
   cashFlowTrend: MonthlyCashFlowSummary[]
   /** @deprecated Retained temporarily so an older cached app shell can read a newer API response. */
   spendingTrend: MonthlySpendingSummary[]
+  /** Missing only when a cached newer app shell reads an older API response. */
+  incomeByCategory?: ExpenseCategorySummary[]
   expenseByCategory: ExpenseCategorySummary[]
   expenseByPayee: ExpensePayeeSummary[]
   monthlySpendingPlans: MonthlySpendingPlanSummary[]

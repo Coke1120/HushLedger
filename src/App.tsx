@@ -12,6 +12,7 @@ import { CategorySpending } from './components/CategorySpending'
 import { ConnectionBanner } from './components/ConnectionBanner'
 import { CsvImportPanel } from './components/CsvImportPanel'
 import { EmergencyFundProgress } from './components/EmergencyFundProgress'
+import { IncomeSources } from './components/IncomeSources'
 import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
@@ -646,6 +647,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   summary={data.summary}
                   loading={loading}
                   onSelectMonth={setMonth}
+                />
+                <IncomeSources
+                  summary={data.summary}
+                  loading={loading}
+                  onSelect={openCategoryTransactions}
                 />
                 <CategorySpending
                   summary={data.summary}
