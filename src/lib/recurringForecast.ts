@@ -1,8 +1,10 @@
 import { monthRangeDates } from './date'
 import { dueOccurrences, firstOccurrenceOnOrAfter } from './recurrence'
 import type {
+  AccountLocalizationKey,
   RecurrenceFrequency,
   ScheduledRecurringSummary,
+  ScheduledRecurringTransferSummary,
   TransactionType,
 } from './schema'
 
@@ -14,6 +16,23 @@ export type RecurringForecastRule = {
   payee: string
   accountId?: number
   categoryId?: number
+  frequency: RecurrenceFrequency
+  nextOccurrenceOn: string
+  anchorDay: number
+  /** Missing only when a cached newer app shell reads an older API response. */
+  scheduleEndsOn?: string | null
+}
+
+export type RecurringTransferForecastRule = {
+  id: string
+  name: string
+  amountMinor: number
+  fromAccountId: number
+  fromAccountName: string
+  fromAccountLocalizationKey: AccountLocalizationKey | null
+  toAccountId: number
+  toAccountName: string
+  toAccountLocalizationKey: AccountLocalizationKey | null
   frequency: RecurrenceFrequency
   nextOccurrenceOn: string
   anchorDay: number
@@ -42,6 +61,20 @@ export type RecurringForecastOccurrence = {
   payee: string
   accountId?: number
   categoryId?: number
+  frequency: RecurrenceFrequency
+  occurrenceOn: string
+}
+
+export type RecurringTransferForecastOccurrence = {
+  recurringTransferRuleId: string
+  name: string
+  amountMinor: number
+  fromAccountId: number
+  fromAccountName: string
+  fromAccountLocalizationKey: AccountLocalizationKey | null
+  toAccountId: number
+  toAccountName: string
+  toAccountLocalizationKey: AccountLocalizationKey | null
   frequency: RecurrenceFrequency
   occurrenceOn: string
 }
@@ -83,6 +116,27 @@ export function recurringForecastOccurrences(
   }))).sort((left, right) => (
     left.occurrenceOn.localeCompare(right.occurrenceOn)
     || left.recurringRuleId.localeCompare(right.recurringRuleId)
+  ))
+}
+
+export function recurringTransferForecastOccurrences(
+  forecast: readonly ScheduledRecurringTransferSummary[],
+): RecurringTransferForecastOccurrence[] {
+  return forecast.flatMap((rule) => rule.occurrenceDates.map((occurrenceOn) => ({
+    recurringTransferRuleId: rule.recurringTransferRuleId,
+    name: rule.name,
+    amountMinor: rule.amountMinor,
+    fromAccountId: rule.fromAccountId,
+    fromAccountName: rule.fromAccountName,
+    fromAccountLocalizationKey: rule.fromAccountLocalizationKey,
+    toAccountId: rule.toAccountId,
+    toAccountName: rule.toAccountName,
+    toAccountLocalizationKey: rule.toAccountLocalizationKey,
+    frequency: rule.frequency,
+    occurrenceOn,
+  }))).sort((left, right) => (
+    left.occurrenceOn.localeCompare(right.occurrenceOn)
+    || left.recurringTransferRuleId.localeCompare(right.recurringTransferRuleId)
   ))
 }
 
@@ -149,23 +203,9 @@ export function recurringForecastForMonth(
   const { start, end } = monthRangeDates(month)
 
   return rules.flatMap((rule) => {
-    const firstOccurrenceOn = firstOccurrenceOnOrAfter(
-      rule.nextOccurrenceOn,
-      start,
-      rule.frequency,
-      rule.anchorDay,
-    )
-    if (firstOccurrenceOn >= end || (rule.scheduleEndsOn && firstOccurrenceOn > rule.scheduleEndsOn)) {
-      return []
-    }
-
-    const occurrenceDates = dueOccurrences(
-      firstOccurrenceOn,
-      end,
-      rule.frequency,
-      rule.anchorDay,
-      32,
-    ).occurrences.filter((date) => date < end && (!rule.scheduleEndsOn || date <= rule.scheduleEndsOn))
+    const schedule = forecastScheduleForMonth(rule, start, end)
+    if (!schedule) return []
+    const { firstOccurrenceOn, occurrenceDates } = schedule
     const occurrenceCount = occurrenceDates.length
 
     return [{
@@ -185,4 +225,66 @@ export function recurringForecastForMonth(
     left.firstOccurrenceOn.localeCompare(right.firstOccurrenceOn)
     || left.recurringRuleId.localeCompare(right.recurringRuleId)
   ))
+}
+
+export function recurringTransferForecastForMonth(
+  rules: readonly RecurringTransferForecastRule[],
+  month: string,
+): ScheduledRecurringTransferSummary[] {
+  const { start, end } = monthRangeDates(month)
+
+  return rules.flatMap((rule) => {
+    const schedule = forecastScheduleForMonth(rule, start, end)
+    if (!schedule) return []
+    const { firstOccurrenceOn, occurrenceDates } = schedule
+
+    return [{
+      recurringTransferRuleId: rule.id,
+      name: rule.name,
+      amountMinor: rule.amountMinor,
+      fromAccountId: rule.fromAccountId,
+      fromAccountName: rule.fromAccountName,
+      fromAccountLocalizationKey: rule.fromAccountLocalizationKey,
+      toAccountId: rule.toAccountId,
+      toAccountName: rule.toAccountName,
+      toAccountLocalizationKey: rule.toAccountLocalizationKey,
+      frequency: rule.frequency,
+      firstOccurrenceOn,
+      occurrenceCount: occurrenceDates.length,
+      occurrenceDates,
+    }]
+  }).sort((left, right) => (
+    left.firstOccurrenceOn.localeCompare(right.firstOccurrenceOn)
+    || left.recurringTransferRuleId.localeCompare(right.recurringTransferRuleId)
+  ))
+}
+
+function forecastScheduleForMonth(
+  rule: Pick<
+    RecurringForecastRule,
+    'nextOccurrenceOn' | 'frequency' | 'anchorDay' | 'scheduleEndsOn'
+  >,
+  start: string,
+  end: string,
+) {
+  const firstOccurrenceOn = firstOccurrenceOnOrAfter(
+    rule.nextOccurrenceOn,
+    start,
+    rule.frequency,
+    rule.anchorDay,
+  )
+  if (firstOccurrenceOn >= end || (rule.scheduleEndsOn && firstOccurrenceOn > rule.scheduleEndsOn)) {
+    return null
+  }
+
+  return {
+    firstOccurrenceOn,
+    occurrenceDates: dueOccurrences(
+      firstOccurrenceOn,
+      end,
+      rule.frequency,
+      rule.anchorDay,
+      32,
+    ).occurrences.filter((date) => date < end && (!rule.scheduleEndsOn || date <= rule.scheduleEndsOn)),
+  }
 }

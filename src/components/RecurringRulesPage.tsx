@@ -35,12 +35,14 @@ type RecurringRulesPageProps = {
   categories: Category[]
   draft: RecurringRuleCreateInput | null
   focusRuleId: string | null
+  focusTransferRuleId: string | null
   ledgerContext: string
   ledgerSource: DataSource
   mutable: boolean
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>
   onDraftClose: () => void
   onFocusRuleHandled: () => void
+  onFocusTransferRuleHandled: () => void
   onMutationStateChange: (mutating: boolean) => void
 }
 
@@ -49,12 +51,14 @@ export function RecurringRulesPage({
   categories,
   draft,
   focusRuleId,
+  focusTransferRuleId,
   ledgerContext,
   ledgerSource,
   mutable,
   onMoneyRefresh,
   onDraftClose,
   onFocusRuleHandled,
+  onFocusTransferRuleHandled,
   onMutationStateChange,
 }: RecurringRulesPageProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
@@ -416,10 +420,12 @@ export function RecurringRulesPage({
 
       <RecurringTransferRulesPanel
         accounts={accounts}
+        focusRuleId={focusTransferRuleId}
         ledgerContext={ledgerContext}
         ledgerSource={ledgerSource}
         mutable={mutable && !transactionMutationInProgress}
         onMoneyRefresh={onMoneyRefresh}
+        onFocusRuleHandled={onFocusTransferRuleHandled}
         onMutationStateChange={setTransferMutationInProgress}
       />
 

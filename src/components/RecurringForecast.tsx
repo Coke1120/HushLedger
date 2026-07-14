@@ -1,9 +1,10 @@
-import { CalendarClock, Repeat2 } from 'lucide-react'
+import { ArrowRightLeft, CalendarClock, Repeat2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import {
   recurringForecastOccurrences,
   recurringForecastPeriods,
+  recurringTransferForecastOccurrences,
   summarizeRecurringForecast,
 } from '../lib/recurringForecast'
 import type { Summary } from '../lib/schema'
@@ -14,6 +15,7 @@ type RecurringForecastProps = {
   categories: readonly ForecastReference[]
   loading: boolean
   onManage: (recurringRuleId: string) => void
+  onManageTransfer: (recurringTransferRuleId: string) => void
 }
 
 type ForecastReference = {
@@ -41,9 +43,11 @@ export function RecurringForecast({
   categories,
   loading,
   onManage,
+  onManageTransfer,
 }: RecurringForecastProps) {
   const { formatDate, formatMoney, localizeEntityName, privacyMode, t } = useI18n()
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null)
+  const [expandedTransferMonth, setExpandedTransferMonth] = useState<string | null>(null)
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
     [accounts],
@@ -54,10 +58,21 @@ export function RecurringForecast({
   )
   const showAll = expandedMonth === summary.month
   const occurrences = recurringForecastOccurrences(summary.recurringForecast)
+  const transferOccurrences = recurringTransferForecastOccurrences(
+    summary.recurringTransferForecast ?? [],
+  )
   const hiddenOccurrenceCount = Math.max(0, occurrences.length - visibleOccurrenceLimit)
   const visibleOccurrences = showAll
     ? occurrences
     : occurrences.slice(0, visibleOccurrenceLimit)
+  const showAllTransfers = expandedTransferMonth === summary.month
+  const hiddenTransferOccurrenceCount = Math.max(
+    0,
+    transferOccurrences.length - visibleOccurrenceLimit,
+  )
+  const visibleTransferOccurrences = showAllTransfers
+    ? transferOccurrences
+    : transferOccurrences.slice(0, visibleOccurrenceLimit)
   const totals = summarizeRecurringForecast(summary.recurringForecast)
   const displayedTotals = totals ?? (privacyMode ? privacyTotalsPlaceholder : null)
   const periods = recurringForecastPeriods(summary.month, summary.recurringForecast)
@@ -81,14 +96,14 @@ export function RecurringForecast({
 
       {loading ? (
         <p className="category-spending-empty" role="status">{t('scheduledForecastLoading')}</p>
-      ) : visibleOccurrences.length === 0 ? (
+      ) : visibleOccurrences.length === 0 && transferOccurrences.length === 0 ? (
         <div className="category-spending-empty">
           <strong>{t('noScheduledThisMonth')}</strong>
           <span>{t('noScheduledThisMonthHelp')}</span>
         </div>
       ) : (
         <>
-          {displayedTotals ? (
+          {visibleOccurrences.length > 0 && displayedTotals ? (
             <dl className="recurring-forecast-totals">
               <div className="recurring-forecast-total income">
                 <dt>{t('scheduledIncome')}</dt>
@@ -104,7 +119,7 @@ export function RecurringForecast({
               </div>
             </dl>
           ) : null}
-          <section
+          {visibleOccurrences.length > 0 ? <section
             className="recurring-forecast-periods"
             aria-labelledby="recurring-forecast-periods-title"
           >
@@ -165,8 +180,8 @@ export function RecurringForecast({
                 )
               })}
             </ol>
-          </section>
-          <ol className="category-spending-list" id="recurring-forecast-list">
+          </section> : null}
+          {visibleOccurrences.length > 0 ? <ol className="category-spending-list" id="recurring-forecast-list">
             {visibleOccurrences.map((occurrence) => {
               const date = formatDate(occurrence.occurrenceOn)
               const amount = formatMoney(occurrence.amountMinor)
@@ -234,8 +249,8 @@ export function RecurringForecast({
                 </li>
               )
             })}
-          </ol>
-          {hiddenOccurrenceCount > 0 ? (
+          </ol> : null}
+          {visibleOccurrences.length > 0 && hiddenOccurrenceCount > 0 ? (
             <div className="recurring-forecast-actions">
               <button
                 className="button button-secondary"
@@ -249,6 +264,98 @@ export function RecurringForecast({
                   : t('showMoreScheduledEntries', { count: hiddenOccurrenceCount })}
               </button>
             </div>
+          ) : null}
+          {transferOccurrences.length > 0 ? (
+            <section
+              className="recurring-transfer-forecast"
+              aria-labelledby="recurring-transfer-forecast-title"
+            >
+              <header className="recurring-transfer-forecast-heading">
+                <h3 id="recurring-transfer-forecast-title">
+                  <ArrowRightLeft aria-hidden="true" />
+                  {t('scheduledTransferForecastTitle')}
+                </h3>
+                <p>{t('scheduledTransferForecastHelp')}</p>
+              </header>
+              <ol
+                className="category-spending-list recurring-transfer-forecast-list"
+                id="recurring-transfer-forecast-list"
+              >
+                {visibleTransferOccurrences.map((occurrence) => {
+                  const date = formatDate(occurrence.occurrenceOn)
+                  const amount = formatMoney(occurrence.amountMinor)
+                  const fromAccountName = localizeEntityName(
+                    occurrence.fromAccountName,
+                    occurrence.fromAccountLocalizationKey,
+                  )
+                  const toAccountName = localizeEntityName(
+                    occurrence.toAccountName,
+                    occurrence.toAccountLocalizationKey,
+                  )
+                  const direction = t('transferDirection', {
+                    from: fromAccountName,
+                    to: toAccountName,
+                  })
+                  const frequency = t(occurrence.frequency)
+
+                  return (
+                    <li key={`${occurrence.recurringTransferRuleId}:${occurrence.occurrenceOn}`}>
+                      <button
+                        className="category-spending-row recurring-forecast-row recurring-transfer-forecast-row"
+                        type="button"
+                        data-recurring-transfer-rule-id={occurrence.recurringTransferRuleId}
+                        onClick={() => onManageTransfer(occurrence.recurringTransferRuleId)}
+                        aria-label={t('manageScheduledTransferRule', {
+                          name: occurrence.name,
+                          date,
+                          frequency,
+                          amount,
+                          from: fromAccountName,
+                          to: toAccountName,
+                        })}
+                      >
+                        <span className="category-spending-name">
+                          <span className="recurring-forecast-rule-icon transfer" aria-hidden="true">
+                            <ArrowRightLeft />
+                          </span>
+                          <span>
+                            <strong>{occurrence.name}</strong>
+                            <small>
+                              <time dateTime={occurrence.occurrenceOn}>{date}</time>
+                              {' · '}{frequency}
+                            </small>
+                            <small className="recurring-forecast-reference">{direction}</small>
+                          </span>
+                        </span>
+                        <span className="category-spending-amount">
+                          <strong>{amount}</strong>
+                          <small>{t('scheduledTransferLedgerEntry')}</small>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+              {hiddenTransferOccurrenceCount > 0 ? (
+                <div className="recurring-forecast-actions">
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    aria-controls="recurring-transfer-forecast-list"
+                    aria-expanded={showAllTransfers}
+                    onClick={() => setExpandedTransferMonth(
+                      showAllTransfers ? null : summary.month,
+                    )}
+                  >
+                    {showAllTransfers
+                      ? t('showFewerScheduledTransfers')
+                      : t('showMoreScheduledTransfers', {
+                        count: hiddenTransferOccurrenceCount,
+                      })}
+                  </button>
+                </div>
+              ) : null}
+            </section>
           ) : null}
         </>
       )}

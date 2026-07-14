@@ -54,9 +54,12 @@ knowledge and explains every command and dashboard click.
   income/expense label. A fixed
   day-1-anchored weekly view groups those exact dates into seven-day scheduled
   income, expense, and net periods, including zero periods and a final period
-  that may be shorter. Longer lists can be expanded without changing the exact totals.
-  Forecast values never change recorded or available balance, and a provider
-  statement remains authoritative for the actual date and amount.
+  that may be shorter. A separate expandable list shows every ungenerated
+  scheduled transfer with its exact ledger date, amount, and source-to-destination
+  account direction. Transfers never enter the monthly or weekly income, expense,
+  or net forecast totals. Forecast values never change recorded or available
+  balance, and a provider statement remains authoritative for the actual date,
+  amount, execution, and available funds.
 - Amounts stored in the ledger's selected currency as integer minor units to
   avoid floating-point errors.
 - Per-account recorded, cleared, and uncleared balances at the end of the selected
@@ -83,9 +86,10 @@ knowledge and explains every command and dashboard click.
   credit-card payments do not manufacture spending or income.
 - Schedule a fixed same-currency transfer between two owned accounts with a daily,
   weekly, monthly, or yearly cadence and an optional inclusive end date. Each due
-  occurrence is one native transfer with both sides uncleared for review. This is
-  ledger automation only: HushLedger never contacts a bank, moves real funds, or
-  claims sufficient balance.
+  occurrence is visible in the selected-month forecast until it becomes one
+  native transfer with both sides uncleared for review. This is ledger automation
+  only: HushLedger never contacts a bank, moves real funds, or claims sufficient
+  balance.
 - Calculate a transaction amount with `+`, `-`, `*`, `/`, or parentheses. A
   bounded no-eval parser rounds only the final result before storing exact minor
   units, with touch-friendly operator buttons for mobile entry.

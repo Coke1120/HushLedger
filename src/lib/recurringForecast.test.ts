@@ -4,8 +4,11 @@ import {
   recurringForecastOccurrences,
   recurringForecastForMonth,
   recurringForecastPeriods,
+  recurringTransferForecastForMonth,
+  recurringTransferForecastOccurrences,
   summarizeRecurringForecast,
   type RecurringForecastRule,
+  type RecurringTransferForecastRule,
 } from './recurringForecast'
 import type { ScheduledRecurringSummary } from './schema'
 
@@ -37,6 +40,27 @@ function summary(
     firstOccurrenceOn: '2026-07-01',
     occurrenceCount: 1,
     occurrenceDates: ['2026-07-01'],
+    ...patch,
+  }
+}
+
+function transferRule(
+  patch: Partial<RecurringTransferForecastRule> = {},
+): RecurringTransferForecastRule {
+  return {
+    id: '20000000-0000-4000-8000-000000000001',
+    name: 'Move to savings',
+    amountMinor: 50_000,
+    fromAccountId: 1,
+    fromAccountName: 'Bank',
+    fromAccountLocalizationKey: 'account.bank',
+    toAccountId: 2,
+    toAccountName: 'Wallet',
+    toAccountLocalizationKey: 'account.wallet',
+    frequency: 'monthly',
+    nextOccurrenceOn: '2026-01-31',
+    anchorDay: 31,
+    scheduleEndsOn: null,
     ...patch,
   }
 }
@@ -357,5 +381,115 @@ describe('monthly recurring forecast', () => {
 
     assert.equal(periods[0].totals, null)
     assert.deepEqual(periods[1].totals, { incomeMinor: 0, expenseMinor: 0, netMinor: 0 })
+  })
+})
+
+describe('scheduled-transfer forecast', () => {
+  it('reuses exact cadence anchors and clips every occurrence to the selected month and inclusive end', () => {
+    const forecast = recurringTransferForecastForMonth([
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000004',
+        name: 'Yearly reserve',
+        frequency: 'yearly',
+        nextOccurrenceOn: '2024-02-29',
+        anchorDay: 29,
+      }),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000002',
+        name: 'Weekly reserve',
+        frequency: 'weekly',
+        nextOccurrenceOn: '2026-01-26',
+        anchorDay: 26,
+      }),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000003',
+        name: 'Daily reserve',
+        frequency: 'daily',
+        nextOccurrenceOn: '2026-02-27',
+        anchorDay: 27,
+        scheduleEndsOn: '2026-02-28',
+      }),
+      transferRule({}),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000005',
+        name: 'Later reserve',
+        nextOccurrenceOn: '2026-03-01',
+      }),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000006',
+        name: 'Completed reserve',
+        nextOccurrenceOn: '2026-02-01',
+        scheduleEndsOn: '2026-01-31',
+      }),
+    ], '2026-02')
+
+    assert.deepEqual(forecast.map(({ name, occurrenceDates }) => ({ name, occurrenceDates })), [
+      {
+        name: 'Weekly reserve',
+        occurrenceDates: ['2026-02-02', '2026-02-09', '2026-02-16', '2026-02-23'],
+      },
+      { name: 'Daily reserve', occurrenceDates: ['2026-02-27', '2026-02-28'] },
+      { name: 'Move to savings', occurrenceDates: ['2026-02-28'] },
+      { name: 'Yearly reserve', occurrenceDates: ['2026-02-28'] },
+    ])
+  })
+
+  it('accepts a missing cached end date and expands a stable exact-rule schedule', () => {
+    const forecast = recurringTransferForecastForMonth([
+      transferRule({ scheduleEndsOn: undefined }),
+      transferRule({
+        id: '20000000-0000-4000-8000-000000000000',
+        name: 'Earlier ID',
+        scheduleEndsOn: undefined,
+      }),
+    ], '2026-02')
+
+    assert.deepEqual(recurringTransferForecastOccurrences(forecast), [
+      {
+        recurringTransferRuleId: '20000000-0000-4000-8000-000000000000',
+        name: 'Earlier ID',
+        amountMinor: 50_000,
+        fromAccountId: 1,
+        fromAccountName: 'Bank',
+        fromAccountLocalizationKey: 'account.bank',
+        toAccountId: 2,
+        toAccountName: 'Wallet',
+        toAccountLocalizationKey: 'account.wallet',
+        frequency: 'monthly',
+        occurrenceOn: '2026-02-28',
+      },
+      {
+        recurringTransferRuleId: '20000000-0000-4000-8000-000000000001',
+        name: 'Move to savings',
+        amountMinor: 50_000,
+        fromAccountId: 1,
+        fromAccountName: 'Bank',
+        fromAccountLocalizationKey: 'account.bank',
+        toAccountId: 2,
+        toAccountName: 'Wallet',
+        toAccountLocalizationKey: 'account.wallet',
+        frequency: 'monthly',
+        occurrenceOn: '2026-02-28',
+      },
+    ])
+  })
+
+  it('cannot change recurring transaction totals or weekly cash-flow periods', () => {
+    const recurringTransactions = recurringForecastForMonth([
+      rule({ type: 'income', amountMinor: 200_000, nextOccurrenceOn: '2026-02-10' }),
+      rule({
+        id: '10000000-0000-4000-8000-000000000002',
+        amountMinor: 75_000,
+        nextOccurrenceOn: '2026-02-20',
+      }),
+    ], '2026-02')
+    const totals = summarizeRecurringForecast(recurringTransactions)
+    const periods = recurringForecastPeriods('2026-02', recurringTransactions)
+
+    assert.equal(recurringTransferForecastForMonth([
+      transferRule({ amountMinor: Number.MAX_SAFE_INTEGER }),
+    ], '2026-02').length, 1)
+    assert.deepEqual(summarizeRecurringForecast(recurringTransactions), totals)
+    assert.deepEqual(recurringForecastPeriods('2026-02', recurringTransactions), periods)
   })
 })

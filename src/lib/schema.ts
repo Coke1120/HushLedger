@@ -574,6 +574,8 @@ export type Summary = {
   expenseByPayee: ExpensePayeeSummary[]
   monthlySpendingPlans: MonthlySpendingPlanSummary[]
   recurringForecast: ScheduledRecurringSummary[]
+  /** Missing only when a cached newer app shell reads an older API response. */
+  recurringTransferForecast?: ScheduledRecurringTransferSummary[]
 }
 
 export type MonthlyCashFlowSummary = {
@@ -628,6 +630,22 @@ export type ScheduledRecurringSummary = {
   accountId?: number
   /** Missing only when a cached newer app shell reads an older API response. */
   categoryId?: number
+  frequency: RecurrenceFrequency
+  firstOccurrenceOn: string
+  occurrenceCount: number
+  occurrenceDates: string[]
+}
+
+export type ScheduledRecurringTransferSummary = {
+  recurringTransferRuleId: string
+  name: string
+  amountMinor: number
+  fromAccountId: number
+  fromAccountName: string
+  fromAccountLocalizationKey: AccountLocalizationKey | null
+  toAccountId: number
+  toAccountName: string
+  toAccountLocalizationKey: AccountLocalizationKey | null
   frequency: RecurrenceFrequency
   firstOccurrenceOn: string
   occurrenceCount: number

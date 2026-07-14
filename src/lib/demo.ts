@@ -602,5 +602,6 @@ export function demoSummary(month: string, t?: Translator): Summary {
         spentMinor: expenseByCategory.find(({ categoryId }) => categoryId === category.id)?.amountMinor ?? 0,
       })),
     recurringForecast: [],
+    recurringTransferForecast: [],
   }
 }

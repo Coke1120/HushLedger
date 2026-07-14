@@ -99,6 +99,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
   const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
   const [recurringRuleFocusId, setRecurringRuleFocusId] = useState<string | null>(null)
+  const [recurringTransferRuleFocusId, setRecurringTransferRuleFocusId] = useState<string | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
   const [aiSettings, setAiSettings] = useState(initialAiSettings)
   const [savedTransactionViews, setSavedTransactionViews] = useState<SavedTransactionView[]>([])
@@ -206,6 +207,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [])
   const closeRecurringDraft = useCallback(() => setRecurringDraft(null), [])
   const clearRecurringRuleFocus = useCallback(() => setRecurringRuleFocusId(null), [])
+  const clearRecurringTransferRuleFocus = useCallback(
+    () => setRecurringTransferRuleFocusId(null),
+    [],
+  )
 
   const saveTransaction = useCallback(
     async (input: TransactionInput) => saveMoneyTransaction(input, editingTransaction ?? undefined),
@@ -233,7 +238,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const changeView = useCallback((nextView: AppView) => {
     if (ledgerInteractionLocked) return
     if (nextView !== 'transactions') setRegisterAccountId(null)
-    if (nextView !== 'recurring') setRecurringRuleFocusId(null)
+    if (nextView !== 'recurring') {
+      setRecurringRuleFocusId(null)
+      setRecurringTransferRuleFocusId(null)
+    }
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [ledgerInteractionLocked])
@@ -394,7 +402,16 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const openRecurringRules = useCallback((recurringRuleId: string) => {
     if (ledgerInteractionLocked) return
     setImportMode(null)
+    setRecurringTransferRuleFocusId(null)
     setRecurringRuleFocusId(recurringRuleId)
+    changeView('recurring')
+  }, [changeView, ledgerInteractionLocked])
+
+  const openRecurringTransferRules = useCallback((recurringTransferRuleId: string) => {
+    if (ledgerInteractionLocked) return
+    setImportMode(null)
+    setRecurringRuleFocusId(null)
+    setRecurringTransferRuleFocusId(recurringTransferRuleId)
     changeView('recurring')
   }, [changeView, ledgerInteractionLocked])
 
@@ -648,6 +665,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   categories={data.categories}
                   loading={loading}
                   onManage={openRecurringRules}
+                  onManageTransfer={openRecurringTransferRules}
                 />
               </>
             ) : null}
@@ -838,12 +856,14 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             categories={data.categories}
             draft={recurringDraft}
             focusRuleId={recurringRuleFocusId}
+            focusTransferRuleId={recurringTransferRuleFocusId}
             ledgerContext={data.ledgerSettings.updatedAt}
             ledgerSource={data.source}
             mutable={data.source === 'live' && data.online}
             onMoneyRefresh={data.refresh}
             onDraftClose={closeRecurringDraft}
             onFocusRuleHandled={clearRecurringRuleFocus}
+            onFocusTransferRuleHandled={clearRecurringTransferRuleFocus}
             onMutationStateChange={setRecurringMutationInProgress}
           />
         </div>

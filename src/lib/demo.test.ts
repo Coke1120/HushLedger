@@ -339,6 +339,7 @@ describe('localized demo data', () => {
     const summary = demoSummary('2026-07')
 
     assert.equal(summary.expense, 1_717_950)
+    assert.deepEqual(summary.recurringTransferForecast, [])
     assert.deepEqual(
       summary.expenseByCategory.map(({ categoryId, amountMinor, transactionCount }) => ({
         categoryId,

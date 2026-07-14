@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRecurringTransferRules } from '../hooks/useRecurringTransferRules'
 import type { DataSource, RefreshFailureMode } from '../hooks/useMoneyData'
 import { useI18n } from '../i18n'
+import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
 import type {
   Account,
   RecurringTransferRule,
@@ -27,7 +28,9 @@ type RecurringTransferRulesPanelProps = {
   ledgerContext: string
   ledgerSource: DataSource
   mutable: boolean
+  focusRuleId: string | null
   onMoneyRefresh: (failureMode?: RefreshFailureMode) => Promise<boolean>
+  onFocusRuleHandled: () => void
   onMutationStateChange: (mutating: boolean) => void
 }
 
@@ -36,11 +39,14 @@ export function RecurringTransferRulesPanel({
   ledgerContext,
   ledgerSource,
   mutable,
+  focusRuleId,
   onMoneyRefresh,
+  onFocusRuleHandled,
   onMutationStateChange,
 }: RecurringTransferRulesPanelProps) {
   const { t } = useI18n()
   const recurring = useRecurringTransferRules(onMoneyRefresh, mutable, ledgerSource)
+  const clearRecurringActionMessage = recurring.clearActionMessage
   const [editorOpen, setEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<RecurringTransferRule | null>(null)
   const ledgerLive = ledgerSource === 'live'
@@ -80,11 +86,35 @@ export function RecurringTransferRulesPanel({
     setEditorOpen(true)
   }
 
-  const openEdit = (rule: RecurringTransferRule) => {
-    recurring.clearActionMessage()
+  const openEdit = useCallback((rule: RecurringTransferRule) => {
+    clearRecurringActionMessage()
     setEditingRule(rule)
     setEditorOpen(true)
-  }
+  }, [clearRecurringActionMessage])
+
+  useEffect(() => {
+    const focusedRule = resolveRecurringRuleRequest(
+      focusRuleId,
+      visibleRules,
+      recurring.source !== 'loading',
+      !editorOpen,
+      mutationsEnabled,
+    )
+    if (focusedRule === undefined) return
+    const timeout = window.setTimeout(() => {
+      onFocusRuleHandled()
+      if (focusedRule !== null) openEdit(focusedRule)
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [
+    editorOpen,
+    focusRuleId,
+    mutationsEnabled,
+    onFocusRuleHandled,
+    openEdit,
+    recurring.source,
+    visibleRules,
+  ])
 
   const createRule = useCallback(
     (input: RecurringTransferRuleCreateInput) => recurring.createRule(input),

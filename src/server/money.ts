@@ -12,7 +12,9 @@ import { buildNetWorthTrend, netWorthTrendMonths } from '../lib/netWorthTrend'
 import { mergePayeeSummaries, normalizePayee } from '../lib/payeeMemory'
 import {
   recurringForecastForMonth,
+  recurringTransferForecastForMonth,
   type RecurringForecastRule,
+  type RecurringTransferForecastRule,
 } from '../lib/recurringForecast'
 import { buildMonthlySpendingTrend } from '../lib/spendingTrend'
 import type {
@@ -840,6 +842,7 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     expenseByPayeeResult,
     monthlySpendingPlansResult,
     recurringRulesResult,
+    recurringTransferRulesResult,
   ] = await Promise.all([
     database.prepare(`
       SELECT
@@ -957,6 +960,32 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     `)
       .bind(end)
       .all<RecurringForecastRule>(),
+    database.prepare(`
+      SELECT
+        r.id,
+        r.name,
+        r.amount_minor AS amountMinor,
+        r.from_account_id AS fromAccountId,
+        source.name AS fromAccountName,
+        source.localization_key AS fromAccountLocalizationKey,
+        r.to_account_id AS toAccountId,
+        destination.name AS toAccountName,
+        destination.localization_key AS toAccountLocalizationKey,
+        r.frequency,
+        r.next_occurrence_on AS nextOccurrenceOn,
+        r.anchor_day AS anchorDay,
+        r.schedule_ends_on AS scheduleEndsOn
+      FROM recurring_transfer_rules r
+      INNER JOIN accounts source ON source.id = r.from_account_id
+      INNER JOIN accounts destination ON destination.id = r.to_account_id
+      WHERE r.is_active = 1
+        AND r.deleted_at IS NULL
+        AND r.next_occurrence_on < ?
+        AND (r.schedule_ends_on IS NULL OR r.next_occurrence_on <= r.schedule_ends_on)
+      ORDER BY r.next_occurrence_on ASC, r.id ASC
+    `)
+      .bind(end)
+      .all<RecurringTransferForecastRule>(),
   ])
 
   if (!row) throw new Error('Monthly summary aggregate is missing')
@@ -979,6 +1008,10 @@ export async function getSummary(database: D1Database, month: string): Promise<S
     expenseByPayee: mergePayeeSummaries(expenseByPayeeResult.results),
     monthlySpendingPlans: monthlySpendingPlansResult.results,
     recurringForecast: recurringForecastForMonth(recurringRulesResult.results, month),
+    recurringTransferForecast: recurringTransferForecastForMonth(
+      recurringTransferRulesResult.results,
+      month,
+    ),
   }
 }
 

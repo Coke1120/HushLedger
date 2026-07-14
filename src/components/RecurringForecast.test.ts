@@ -67,7 +67,9 @@ function renderForecast(
     formatMonth: (month) => month,
     formatDate: (date) => date,
     formatNumber: String,
-    localizeEntityName: (name) => name,
+    localizeEntityName: (name, localizationKey) => localizationKey
+      ? `${localizationKey}:${name}`
+      : name,
   }
 
   return renderToStaticMarkup(createElement(
@@ -79,6 +81,7 @@ function renderForecast(
       categories,
       loading: false,
       onManage: () => undefined,
+      onManageTransfer: () => undefined,
     }),
   ))
 }
@@ -158,5 +161,50 @@ describe('recurring forecast privacy rendering', () => {
     assert.match(missingReferencesMarkup, /Unknown account · Unknown category/)
     assert.doesNotMatch(partialContextMarkup, /recurring-forecast-reference/)
     assert.doesNotMatch(olderApiMarkup, /Unknown account|Unknown category|recurring-forecast-reference/)
+  })
+
+  it('renders scheduled transfers separately without creating cash-flow totals', () => {
+    const transferSummary: Summary = {
+      ...unsafeSummary,
+      recurringForecast: [],
+      recurringTransferForecast: [{
+        recurringTransferRuleId: '20000000-0000-4000-8000-000000000001',
+        name: 'Daily savings',
+        amountMinor: 4_500,
+        fromAccountId: 2,
+        fromAccountName: 'Everyday',
+        fromAccountLocalizationKey: 'account.bank',
+        toAccountId: 3,
+        toAccountName: 'Reserve',
+        toAccountLocalizationKey: 'account.wallet',
+        frequency: 'daily',
+        firstOccurrenceOn: '2026-07-01',
+        occurrenceCount: 7,
+        occurrenceDates: [
+          '2026-07-01',
+          '2026-07-02',
+          '2026-07-03',
+          '2026-07-04',
+          '2026-07-05',
+          '2026-07-06',
+          '2026-07-07',
+        ],
+      }],
+    }
+    const markup = renderForecast(false, transferSummary)
+    const privateMarkup = renderForecast(true, transferSummary)
+
+    assert.match(markup, /Scheduled account transfers/)
+    assert.match(markup, /ledger generation dates, not bank execution dates/)
+    assert.match(markup, /data-recurring-transfer-rule-id="20000000-0000-4000-8000-000000000001"/)
+    assert.match(markup, /2026-07-01<\/time> · Daily/)
+    assert.match(markup, /account\.bank:Everyday → account\.wallet:Reserve/)
+    assert.match(markup, /HK\$45\.00/)
+    assert.doesNotMatch(markup, /class="recurring-forecast-totals"/)
+    assert.doesNotMatch(markup, /class="recurring-forecast-periods"/)
+    assert.doesNotMatch(markup, /2026-07-07/)
+    assert.match(markup, /Show 1 more scheduled account transfer/)
+    assert.match(privateMarkup, /HK\$••••/)
+    assert.doesNotMatch(privateMarkup, /HK\$45\.00/)
   })
 })

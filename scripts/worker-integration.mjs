@@ -1379,8 +1379,10 @@ async function recurringTransferNeutralitySnapshot(baseUrl, month) {
   for (const result of [summary, transactionSummary, transactionExport, netWorth, payeeSuggestions]) {
     assert.equal(result.response.status, 200, JSON.stringify(result.payload))
   }
+  const reportSummary = structuredClone(summary.payload.data)
+  delete reportSummary.recurringTransferForecast
   return {
-    summary: summary.payload.data,
+    summary: reportSummary,
     transactionSummary: transactionSummary.payload.data,
     transactionExport: transactionExport.payload,
     netWorth: netWorth.payload.data,
@@ -1429,6 +1431,9 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
     opening: '70000000-0000-4000-8000-000000000003',
     race: '70000000-0000-4000-8000-000000000004',
     cron: '70000000-0000-4000-8000-000000000005',
+    deletedForecast: '70000000-0000-4000-8000-000000000012',
+    completedForecast: '70000000-0000-4000-8000-000000000013',
+    futureForecast: '70000000-0000-4000-8000-000000000014',
   }
   const baseRule = {
     id: ruleIds.main,
@@ -1560,6 +1565,134 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
   assert.equal(compatibleCachedUpdate.response.status, 200, JSON.stringify(compatibleCachedUpdate.payload))
   assert.equal(compatibleCachedUpdate.payload.data.scheduleEndsOn, today)
 
+  const pauseRuleBody = {
+    ...baseRule,
+    id: ruleIds.pause,
+    name: 'Pause, resume, and skip transfer',
+  }
+  const pauseRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: pauseRuleBody,
+  })
+  assert.equal(pauseRule.response.status, 201, JSON.stringify(pauseRule.payload))
+  const paused = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
+    method: 'PATCH',
+    body: { isActive: false, revision: pauseRule.payload.data.revision },
+  })
+  assert.equal(paused.response.status, 200, JSON.stringify(paused.payload))
+
+  const deletedForecastRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.deletedForecast,
+      name: 'Deleted forecast transfer',
+      scheduleEndsOn: null,
+    },
+  })
+  assert.equal(deletedForecastRule.response.status, 201, JSON.stringify(deletedForecastRule.payload))
+  const deletedForecast = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.deletedForecast}`,
+    {
+      method: 'DELETE',
+      body: { revision: deletedForecastRule.payload.data.revision },
+    },
+  )
+  assert.equal(deletedForecast.response.status, 200, JSON.stringify(deletedForecast.payload))
+
+  const completedForecastRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.completedForecast,
+      name: 'Completed forecast transfer',
+    },
+  })
+  assert.equal(completedForecastRule.response.status, 201, JSON.stringify(completedForecastRule.payload))
+  const completedForecast = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.completedForecast}/skip`,
+    {
+      method: 'POST',
+      body: {
+        revision: completedForecastRule.payload.data.revision,
+        nextOccurrenceOn: today,
+      },
+    },
+  )
+  assert.equal(completedForecast.response.status, 200, JSON.stringify(completedForecast.payload))
+  assert.equal(completedForecast.payload.data.isActive, false)
+  assert.equal(completedForecast.payload.data.scheduleEndsOn, today)
+  assert.equal(completedForecast.payload.data.nextOccurrenceOn, tomorrow)
+
+  const futureForecastRule = await api(baseUrl, '/api/recurring-transfer-rules', {
+    method: 'POST',
+    body: {
+      ...baseRule,
+      id: ruleIds.futureForecast,
+      name: 'Future-month forecast transfer',
+      scheduleStartsOn: `${shiftCalendarMonth(month, 1)}-01`,
+      scheduleEndsOn: null,
+    },
+  })
+  assert.equal(futureForecastRule.response.status, 201, JSON.stringify(futureForecastRule.payload))
+  assert.equal(futureForecastRule.payload.data.isActive, true)
+
+  const revisionProbe = await downloadLedgerBackup(baseUrl)
+  assert.equal(revisionProbe.response.status, 200, JSON.stringify(revisionProbe.payload))
+  const revisionBeforeForecastReads = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: revisionProbe.payload },
+  })
+  assert.equal(
+    revisionBeforeForecastReads.response.status,
+    200,
+    JSON.stringify(revisionBeforeForecastReads.payload),
+  )
+  const forecastBeforeRun = await api(baseUrl, `/api/summary?month=${month}`)
+  const repeatedForecastBeforeRun = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.equal(forecastBeforeRun.response.status, 200, JSON.stringify(forecastBeforeRun.payload))
+  assert.deepEqual(repeatedForecastBeforeRun.payload, forecastBeforeRun.payload)
+  assert.deepEqual(forecastBeforeRun.payload.data.recurringTransferForecast, [{
+    recurringTransferRuleId: ruleIds.main,
+    name: compatibleCachedUpdate.payload.data.name,
+    amountMinor: baseRule.amountMinor,
+    fromAccountId: source.id,
+    fromAccountName: source.name,
+    fromAccountLocalizationKey: source.localizationKey,
+    toAccountId: destination.id,
+    toAccountName: destination.name,
+    toAccountLocalizationKey: destination.localizationKey,
+    frequency: baseRule.frequency,
+    firstOccurrenceOn: today,
+    occurrenceCount: 1,
+    occurrenceDates: [today],
+  }])
+  const revisionAfterForecastReads = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: revisionProbe.payload },
+  })
+  assert.equal(revisionAfterForecastReads.response.status, 200)
+  assert.equal(
+    revisionAfterForecastReads.payload.data.currentRevision,
+    revisionBeforeForecastReads.payload.data.currentRevision,
+  )
+  assert.equal(
+    revisionAfterForecastReads.payload.data.currentDigest,
+    revisionBeforeForecastReads.payload.data.currentDigest,
+  )
+
+  const removedFutureForecast = await api(
+    baseUrl,
+    `/api/recurring-transfer-rules/${ruleIds.futureForecast}`,
+    {
+      method: 'DELETE',
+      body: { revision: futureForecastRule.payload.data.revision },
+    },
+  )
+  assert.equal(removedFutureForecast.response.status, 200, JSON.stringify(removedFutureForecast.payload))
+
   const callerProvenance = await api(baseUrl, '/api/transfers', {
     method: 'POST',
     body: {
@@ -1605,6 +1738,10 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
   })
   assert.equal(secondRun.response.status, 200)
   assert.equal(secondRun.payload.data.created, 0)
+
+  const forecastAfterRun = await api(baseUrl, `/api/summary?month=${month}`)
+  assert.equal(forecastAfterRun.response.status, 200, JSON.stringify(forecastAfterRun.payload))
+  assert.deepEqual(forecastAfterRun.payload.data.recurringTransferForecast, [])
 
   const transfersAfterRun = await api(baseUrl, `/api/transfers?month=${month}`)
   assert.equal(transfersAfterRun.response.status, 200)
@@ -1739,21 +1876,6 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
   assert.equal(historicalTransfer.payload.data.recurringTransferRuleName, generated.recurringTransferRuleName)
   assert.equal(historicalTransfer.payload.data.recurrenceDueOn, today)
 
-  const pauseRuleBody = {
-    ...baseRule,
-    id: ruleIds.pause,
-    name: 'Pause, resume, and skip transfer',
-  }
-  const pauseRule = await api(baseUrl, '/api/recurring-transfer-rules', {
-    method: 'POST',
-    body: pauseRuleBody,
-  })
-  assert.equal(pauseRule.response.status, 201)
-  const paused = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
-    method: 'PATCH',
-    body: { isActive: false, revision: pauseRule.payload.data.revision },
-  })
-  assert.equal(paused.response.status, 200)
   const stalePause = await api(baseUrl, `/api/recurring-transfer-rules/${ruleIds.pause}/status`, {
     method: 'PATCH',
     body: { isActive: true, revision: pauseRule.payload.data.revision },
@@ -1873,6 +1995,8 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
       recurringTransferOccurrences: 3,
       recurringTransferAccountingChecks: 8,
       recurringTransferReportNeutralityChecks: 5,
+      recurringTransferForecastEligibilityChecks: 6,
+      recurringTransferForecastNoWriteChecks: 2,
       recurringTransferReferenceReleases: 2,
       recurringTransferOpeningDateBlocks: 1,
       recurringTransferCronRuns: 2,

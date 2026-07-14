@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import type { RecurringRule } from './schema'
+import type { RecurringRule, RecurringTransferRule } from './schema'
 import { resolveRecurringRuleRequest } from './recurringRuleRequest'
 
 const firstRule = { id: '10000000-0000-4000-8000-000000000001' } as RecurringRule
@@ -18,5 +18,11 @@ describe('forecast recurring-rule requests', () => {
     assert.equal(resolveRecurringRuleRequest(targetRule.id, rules, true, true, true), targetRule)
     assert.equal(resolveRecurringRuleRequest('10000000-0000-4000-8000-000000000099', rules, true, true, true), null)
     assert.equal(resolveRecurringRuleRequest(targetRule.id, rules, true, true, false), null)
+  })
+
+  it('resolves the same exact request contract for scheduled transfers', () => {
+    const transfer = { id: targetRule.id } as RecurringTransferRule
+
+    assert.equal(resolveRecurringRuleRequest(transfer.id, [transfer], true, true, true), transfer)
   })
 })

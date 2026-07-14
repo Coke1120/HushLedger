@@ -690,6 +690,36 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
+.recurring-transfer-forecast {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.recurring-transfer-forecast-heading {
+  margin: 0 0 12px;
+}
+
+.recurring-transfer-forecast-heading h3 {
+  display: flex;
+  margin: 0;
+  gap: 8px;
+  align-items: center;
+  color: var(--brand-strong);
+  font-size: 15px;
+}
+
+.recurring-transfer-forecast-heading h3 svg {
+  width: 17px;
+}
+
+.recurring-transfer-forecast-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .monthly-plan-rollup-item dd.expense {
   color: var(--expense);
 }
@@ -1373,6 +1403,11 @@ textarea:focus-visible {
   background: var(--income-soft);
 }
 
+.recurring-forecast-rule-icon.transfer {
+  color: var(--brand);
+  background: var(--income-soft);
+}
+
 .recurring-forecast-rule-icon svg {
   width: 16px;
   height: 16px;
@@ -1403,6 +1438,10 @@ textarea:focus-visible {
 
 .recurring-forecast-row .category-spending-amount strong.income {
   color: var(--income);
+}
+
+.recurring-transfer-forecast-row .category-spending-amount strong {
+  color: var(--ink);
 }
 
 .recurring-forecast-actions,
