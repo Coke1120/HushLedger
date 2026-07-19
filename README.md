@@ -30,7 +30,10 @@ knowledge and explains every command and dashboard click.
 
 ## Features
 
-- Monthly income, expenses, balance, and recent transactions.
+- Monthly income, expenses, balance, a privacy-aware recorded savings rate when
+  income is available, and recent transactions.
+- A centered mobile quick-add action opens the same short transaction form as
+  the desktop header without introducing a separate entry path.
 - A zero-filled six-month recorded cash-flow trend comparing income, expenses,
   and net movement without treating transfers, opening balances, or forecasts as cash flow,
   with exact, neutral selected-month differences from the previous calendar
@@ -650,7 +653,8 @@ npm audit --omit=dev --audit-level=high
 ```
 
 `npm run verify` runs the Node-based TypeScript unit suite, TypeScript typechecking,
-ESLint, Oxlint, the Next.js and OpenNext production builds, and a workerd
+the generated Worker binding-type freshness check, ESLint, Oxlint, the Next.js and
+OpenNext production builds, and a workerd
 integration gate against isolated temporary D1 databases. The gate rebuilds fresh
 and upgraded migration paths and verifies the
 App Router shell, privacy-safe PWA assets, security headers, API contracts,

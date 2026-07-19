@@ -385,7 +385,6 @@ export function TransactionDialog({
         aria-labelledby="transaction-dialog-title"
         aria-describedby={error ? 'transaction-form-error' : undefined}
       >
-        <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={busy} aria-label={t('close')}>
@@ -437,7 +436,7 @@ export function TransactionDialog({
                   placeholder={locale === 'fr' ? '0,00' : '0.00'}
                   defaultValue={initialTransaction ? formatAmountInput(initialTransaction.amountMinor, locale) : undefined}
                   aria-describedby="amount-calculator-help"
-                  aria-invalid={Boolean(error)}
+                  aria-invalid={localError === t('invalidAmount') || undefined}
                   onBlur={(event) => {
                     if (/[+\-*/]/.test(event.currentTarget.value)) normalizeAmountInput(false)
                   }}

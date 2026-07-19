@@ -46,7 +46,7 @@
     "test:integration": "node scripts/worker-integration.mjs",
     "typecheck": "tsc --noEmit --pretty false",
     "types:worker": "wrangler types",
-    "verify": "npm test && npm run typecheck && npm run lint && npm run build && npm run build:cloudflare && npm run test:integration -- --skip-build",
+    "verify": "npm test && npm run typecheck && npm run types:worker -- --check && npm run lint && npm run build && npm run build:cloudflare && npm run test:integration -- --skip-build",
     "db:local": "node -r ./scripts/private-local-state.cjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply hushledger --local"
   },
   "dependencies": {

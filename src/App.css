@@ -421,6 +421,21 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.summary-meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.summary-meta-value {
+  font-variant-numeric: tabular-nums;
+}
+
 .summary-balance {
   color: #ffffff;
   background: var(--brand);
@@ -430,6 +445,10 @@ textarea:focus-visible {
 
 .summary-balance .summary-label {
   color: #d8e8e2;
+}
+
+.summary-balance .summary-meta {
+  color: rgb(216 232 226 / 86%);
 }
 
 .summary-income strong,
@@ -3231,10 +3250,6 @@ button.account-register-row:focus-visible {
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: 0 30px 100px rgb(8 35 29 / 35%);
-}
-
-.sheet-handle {
-  display: none;
 }
 
 .dialog-header {
@@ -6361,18 +6376,8 @@ button.account-register-row:focus-visible {
     gap: 6px;
   }
 
-  .add-button {
-    width: 44px;
-    padding: 0;
-    border-radius: 12px;
-  }
-
-  .add-button span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
+  .app-header .add-button {
+    display: none;
   }
 
   .app-main {
@@ -6435,6 +6440,11 @@ button.account-register-row:focus-visible {
 
   .summary-label svg {
     width: 16px;
+  }
+
+  .summary-meta {
+    margin-top: 10px;
+    font-size: 12px;
   }
 
   .summary-card strong,
@@ -6885,7 +6895,7 @@ button.account-register-row:focus-visible {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     min-height: calc(64px + env(safe-area-inset-bottom));
     padding: 5px max(6px, 4vw) env(safe-area-inset-bottom);
     background: rgb(255 255 255 / 96%);
@@ -6914,6 +6924,37 @@ button.account-register-row:focus-visible {
     color: var(--brand);
   }
 
+  .mobile-navigation .mobile-navigation-add {
+    display: grid;
+    align-self: center;
+    justify-self: center;
+    width: 56px;
+    min-width: 56px;
+    height: 56px;
+    min-height: 56px;
+    margin-top: -14px;
+    color: #ffffff;
+    background: var(--brand);
+    border: 3px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 8px 20px rgb(23 72 60 / 26%);
+    place-items: center;
+  }
+
+  .mobile-navigation .mobile-navigation-add:hover:not(:disabled) {
+    color: #ffffff;
+    background: var(--brand-strong);
+  }
+
+  .mobile-navigation .mobile-navigation-add:disabled {
+    opacity: 0.55;
+  }
+
+  .mobile-navigation .mobile-navigation-add svg {
+    width: 25px;
+    height: 25px;
+  }
+
   .mobile-navigation svg {
     width: 21px;
     height: 21px;
@@ -6933,15 +6974,6 @@ button.account-register-row:focus-visible {
     border-left: 0;
     border-radius: 24px 24px 0 0;
     box-shadow: var(--shadow-dialog);
-  }
-
-  .sheet-handle {
-    display: block;
-    width: 42px;
-    height: 5px;
-    margin: 8px auto 2px;
-    background: #c0c8c4;
-    border-radius: 99px;
   }
 
   .dialog-header {
@@ -6966,9 +6998,6 @@ button.account-register-row:focus-visible {
   }
 
   .dialog-actions {
-    position: sticky;
-    z-index: 2;
-    bottom: 0;
     padding: 8px 0 12px;
     background: var(--surface);
   }
@@ -7258,7 +7287,7 @@ button.account-register-row:focus-visible {
   }
 
   .mobile-navigation {
-    padding-inline: 7vw;
+    padding-inline: 8px;
   }
 
   .mobile-navigation button {
@@ -7442,6 +7471,50 @@ button.account-register-row:focus-visible {
   }
 }
 
+button:not(:disabled):not([aria-disabled='true']):active {
+  transform: scale(0.97);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .desktop-navigation,
+  .mobile-navigation {
+    background: #ffffff;
+    backdrop-filter: none;
+  }
+
+  .dialog-backdrop {
+    background: rgb(10 37 31 / 78%);
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .desktop-navigation,
+  .mobile-navigation,
+  .transaction-dialog {
+    border-color: var(--brand-strong);
+  }
+
+  .mobile-navigation {
+    background: #ffffff;
+  }
+
+  .mobile-navigation button {
+    color: #3f564e;
+  }
+
+  .mobile-navigation .mobile-navigation-add {
+    color: #ffffff;
+    border-color: #ffffff;
+  }
+
+  .dialog-backdrop {
+    background: rgb(6 23 19 / 82%);
+    backdrop-filter: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -7450,5 +7523,9 @@ button.account-register-row:focus-visible {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  button:not(:disabled):not([aria-disabled='true']):active {
+    transform: none !important;
   }
 }

@@ -250,7 +250,6 @@ export function RecurringTransferRuleDialog({
         aria-labelledby="scheduled-transfer-dialog-title"
         aria-describedby={describedBy}
       >
-        <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="scheduled-transfer-dialog-title">
             {t(rule ? 'editScheduledTransfer' : 'addScheduledTransfer')}
@@ -291,7 +290,7 @@ export function RecurringTransferRuleDialog({
                   defaultValue={rule ? formatAmountInput(rule.amountMinor, locale) : ''}
                   placeholder={locale === 'fr' ? '0,00' : '0.00'}
                   pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
-                  aria-invalid={Boolean(error)}
+                  aria-invalid={localError === t('invalidAmount') || undefined}
                   required
                 />
               </span>

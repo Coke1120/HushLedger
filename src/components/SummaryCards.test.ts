@@ -21,7 +21,12 @@ const summary: Summary = {
   recurringForecast: [],
 }
 
-function renderSummaryCards(privacyMode: boolean, loading = false, disabled = false) {
+function renderSummaryCards(
+  privacyMode: boolean,
+  loading = false,
+  disabled = false,
+  summaryValue = summary,
+) {
   const context: I18nContextValue = {
     locale: 'en',
     setLocale: () => undefined,
@@ -46,7 +51,7 @@ function renderSummaryCards(privacyMode: boolean, loading = false, disabled = fa
     I18nContext.Provider,
     { value: context },
     createElement(SummaryCards, {
-      summary,
+      summary: summaryValue,
       loading,
       disabled,
       onSelect: () => undefined,
@@ -62,6 +67,9 @@ describe('monthly summary transaction review', () => {
     assert.match(markup, /HK\$400\.00/)
     assert.match(markup, /HK\$1,234\.56/)
     assert.match(markup, /HK\$834\.56/)
+    assert.match(markup, /Recorded savings rate/)
+    assert.match(markup, /32%/)
+    assert.match(markup, /aria-describedby="monthly-savings-rate"/)
     assert.match(markup, /aria-label="Review recorded transactions behind this monthly balance: HK\$400\.00\."/)
     assert.match(markup, /aria-label="Review recorded monthly income transactions: HK\$1,234\.56\."/)
     assert.match(markup, /aria-label="Review recorded monthly expense transactions: HK\$834\.56\."/)
@@ -70,9 +78,22 @@ describe('monthly summary transaction review', () => {
   it('shows placeholders and disables review while loading', () => {
     const markup = renderSummaryCards(false, true)
 
-    assert.equal(markup.match(/—/g)?.length, 3)
+    assert.equal(markup.match(/—/g)?.length, 4)
     assert.equal(markup.match(/ disabled=""/g)?.length, 3)
     assert.match(markup, /aria-busy="true"/)
+  })
+
+  it('does not invent a savings rate without recorded income', () => {
+    const markup = renderSummaryCards(false, false, false, {
+      ...summary,
+      income: 0,
+      expense: 0,
+      balance: 0,
+    })
+
+    assert.match(markup, /Recorded savings rate/)
+    assert.equal(markup.match(/—/g)?.length, 1)
+    assert.doesNotMatch(markup, /aria-describedby="monthly-savings-rate"/)
   })
 
   it('disables every review action while ledger interaction is unavailable', () => {
@@ -84,5 +105,7 @@ describe('monthly summary transaction review', () => {
 
     assert.doesNotMatch(markup, /1,234\.56|834\.56|400\.00/)
     assert.equal(markup.match(/HK\$••••/g)?.length, 6)
+    assert.match(markup, /Sensitive text hidden/)
+    assert.doesNotMatch(markup, /aria-describedby="monthly-savings-rate"/)
   })
 })

@@ -1,6 +1,6 @@
 # HushLedger product brief
 
-> Updated: 2026-07-14 (HKT)
+> Updated: 2026-07-19 (HKT)
 >
 > Status: core transaction, recurring-rule, and scheduled-transfer release implemented locally
 >
@@ -32,6 +32,9 @@ not operate an independent database server or a multi-user identity system.
 
 - View income, expense, and balance in the ledger's selected currency for a
   selected month.
+- Show a rounded recorded savings rate (`net / income`) when the selected month
+  has positive recorded income. Keep it unavailable when no income was recorded,
+  and mask it with the rest of the monthly summary in screen privacy mode.
 - Compare a zero-filled six-month recorded cash-flow trend across income,
   expenses, and net movement, then select any month to review that calendar
   month; hide relative bar heights when privacy mode is enabled.
@@ -128,7 +131,8 @@ not operate an independent database server or a multi-user identity system.
 
 ### Record money
 
-- Add income or expense in a short responsive form.
+- Add income or expense in a short responsive form from the desktop header or a
+  centered, thumb-reachable mobile navigation action.
 - Record a withdrawal, card payment, or movement between owned accounts as one
   atomic transfer, with separate “left source” and “reached destination” states;
   never classify that movement as income or expense.
@@ -545,8 +549,9 @@ reminder does not prove that a backup file was retained off-platform.
   provider settings, strict reviewable output, live duplicate preview, and only
   user-confirmed atomic D1 writes.
 - Daily 00:05 HKT Cron plus manual due generation.
-- Unit tests, typecheck, two linters, Next/OpenNext production builds, workerd
-  preview, fresh migration, and upgrade migration validation.
+- Unit tests, app typecheck, generated Worker binding-type freshness, two linters,
+  Next/OpenNext production builds, workerd preview, fresh migration, and upgrade
+  migration validation.
 - Public setup, security, contribution, issue, and pull-request documentation.
 
 ### Implemented: deeper organization

@@ -1,0 +1,2 @@
+# Preserve Wrangler's generated runtime declarations byte-for-byte.
+worker-configuration.d.ts -whitespace

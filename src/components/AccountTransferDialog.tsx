@@ -212,7 +212,6 @@ export function AccountTransferDialog({
         aria-labelledby="transfer-dialog-title"
         aria-describedby={error ? 'transfer-form-error' : 'transfer-form-help'}
       >
-        <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="transfer-dialog-title">{t(transfer ? 'editTransfer' : 'recordTransfer')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={busy} aria-label={t('close')}>
@@ -246,6 +245,7 @@ export function AccountTransferDialog({
                     maxLength={80}
                     placeholder={locale === 'fr' ? '0,00' : '0.00'}
                     defaultValue={transfer ? formatAmountInput(transfer.amountMinor, locale) : undefined}
+                    aria-invalid={localError === t('invalidAmount') || undefined}
                     required
                   />
                 </span>

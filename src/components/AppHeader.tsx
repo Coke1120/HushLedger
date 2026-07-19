@@ -5,6 +5,7 @@ import type { AppView } from './MobileNavigation'
 type AppHeaderProps = {
   view: AppView
   navigationDisabled: boolean
+  addDisabled: boolean
   onAdd: () => void
   onViewChange: (view: AppView) => void
 }
@@ -18,7 +19,7 @@ function HushLedgerMark() {
   )
 }
 
-export function AppHeader({ view, navigationDisabled, onAdd, onViewChange }: AppHeaderProps) {
+export function AppHeader({ view, navigationDisabled, addDisabled, onAdd, onViewChange }: AppHeaderProps) {
   const { privacyMode, setPrivacyMode, t } = useI18n()
   const privacyLabel = t(privacyMode ? 'showAmounts' : 'hideAmounts')
 
@@ -90,7 +91,7 @@ export function AppHeader({ view, navigationDisabled, onAdd, onViewChange }: App
           className="button button-primary add-button"
           type="button"
           onClick={onAdd}
-          disabled={navigationDisabled}
+          disabled={addDisabled}
         >
           <Plus aria-hidden="true" />
           <span>{t('addTransaction')}</span>

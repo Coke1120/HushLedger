@@ -263,7 +263,6 @@ export function RecurringRuleDialog({
         aria-labelledby="recurring-dialog-title"
         aria-describedby={describedBy}
       >
-        <div className="sheet-handle" aria-hidden="true" />
         <header className="dialog-header">
           <h2 id="recurring-dialog-title">{editing ? t('editRecurringRule') : t('addRecurringRule')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={saving} aria-label={t('close')}>
@@ -323,7 +322,7 @@ export function RecurringRuleDialog({
                 defaultValue={initialRule ? formatAmountInput(initialRule.amountMinor, locale) : ''}
                 placeholder={locale === 'fr' ? '0,00' : '0.00'}
                 pattern={locale === 'fr' ? '[0-9]+([,][0-9]{1,2})?' : '[0-9]+([.][0-9]{1,2})?'}
-                aria-invalid={Boolean(error)}
+                aria-invalid={localError === t('invalidAmount') || undefined}
                 required
               />
             </span>

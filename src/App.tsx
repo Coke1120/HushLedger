@@ -170,6 +170,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     || recurringMutationInProgress
   const ledgerMutationInProgress = otherLedgerMutationInProgress || settingsMutationInProgress
   const ledgerInteractionLocked = ledgerRestoreInProgress || ledgerMutationInProgress
+  const transactionEntryDisabled = ledgerInteractionLocked || data.source === 'loading'
   const scheduledOutlookStartOn = data.summary.scheduledOutlook?.startOn
 
   useEffect(() => {
@@ -199,12 +200,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [appUpdateStatus, ledgerMutationInProgress, setRestartBlocked])
 
   const openDialog = useCallback(() => {
-    if (ledgerInteractionLocked) return
+    if (transactionEntryDisabled) return
     clearActionMessage()
     setEditingTransaction(null)
     setTransactionDraft(null)
     setDialogOpen(true)
-  }, [clearActionMessage, ledgerInteractionLocked])
+  }, [clearActionMessage, transactionEntryDisabled])
 
   const openTransaction = useCallback((transaction: Transaction) => {
     if (ledgerInteractionLocked) return
@@ -627,6 +628,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       <AppHeader
         view={view}
         navigationDisabled={ledgerInteractionLocked}
+        addDisabled={transactionEntryDisabled}
         onAdd={openDialog}
         onViewChange={changeView}
       />
@@ -1003,7 +1005,9 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       <MobileNavigation
         view={view}
         disabled={ledgerInteractionLocked}
+        addDisabled={transactionEntryDisabled}
         onChange={changeView}
+        onAdd={openDialog}
       />
       {dialogOpen ? (
         <TransactionDialog

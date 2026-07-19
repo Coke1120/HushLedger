@@ -1,4 +1,4 @@
-import { House, List, Repeat, Settings } from 'lucide-react'
+import { House, List, Plus, Repeat, Settings } from 'lucide-react'
 import { useI18n } from '../i18n'
 
 export type AppView = 'overview' | 'transactions' | 'recurring' | 'settings'
@@ -6,10 +6,12 @@ export type AppView = 'overview' | 'transactions' | 'recurring' | 'settings'
 type MobileNavigationProps = {
   view: AppView
   disabled: boolean
+  addDisabled: boolean
   onChange: (view: AppView) => void
+  onAdd: () => void
 }
 
-export function MobileNavigation({ view, disabled, onChange }: MobileNavigationProps) {
+export function MobileNavigation({ view, disabled, addDisabled, onChange, onAdd }: MobileNavigationProps) {
   const { t } = useI18n()
 
   return (
@@ -33,6 +35,15 @@ export function MobileNavigation({ view, disabled, onChange }: MobileNavigationP
       >
         <List aria-hidden="true" />
         <span>{t('transactions')}</span>
+      </button>
+      <button
+        type="button"
+        className="mobile-navigation-add"
+        aria-label={t('addTransaction')}
+        disabled={disabled || addDisabled}
+        onClick={onAdd}
+      >
+        <Plus aria-hidden="true" />
       </button>
       <button
         type="button"

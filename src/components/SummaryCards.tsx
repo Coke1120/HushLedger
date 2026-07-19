@@ -12,10 +12,21 @@ type SummaryCardsProps = {
 const placeholder = '—'
 
 export function SummaryCards({ summary, loading, disabled, onSelect }: SummaryCardsProps) {
-  const { formatMoney, t } = useI18n()
+  const { formatMoney, locale, privacyMode, t } = useI18n()
   const balance = loading ? placeholder : formatMoney(summary.balance)
   const income = loading ? placeholder : formatMoney(summary.income)
   const expense = loading ? placeholder : formatMoney(summary.expense)
+  const savingsRate = summary.income > 0 ? summary.balance / summary.income : null
+  const savingsRateText = loading
+    ? placeholder
+    : privacyMode
+      ? t('sensitiveTextHidden')
+      : savingsRate === null
+        ? placeholder
+        : new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }).format(savingsRate)
+  const savingsRateDescriptionId = !loading && !privacyMode && savingsRate !== null
+    ? 'monthly-savings-rate'
+    : undefined
   const actionsDisabled = loading || disabled
 
   return (
@@ -24,6 +35,7 @@ export function SummaryCards({ summary, loading, disabled, onSelect }: SummaryCa
         className="summary-card summary-balance"
         type="button"
         disabled={actionsDisabled}
+        aria-describedby={savingsRateDescriptionId}
         aria-label={loading
           ? t('monthBalance')
           : t('reviewMonthlyBalanceTransactions', { amount: balance })}
@@ -34,6 +46,13 @@ export function SummaryCards({ summary, loading, disabled, onSelect }: SummaryCa
           <span>{t('monthBalance')}</span>
         </div>
         <strong>{balance}</strong>
+        <small
+          className="summary-meta"
+          id={savingsRateDescriptionId}
+        >
+          <span>{t('monthSavingsRate')}</span>
+          <span className="summary-meta-value">{savingsRateText}</span>
+        </small>
       </button>
       <button
         className="summary-card summary-income"
