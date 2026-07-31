@@ -5,17 +5,28 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nContext, type I18nContextValue } from '../i18n/context'
 import { translate } from '../i18n/core'
 import { formatMoneyForDisplay } from '../lib/privacy'
+import { transactionActionsDisclosureActive } from '../lib/transactionDisclosure'
 import { TransactionToolbar } from './TransactionToolbar'
 
 function renderToolbar(
   tagFilter: string | null,
   options: {
     amountFilterMinor?: number | null
+    aiImportOpen?: boolean
+    duplicatesOnly?: boolean
     importReviewFilter?: 'all' | 'unreviewed' | 'needs_follow_up' | 'reviewed'
+    payeeFilter?: string | null
     privacyMode?: boolean
   } = {},
 ) {
-  const { amountFilterMinor = null, importReviewFilter = 'all', privacyMode = false } = options
+  const {
+    amountFilterMinor = null,
+    aiImportOpen = false,
+    duplicatesOnly = false,
+    importReviewFilter = 'all',
+    payeeFilter = null,
+    privacyMode = false,
+  } = options
   const context: I18nContextValue = {
     locale: 'en',
     setLocale: () => undefined,
@@ -38,7 +49,7 @@ function renderToolbar(
     createElement(TransactionToolbar, {
       search: '',
       amountFilterMinor,
-      payeeFilter: null,
+      payeeFilter,
       tagFilter,
       filter: 'all',
       clearingFilter: 'all',
@@ -46,7 +57,7 @@ function renderToolbar(
       dateScope: 'month',
       dateFrom: '2026-07-01',
       dateTo: '2026-07-31',
-      duplicatesOnly: false,
+      duplicatesOnly,
       sort: 'date_desc',
       showSort: true,
       month: '2026-07',
@@ -75,7 +86,7 @@ function renderToolbar(
       onCsvImport: noop,
       onAiImport: noop,
       csvImportOpen: false,
-      aiImportOpen: false,
+      aiImportOpen,
       csvImportButtonRef: createRef<HTMLButtonElement>(),
       aiImportButtonRef: createRef<HTMLButtonElement>(),
     }),
@@ -95,6 +106,60 @@ describe('follow-up transaction review', () => {
     assert.match(activeMarkup, /transaction-follow-up-filter is-active[^>]*aria-pressed="true"/)
     assert.match(activeMarkup, /transaction-tag-filter[^>]*aria-label="Remove the #follow-up filter"/)
     assert.match(activeMarkup, /<span>#follow-up<\/span>/)
+  })
+})
+
+describe('calm transaction toolbar disclosures', () => {
+  it('keeps search, type, and date scope prominent while grouping secondary controls', () => {
+    const markup = renderToolbar(null)
+    const searchIndex = markup.indexOf('class="search-field"')
+    const typeIndex = markup.indexOf('class="filter-group"')
+    const dateIndex = markup.indexOf('class="transaction-reference-filter transaction-date-scope"')
+    const reviewIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-review-disclosure"')
+    const moreIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-more-filters-disclosure"')
+    const sortIndex = markup.indexOf('class="transaction-reference-filter transaction-sort-filter"')
+    const actionsIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-actions-disclosure"')
+    const exportIndex = markup.indexOf('class="button button-secondary export-button"')
+
+    assert.ok(searchIndex >= 0 && searchIndex < reviewIndex)
+    assert.ok(typeIndex >= 0 && typeIndex < reviewIndex)
+    assert.ok(dateIndex >= 0 && dateIndex < reviewIndex)
+    assert.ok(moreIndex < sortIndex)
+    assert.ok(actionsIndex < exportIndex)
+    assert.match(markup, /<summary aria-controls="transaction-review-filters-panel" aria-expanded="false">/)
+    assert.match(markup, /<summary aria-controls="transaction-more-filters-panel" aria-expanded="false">/)
+    assert.match(markup, /<summary aria-controls="transaction-actions-panel" aria-expanded="false">/)
+  })
+
+  it('opens each disclosure when a contained filter or panel is active', () => {
+    const reviewMarkup = renderToolbar(null, { duplicatesOnly: true })
+    const moreMarkup = renderToolbar(null, { amountFilterMinor: 12_345 })
+    const actionsMarkup = renderToolbar(null, { aiImportOpen: true })
+
+    assert.match(reviewMarkup, /transaction-review-disclosure is-active" open=""/)
+    assert.match(reviewMarkup, /transaction-duplicate-filter is-active[^>]*aria-pressed="true"/)
+    assert.match(moreMarkup, /transaction-more-filters-disclosure is-active" open=""/)
+    assert.match(moreMarkup, /class="transaction-amount-filter"/)
+    assert.match(actionsMarkup, /transaction-actions-disclosure is-active" open=""/)
+    assert.match(actionsMarkup, /id="ai-import-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="bank-import-panel"/)
+  })
+
+  it('releases the Actions disclosure after export reaches a terminal state', () => {
+    assert.equal(transactionActionsDisclosureActive(false, false, 'preparing'), true)
+    assert.equal(transactionActionsDisclosureActive(false, false, 'ready'), false)
+    assert.equal(transactionActionsDisclosureActive(false, false, 'error'), false)
+    assert.equal(transactionActionsDisclosureActive(true, false, 'ready'), true)
+  })
+
+  it('keeps active payee and tag chips visible outside the disclosures', () => {
+    const markup = renderToolbar('#follow-up', { payeeFilter: 'Harbour Market' })
+    const activeFiltersIndex = markup.indexOf('class="transaction-active-filters"')
+    const reviewIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-review-disclosure')
+
+    assert.ok(activeFiltersIndex >= 0 && activeFiltersIndex < reviewIndex)
+    assert.match(markup, /transaction-payee-filter[^>]*aria-label="Remove the exact payee filter for Harbour Market"/)
+    assert.match(markup, /transaction-tag-filter[^>]*aria-label="Remove the #follow-up filter"/)
+    assert.match(markup, /transaction-review-disclosure is-active" open=""/)
   })
 })
 

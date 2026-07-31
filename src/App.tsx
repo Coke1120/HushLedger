@@ -18,10 +18,14 @@ import { MobileNavigation, type AppView } from './components/MobileNavigation'
 import { MonthNavigator } from './components/MonthNavigator'
 import { MonthlySpendingPlans } from './components/MonthlySpendingPlans'
 import { NetWorthTrend } from './components/NetWorthTrend'
+import {
+  OverviewMonthlyReview,
+  type OverviewReview,
+} from './components/OverviewMonthlyReview'
 import { RecurringRulesPage } from './components/RecurringRulesPage'
 import { RecurringForecast } from './components/RecurringForecast'
 import { SavedTransactionViews } from './components/SavedTransactionViews'
-import { SettingsPage } from './components/SettingsPage'
+import { SettingsPage, type SettingsCategory } from './components/SettingsPage'
 import { SummaryCards } from './components/SummaryCards'
 import { CashFlowTrend } from './components/CashFlowTrend'
 import { useAppUpdate } from './components/appUpdateContext'
@@ -105,6 +109,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   } | null>(null)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
   const [view, setView] = useState<AppView>('overview')
+  const [overviewReview, setOverviewReview] = useState<OverviewReview>('spending')
+  const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('ledger')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [editingTransfer, setEditingTransfer] = useState<AccountTransfer | null>(null)
@@ -337,6 +343,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setView(nextView)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [ledgerInteractionLocked])
+
+  const openSettings = useCallback((category: SettingsCategory) => {
+    if (ledgerInteractionLocked) return
+    setSettingsCategory(category)
+    changeView('settings')
+  }, [changeView, ledgerInteractionLocked])
 
   useEffect(() => {
     if (!ledgerRestoreInProgress) {
@@ -693,6 +705,16 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
           total: data.transactionFilterSummary.transactionCount,
         })
       : t('transactionCount', { count: data.transactionFilterSummary.transactionCount })
+  const overviewTransactionFiltersActive = filter !== 'all'
+    || clearingFilter !== 'all'
+    || importReviewFilter !== 'all'
+    || accountFilterId !== null
+    || categoryFilterId !== null
+    || payeeFilter !== null
+    || search.trim().length > 0
+    || amountFilterMinor !== null
+    || tagFilter !== null
+    || duplicatesOnly
   const transactionLoadMoreCount = Math.min(
     TRANSACTION_PAGE_SIZE,
     Math.max(0, data.transactionFilterSummary.transactionCount - data.transactions.length),
@@ -722,15 +744,15 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             actionMessage={data.actionMessage}
             onRetry={() => void data.refresh()}
           />
+          <MonthNavigator
+            month={month}
+            currentMonth={initialMonth}
+            disabled={ledgerInteractionLocked}
+            onChange={setMonth}
+            onPrevious={() => setMonth((value) => shiftMonth(value, -1))}
+            onNext={() => setMonth((value) => shiftMonth(value, 1))}
+          />
           <div className="overview-region">
-            <MonthNavigator
-              month={month}
-              currentMonth={initialMonth}
-              disabled={ledgerInteractionLocked}
-              onChange={setMonth}
-              onPrevious={() => setMonth((value) => shiftMonth(value, -1))}
-              onNext={() => setMonth((value) => shiftMonth(value, 1))}
-            />
             <SummaryCards
               summary={data.summary}
               loading={loading}
@@ -743,7 +765,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   due={ledgerBackupDue}
                   live={data.source === 'live'}
                   disabled={ledgerInteractionLocked}
-                  onReview={() => changeView('settings')}
+                  onReview={() => openSettings('data')}
                 />
                 <AccountBalances
                   balances={data.accountBalances}
@@ -763,44 +785,62 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   month={month}
                   loading={loading}
                   canManage={data.source === 'live' && data.online}
-                  onManage={() => changeView('settings')}
+                  onManage={() => openSettings('ledger')}
                 />
-                <NetWorthTrend
-                  points={data.netWorthTrend}
-                  month={month}
-                  loading={loading}
-                  onSelectMonth={setMonth}
-                />
-                <CashFlowTrend
-                  summary={data.summary}
-                  currentMonth={scheduledOutlookToday.slice(0, 7)}
-                  loading={loading}
-                  onSelectMonth={setMonth}
-                />
-                <IncomeSources
-                  summary={data.summary}
-                  loading={loading}
-                  onSelect={openCategoryTransactions}
-                />
-                <CategorySpending
-                  summary={data.summary}
-                  loading={loading}
-                  onSelectCategory={openCategoryTransactions}
-                  onSelectPayee={openPayeeTransactions}
-                />
-                <MonthlySpendingPlans
-                  summary={data.summary}
-                  loading={loading}
-                  onSelect={openCategoryTransactions}
-                />
-                <RecurringForecast
-                  key={month}
-                  summary={data.summary}
-                  accounts={data.accounts}
-                  categories={data.categories}
-                  loading={loading}
-                  onManage={openRecurringRules}
-                  onManageTransfer={openRecurringTransferRules}
+                <OverviewMonthlyReview
+                  selected={overviewReview}
+                  onChange={setOverviewReview}
+                  content={{
+                    netWorth: (
+                      <NetWorthTrend
+                        points={data.netWorthTrend}
+                        month={month}
+                        loading={loading}
+                        onSelectMonth={setMonth}
+                      />
+                    ),
+                    cashFlow: (
+                      <CashFlowTrend
+                        summary={data.summary}
+                        currentMonth={scheduledOutlookToday.slice(0, 7)}
+                        loading={loading}
+                        onSelectMonth={setMonth}
+                      />
+                    ),
+                    income: (
+                      <IncomeSources
+                        summary={data.summary}
+                        loading={loading}
+                        onSelect={openCategoryTransactions}
+                      />
+                    ),
+                    spending: (
+                      <CategorySpending
+                        summary={data.summary}
+                        loading={loading}
+                        onSelectCategory={openCategoryTransactions}
+                        onSelectPayee={openPayeeTransactions}
+                      />
+                    ),
+                    plans: (
+                      <MonthlySpendingPlans
+                        summary={data.summary}
+                        loading={loading}
+                        onSelect={openCategoryTransactions}
+                      />
+                    ),
+                    outlook: (
+                      <RecurringForecast
+                        key={month}
+                        summary={data.summary}
+                        accounts={data.accounts}
+                        categories={data.categories}
+                        loading={loading}
+                        onManage={openRecurringRules}
+                        onManageTransfer={openRecurringTransferRules}
+                      />
+                    ),
+                  }}
                 />
               </>
             ) : null}
@@ -869,6 +909,18 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 csvImportButtonRef={csvImportButtonRef}
                 aiImportButtonRef={aiImportButtonRef}
               />
+              {view === 'overview' && overviewTransactionFiltersActive ? (
+                <div className="transaction-preview-filter-notice">
+                  <p>{t('overviewTransactionFiltersActive')}</p>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    onClick={() => changeView('transactions')}
+                  >
+                    {t('reviewTransactionFilters')}
+                  </button>
+                </div>
+              ) : null}
               {view === 'transactions' ? (
                 <>
                   <TransactionFilterSummary
@@ -927,7 +979,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 available={data.source === 'live' && data.online}
                 panelRef={importPanelRef}
                 onClose={closeImport}
-                onConfigure={() => changeView('settings')}
+                onConfigure={() => openSettings('connections')}
                 onImported={() => data.refresh('error')}
                 onMutationStateChange={setImportMutationInProgress}
               />
@@ -1062,6 +1114,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
         </div>
         <div hidden={view !== 'settings'}>
           <SettingsPage
+            activeCategory={settingsCategory}
+            onCategoryChange={setSettingsCategory}
             aiSettings={aiSettings}
             onAiSettingsChange={changeAiSettings}
             aiSettingsRow={aiSettingsRow}

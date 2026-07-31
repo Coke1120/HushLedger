@@ -27,6 +27,7 @@ import {
 } from '../lib/recurringUrgency'
 import { getRecurringAmountReview } from '../lib/recurringAmountReview'
 import { resolveRecurringRuleRequest } from '../lib/recurringRuleRequest'
+import { resolveRecurringSurface, type RecurringSurface } from '../lib/recurringSurface'
 import type {
   Account,
   Category,
@@ -79,6 +80,7 @@ export function RecurringRulesPage({
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
   const [deletingRule, setDeletingRule] = useState<RecurringRule | null>(null)
   const [transferMutationInProgress, setTransferMutationInProgress] = useState(false)
+  const [surface, setSurface] = useState<RecurringSurface>('transactions')
   const ledgerLive = ledgerSource === 'live'
   const mutationsEnabled = ledgerLive
     && mutable
@@ -120,6 +122,19 @@ export function RecurringRulesPage({
     onDraftClose()
   }, [onDraftClose])
   const closeDelete = useCallback(() => setDeletingRule(null), [])
+  const visibleSurface = resolveRecurringSurface(
+    surface,
+    Boolean(focusRuleId || draft),
+    Boolean(focusTransferRuleId),
+  )
+  const handleFocusRuleHandled = useCallback(() => {
+    setSurface('transactions')
+    onFocusRuleHandled()
+  }, [onFocusRuleHandled])
+  const handleTransferFocusRuleHandled = useCallback(() => {
+    setSurface('transfers')
+    onFocusTransferRuleHandled()
+  }, [onFocusTransferRuleHandled])
 
   useEffect(() => {
     if (ledgerLive) return
@@ -166,7 +181,7 @@ export function RecurringRulesPage({
     )
     if (focusedRule === undefined) return
     const timeout = window.setTimeout(() => {
-      onFocusRuleHandled()
+      handleFocusRuleHandled()
       if (focusedRule !== null) openEdit(focusedRule)
     }, 0)
     return () => window.clearTimeout(timeout)
@@ -176,7 +191,7 @@ export function RecurringRulesPage({
     editorOpen,
     focusRuleId,
     mutationsEnabled,
-    onFocusRuleHandled,
+    handleFocusRuleHandled,
     openEdit,
     recurring.rules,
     recurring.source,
@@ -249,7 +264,7 @@ export function RecurringRulesPage({
           <h2 id="recurring-page-title">{t('recurring')}</h2>
           <p>{t('recurringPageDescription')}</p>
         </div>
-        <div className="recurring-hero-actions">
+        {visibleSurface === 'transactions' ? <div className="recurring-hero-actions">
           <button
             className="button button-secondary"
             type="button"
@@ -263,10 +278,10 @@ export function RecurringRulesPage({
             <Plus aria-hidden="true" />
             {t('addRecurringRule')}
           </button>
-        </div>
+        </div> : null}
       </div>
 
-      {statusContent ? (
+      {visibleSurface === 'transactions' && statusContent ? (
         <div className={statusContent.className} role={recurring.error ? 'alert' : 'status'}>
           {statusContent.icon}
           <span>{statusContent.text}</span>
@@ -279,7 +294,32 @@ export function RecurringRulesPage({
         </div>
       ) : null}
 
-      <div className="recurring-panel">
+      <div
+        className="recurring-surface-switch"
+        role="group"
+        aria-label={t('recurring')}
+      >
+        <button
+          type="button"
+          aria-pressed={visibleSurface === 'transactions'}
+          className={visibleSurface === 'transactions' ? 'is-active' : undefined}
+          onClick={() => setSurface('transactions')}
+        >
+          <Repeat aria-hidden="true" />
+          {t('recurring')}
+        </button>
+        <button
+          type="button"
+          aria-pressed={visibleSurface === 'transfers'}
+          className={visibleSurface === 'transfers' ? 'is-active' : undefined}
+          onClick={() => setSurface('transfers')}
+        >
+          <RefreshCw aria-hidden="true" />
+          {t('scheduledTransfers')}
+        </button>
+      </div>
+
+      {visibleSurface === 'transactions' ? <div className="recurring-panel">
         <div className="recurring-panel-heading">
           <div>
             <h3>{t('automationSettings')}</h3>
@@ -309,10 +349,6 @@ export function RecurringRulesPage({
             </span>
             <strong>{t('noRecurringRules')}</strong>
             <span>{t('noRecurringRulesHelp')}</span>
-            <button className="button button-primary" type="button" onClick={openCreate} disabled={!mutationsEnabled}>
-              <Plus aria-hidden="true" />
-              {t('createFirstRule')}
-            </button>
           </div>
         ) : (
           <ul className="recurring-list" aria-label={t('recurringRuleList')}>
@@ -456,19 +492,21 @@ export function RecurringRulesPage({
             })}
           </ul>
         )}
-      </div>
+      </div> : null}
 
-      <RecurringTransferRulesPanel
-        accounts={accounts}
-        focusRuleId={focusTransferRuleId}
-        ledgerContext={ledgerContext}
-        ledgerSource={ledgerSource}
-        mutable={mutable && !transactionMutationInProgress}
-        onMoneyRefresh={onMoneyRefresh}
-        onFocusRuleHandled={onFocusTransferRuleHandled}
-        onMutationStateChange={setTransferMutationInProgress}
-        today={today}
-      />
+      <div hidden={visibleSurface !== 'transfers'}>
+        <RecurringTransferRulesPanel
+          accounts={accounts}
+          focusRuleId={focusTransferRuleId}
+          ledgerContext={ledgerContext}
+          ledgerSource={ledgerSource}
+          mutable={mutable && !transactionMutationInProgress}
+          onMoneyRefresh={onMoneyRefresh}
+          onFocusRuleHandled={handleTransferFocusRuleHandled}
+          onMutationStateChange={setTransferMutationInProgress}
+          today={today}
+        />
+      </div>
 
       {ledgerLive && (editorOpen || draft) ? (
         <RecurringRuleDialog

@@ -29,7 +29,22 @@ const updateStatusKeys: Readonly<Partial<Record<AppUpdateStatus, MessageKey>>> =
 const GITHUB_SPONSORS_URL = 'https://github.com/sponsors/Coke1120'
 const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/Coke1120'
 
+export const SETTINGS_CATEGORIES = [
+  { id: 'ledger', labelKey: 'settingsCategoryLedger' },
+  { id: 'references', labelKey: 'settingsCategoryReferences' },
+  { id: 'data', labelKey: 'settingsCategoryData' },
+  { id: 'appearance', labelKey: 'settingsCategoryAppearance' },
+  { id: 'connections', labelKey: 'settingsCategoryConnections' },
+] as const satisfies ReadonlyArray<{
+  id: string
+  labelKey: MessageKey
+}>
+
+export type SettingsCategory = (typeof SETTINGS_CATEGORIES)[number]['id']
+
 type SettingsPageProps = {
+  activeCategory: SettingsCategory
+  onCategoryChange: (category: SettingsCategory) => void
   aiSettings: AiProviderSettings
   onAiSettingsChange: (settings: AiProviderSettings) => void
   aiSettingsRow: AiProviderSettingsRow | null
@@ -54,6 +69,8 @@ type SettingsPageProps = {
 }
 
 export function SettingsPage({
+  activeCategory,
+  onCategoryChange,
   aiSettings,
   onAiSettingsChange,
   aiSettingsRow,
@@ -99,6 +116,9 @@ export function SettingsPage({
 
   const updateStatusKey = updateStatusKeys[status]
   const updateStatus = updateStatusKey ? t(updateStatusKey) : ''
+  const activeCategoryConfig = SETTINGS_CATEGORIES.find(
+    (category) => category.id === activeCategory,
+  ) ?? SETTINGS_CATEGORIES[0]
   const ledgerSettingsEnabled = canManageReferences && !ledgerRestoreInProgress
   const restoreAvailable = canManageReferences
     && !otherLedgerMutationInProgress
@@ -117,216 +137,269 @@ export function SettingsPage({
         </div>
       </div>
 
-      <LedgerCurrencySettingsPanel
-        settings={ledgerSettings}
-        enabled={ledgerSettingsEnabled}
-        onRefresh={onReferenceRefresh}
-        onBusyChange={(busy) => reportMutationState('currency', busy)}
-      />
-
-      <EcbReferenceRateSettings
-        key={`ecb-reference-rates-${ledgerSettings.updatedAt}`}
-        enabled={ledgerSettingsEnabled}
-        onBusyChange={(busy) => reportMutationState('ecb-reference-rates', busy)}
-      />
-
-      <EmergencyFundSettings
-        key={`emergency-fund-${ledgerSettings.updatedAt}`}
-        goal={emergencyFundGoal}
-        accounts={accounts}
-        expectedCurrency={ledgerSettings.currency}
-        enabled={ledgerSettingsEnabled}
-        onRefresh={onReferenceRefresh}
-        onBusyChange={(busy) => reportMutationState('emergency-fund', busy)}
-      />
-
-      <ReferenceDataSettings
-        key={`reference-data-${ledgerSettings.updatedAt}`}
-        accounts={accounts}
-        categories={categories}
-        expectedCurrency={ledgerSettings.currency}
-        enabled={ledgerSettingsEnabled}
-        onRefresh={onReferenceRefresh}
-        onBusyChange={(busy) => reportMutationState('references', busy)}
-      />
-
-      <LedgerBackupSettings
-        available={restoreAvailable}
-        onBackupDueChange={onBackupDueChange}
-        onRestored={onLedgerRestored}
-        onRestoreStateChange={onLedgerRestoreStateChange}
-      />
-
-      <div className="settings-panel">
-        <div className="settings-panel-heading">
-          <div>
-            <h3>{t('languageAndDisplay')}</h3>
-            <p>{t('languageHelp')}</p>
-          </div>
-        </div>
-
-        <fieldset className="language-fieldset">
-          <legend>{t('interfaceLanguage')}</legend>
-          <span className="language-options-label">{t('languageOptions')}</span>
-          <div className="language-options">
-            {languageOptions.map((option) => {
-              const selected = locale === option.locale
-              return (
-                <label className={`language-option ${selected ? 'is-selected' : ''}`} key={option.locale}>
-                  <input
-                    type="radio"
-                    name="interface-language"
-                    value={option.locale}
-                    checked={selected}
-                    disabled={ledgerRestoreInProgress}
-                    onChange={() => chooseLanguage(option.locale)}
-                  />
-                  <span className="language-option-copy">
-                    <strong lang={option.locale}>{option.label}</strong>
-                    <small>{option.locale}</small>
-                  </span>
-                  <span className="language-option-check" aria-hidden="true">
-                    <Check />
-                  </span>
-                </label>
-              )
-            })}
-          </div>
-        </fieldset>
-
-        <label className={`privacy-mode-option${privacyMode ? ' is-selected' : ''}`}>
-          <input
-            type="checkbox"
-            checked={privacyMode}
-            disabled={ledgerRestoreInProgress}
-            onChange={(event) => setPrivacyMode(event.target.checked)}
-          />
-          <span className="privacy-mode-copy">
-            <strong>{t('screenPrivacy')}</strong>
-            <small>{t('screenPrivacyHelp')}</small>
-          </span>
-          <span className="privacy-mode-switch" aria-hidden="true"><span /></span>
-        </label>
-
-        <div className="settings-privacy-note">
-          <LockKeyhole aria-hidden="true" />
-          <span>{t('localPreferenceNote')}</span>
-        </div>
-
-        <p className="settings-save-status" aria-live="polite" aria-atomic="true">
-          {saved ? t('languageSaved') : ''}
-        </p>
-      </div>
-
-      <div className="settings-panel">
-        <div className="settings-panel-heading">
-          <div>
-            <h3>{t('appUpdatesTitle')}</h3>
-            <p>{t('appUpdatesHelp')}</p>
-          </div>
-        </div>
-
-        <div className="settings-update-form">
-          <label>
-            <span>{t('updatePreference')}</span>
-            <select
-              value={mode}
-              onChange={(event) => {
-                setMode(event.target.value === 'automatic' ? 'automatic' : 'manual')
-              }}
-              disabled={ledgerRestoreInProgress || status === 'installing'}
-            >
-              <option value="manual">{t('updateManual')}</option>
-              <option value="automatic">{t('updateAutomatic')}</option>
-            </select>
-            <small>
-              {mode === 'automatic' ? t('updateAutomaticHelp') : t('updateManualHelp')}
-            </small>
-          </label>
-
-          <div className="settings-update-actions">
+      <nav className="settings-category-navigation" aria-label={t('settingsTitle')}>
+        {SETTINGS_CATEGORIES.map((category) => {
+          const selected = activeCategory === category.id
+          return (
             <button
+              key={category.id}
               type="button"
-              className="button button-secondary"
-              onClick={() => void checkForUpdate()}
-              disabled={
-                status === 'idle'
-                || ledgerRestoreInProgress
-                || status === 'checking'
-                || status === 'installing'
-                || status === 'restart-required'
-                || status === 'unsupported'
-              }
+              className={`settings-category-button${selected ? ' is-selected' : ''}`}
+              aria-pressed={selected}
+              aria-controls="settings-category-content"
+              onClick={() => onCategoryChange(category.id)}
             >
-              <RefreshCw aria-hidden="true" />
-              {status === 'checking' ? t('checkingForUpdates') : t('checkForUpdates')}
+              {t(category.labelKey)}
             </button>
-            {(status === 'available' || status === 'restart-required') && (
-              <button
-                type="button"
-                className="button button-primary"
-                onClick={installUpdate}
-                disabled={ledgerRestoreInProgress}
-              >
-                {status === 'restart-required' ? t('restartNow') : t('installAndRestart')}
-              </button>
-            )}
-          </div>
+          )
+        })}
+      </nav>
 
-          <p className="settings-update-status" aria-live="polite" aria-atomic="true">
-            {updateStatus}
-          </p>
+      <div
+        id="settings-category-content"
+        className="settings-category-content"
+        role="region"
+        aria-label={t(activeCategoryConfig.labelKey)}
+      >
+        <div
+          className="settings-category-pane"
+          hidden={activeCategory !== 'ledger'}
+        >
+          <LedgerCurrencySettingsPanel
+            settings={ledgerSettings}
+            enabled={ledgerSettingsEnabled}
+            onRefresh={onReferenceRefresh}
+            onBusyChange={(busy) => reportMutationState('currency', busy)}
+          />
+
+          <EcbReferenceRateSettings
+            key={`ecb-reference-rates-${ledgerSettings.updatedAt}`}
+            enabled={ledgerSettingsEnabled}
+            onBusyChange={(busy) => reportMutationState('ecb-reference-rates', busy)}
+          />
+
+          <EmergencyFundSettings
+            key={`emergency-fund-${ledgerSettings.updatedAt}`}
+            goal={emergencyFundGoal}
+            accounts={accounts}
+            expectedCurrency={ledgerSettings.currency}
+            enabled={ledgerSettingsEnabled}
+            onRefresh={onReferenceRefresh}
+            onBusyChange={(busy) => reportMutationState('emergency-fund', busy)}
+          />
+        </div>
+
+        <div
+          className="settings-category-pane"
+          hidden={activeCategory !== 'references'}
+        >
+          <ReferenceDataSettings
+            key={`reference-data-${ledgerSettings.updatedAt}`}
+            accounts={accounts}
+            categories={categories}
+            expectedCurrency={ledgerSettings.currency}
+            enabled={ledgerSettingsEnabled}
+            onRefresh={onReferenceRefresh}
+            onBusyChange={(busy) => reportMutationState('references', busy)}
+          />
+        </div>
+
+        <div
+          className="settings-category-pane"
+          hidden={activeCategory !== 'data'}
+        >
+          <LedgerBackupSettings
+            available={restoreAvailable}
+            onBackupDueChange={onBackupDueChange}
+            onRestored={onLedgerRestored}
+            onRestoreStateChange={onLedgerRestoreStateChange}
+          />
+        </div>
+
+        <div
+          className="settings-category-pane"
+          hidden={activeCategory !== 'appearance'}
+        >
+            <div className="settings-panel">
+              <div className="settings-panel-heading">
+                <div>
+                  <h3>{t('languageAndDisplay')}</h3>
+                  <p>{t('languageHelp')}</p>
+                </div>
+              </div>
+
+              <fieldset className="language-fieldset">
+                <legend>{t('interfaceLanguage')}</legend>
+                <span className="language-options-label">{t('languageOptions')}</span>
+                <div className="language-options">
+                  {languageOptions.map((option) => {
+                    const selected = locale === option.locale
+                    return (
+                      <label
+                        className={`language-option ${selected ? 'is-selected' : ''}`}
+                        key={option.locale}
+                      >
+                        <input
+                          type="radio"
+                          name="interface-language"
+                          value={option.locale}
+                          checked={selected}
+                          disabled={ledgerRestoreInProgress}
+                          onChange={() => chooseLanguage(option.locale)}
+                        />
+                        <span className="language-option-copy">
+                          <strong lang={option.locale}>{option.label}</strong>
+                          <small>{option.locale}</small>
+                        </span>
+                        <span className="language-option-check" aria-hidden="true">
+                          <Check />
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </fieldset>
+
+              <label className={`privacy-mode-option${privacyMode ? ' is-selected' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={privacyMode}
+                  disabled={ledgerRestoreInProgress}
+                  onChange={(event) => setPrivacyMode(event.target.checked)}
+                />
+                <span className="privacy-mode-copy">
+                  <strong>{t('screenPrivacy')}</strong>
+                  <small>{t('screenPrivacyHelp')}</small>
+                </span>
+                <span className="privacy-mode-switch" aria-hidden="true"><span /></span>
+              </label>
+
+              <div className="settings-privacy-note">
+                <LockKeyhole aria-hidden="true" />
+                <span>{t('localPreferenceNote')}</span>
+              </div>
+
+              <p className="settings-save-status" aria-live="polite" aria-atomic="true">
+                {saved ? t('languageSaved') : ''}
+              </p>
+            </div>
+
+            <div className="settings-panel">
+              <div className="settings-panel-heading">
+                <div>
+                  <h3>{t('appUpdatesTitle')}</h3>
+                  <p>{t('appUpdatesHelp')}</p>
+                </div>
+              </div>
+
+              <div className="settings-update-form">
+                <label>
+                  <span>{t('updatePreference')}</span>
+                  <select
+                    value={mode}
+                    onChange={(event) => {
+                      setMode(event.target.value === 'automatic' ? 'automatic' : 'manual')
+                    }}
+                    disabled={ledgerRestoreInProgress || status === 'installing'}
+                  >
+                    <option value="manual">{t('updateManual')}</option>
+                    <option value="automatic">{t('updateAutomatic')}</option>
+                  </select>
+                  <small>
+                    {mode === 'automatic' ? t('updateAutomaticHelp') : t('updateManualHelp')}
+                  </small>
+                </label>
+
+                <div className="settings-update-actions">
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => void checkForUpdate()}
+                    disabled={
+                      status === 'idle'
+                      || ledgerRestoreInProgress
+                      || status === 'checking'
+                      || status === 'installing'
+                      || status === 'restart-required'
+                      || status === 'unsupported'
+                    }
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {status === 'checking' ? t('checkingForUpdates') : t('checkForUpdates')}
+                  </button>
+                  {(status === 'available' || status === 'restart-required') && (
+                    <button
+                      type="button"
+                      className="button button-primary"
+                      onClick={installUpdate}
+                      disabled={ledgerRestoreInProgress}
+                    >
+                      {status === 'restart-required' ? t('restartNow') : t('installAndRestart')}
+                    </button>
+                  )}
+                </div>
+
+                <p className="settings-update-status" aria-live="polite" aria-atomic="true">
+                  {updateStatus}
+                </p>
+              </div>
+            </div>
+
+            <div className="settings-panel">
+              <div className="settings-panel-heading">
+                <div>
+                  <h3>{t('supportHushLedgerTitle')}</h3>
+                  <p>{t('supportHushLedgerHelp')}</p>
+                </div>
+              </div>
+
+              <div className="settings-support-actions">
+                <a
+                  className="button button-primary settings-support-link"
+                  href={GITHUB_SPONSORS_URL}
+                  aria-disabled={ledgerRestoreInProgress || undefined}
+                  tabIndex={ledgerRestoreInProgress ? -1 : undefined}
+                  onClick={(event) => {
+                    if (ledgerRestoreInProgress) event.preventDefault()
+                  }}
+                >
+                  <Heart aria-hidden="true" />
+                  {t('githubSponsors')}
+                </a>
+                <a
+                  className="button button-secondary settings-support-link"
+                  href={BUY_ME_A_COFFEE_URL}
+                  aria-disabled={ledgerRestoreInProgress || undefined}
+                  tabIndex={ledgerRestoreInProgress ? -1 : undefined}
+                  onClick={(event) => {
+                    if (ledgerRestoreInProgress) event.preventDefault()
+                  }}
+                >
+                  <Coffee aria-hidden="true" />
+                  {t('buyMeACoffee')}
+                </a>
+              </div>
+            </div>
+        </div>
+
+        <div
+          className="settings-category-pane"
+          hidden={activeCategory !== 'connections'}
+        >
+          <AiProviderSettingsForm
+            settings={aiSettings}
+            disabled={ledgerRestoreInProgress}
+            onChange={onAiSettingsChange}
+            persistedRow={aiSettingsRow}
+            conflict={aiSettingsConflict}
+            persistenceStatus={aiSettingsPersistenceStatus}
+            onReset={onResetAiSettings}
+            onReload={onReloadAiSettings}
+            onSave={onSaveAiSettings}
+            onDelete={onDeleteAiSettings}
+          />
         </div>
       </div>
-
-      <div className="settings-panel">
-        <div className="settings-panel-heading">
-          <div>
-            <h3>{t('supportHushLedgerTitle')}</h3>
-            <p>{t('supportHushLedgerHelp')}</p>
-          </div>
-        </div>
-
-        <div className="settings-support-actions">
-          <a
-            className="button button-primary settings-support-link"
-            href={GITHUB_SPONSORS_URL}
-            aria-disabled={ledgerRestoreInProgress || undefined}
-            tabIndex={ledgerRestoreInProgress ? -1 : undefined}
-            onClick={(event) => {
-              if (ledgerRestoreInProgress) event.preventDefault()
-            }}
-          >
-            <Heart aria-hidden="true" />
-            {t('githubSponsors')}
-          </a>
-          <a
-            className="button button-secondary settings-support-link"
-            href={BUY_ME_A_COFFEE_URL}
-            aria-disabled={ledgerRestoreInProgress || undefined}
-            tabIndex={ledgerRestoreInProgress ? -1 : undefined}
-            onClick={(event) => {
-              if (ledgerRestoreInProgress) event.preventDefault()
-            }}
-          >
-            <Coffee aria-hidden="true" />
-            {t('buyMeACoffee')}
-          </a>
-        </div>
-      </div>
-
-      <AiProviderSettingsForm
-        settings={aiSettings}
-        disabled={ledgerRestoreInProgress}
-        onChange={onAiSettingsChange}
-        persistedRow={aiSettingsRow}
-        conflict={aiSettingsConflict}
-        persistenceStatus={aiSettingsPersistenceStatus}
-        onReset={onResetAiSettings}
-        onReload={onReloadAiSettings}
-        onSave={onSaveAiSettings}
-        onDelete={onDeleteAiSettings}
-      />
     </section>
   )
 }

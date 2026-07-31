@@ -1,5 +1,5 @@
-import { AlertTriangle, Download, FileUp, Flag, Search, Sparkles, X } from 'lucide-react'
-import { useState, type FormEvent, type RefObject } from 'react'
+import { AlertTriangle, ChevronDown, Download, FileUp, Flag, Search, Sparkles, X } from 'lucide-react'
+import { useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { useI18n } from '../i18n'
 import { trailingSevenDayRange, trailingTwelveMonthRange } from '../lib/date'
 import { formatAmountInput, parseAmount } from '../lib/money'
@@ -12,12 +12,15 @@ import type {
   TransactionSort,
   TransactionType,
 } from '../lib/schema'
+import {
+  transactionActionsDisclosureActive,
+  type TransactionExportState,
+} from '../lib/transactionDisclosure'
 import { transactionQueryFromFilters } from '../lib/transactionQuery'
 
 export type TransactionFilter = TransactionType | 'all'
 export type TransactionClearingFilter = TransactionClearingStatus | 'all'
 export type TransactionImportReviewFilter = ImportReviewStatus | 'all'
-type ExportState = 'idle' | 'preparing' | 'ready' | 'error'
 type TransactionDateScopeOption = TransactionDateScope | 'trailing7' | 'trailing12'
 
 const followUpTag = '#follow-up'
@@ -112,7 +115,7 @@ export function TransactionToolbar({
   aiImportButtonRef,
 }: TransactionToolbarProps) {
   const { locale, localizeEntityName, t } = useI18n()
-  const [exportState, setExportState] = useState<ExportState>('idle')
+  const [exportState, setExportState] = useState<TransactionExportState>('idle')
   const trailingSevenDays = trailingSevenDayRange(currentDate)
   const trailingTwelveMonths = trailingTwelveMonthRange(month)
   const dateScopeOption: TransactionDateScopeOption = (
@@ -191,6 +194,20 @@ export function TransactionToolbar({
   const referenceLabel = (name: string, active: boolean) => (
     active ? name : `${name} · ${t('inactive')}`
   )
+  const reviewFiltersActive = duplicatesOnly || tagFilter === followUpTag
+  const moreFiltersActive = (
+    (showSort && sort !== 'date_desc')
+    || clearingFilter !== 'all'
+    || importReviewFilter !== 'all'
+    || accountFilterId !== null
+    || categoryFilterId !== null
+    || amountFilterMinor !== null
+  )
+  const actionsActive = transactionActionsDisclosureActive(
+    csvImportOpen,
+    aiImportOpen,
+    exportState,
+  )
 
   return (
     <div className="transaction-toolbar">
@@ -250,236 +267,302 @@ export function TransactionToolbar({
           </button>
         ))}
       </div>
-      <button
-        className={`button button-secondary transaction-duplicate-filter${duplicatesOnly ? ' is-active' : ''}`}
-        type="button"
-        aria-pressed={duplicatesOnly}
-        onClick={() => onDuplicatesOnlyChange(!duplicatesOnly)}
-        title={t('reviewPossibleDuplicatesHelp')}
-      >
-        <AlertTriangle aria-hidden="true" />
-        {t('reviewPossibleDuplicates')}
-      </button>
-      <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
-        <button
-          className={`button button-secondary transaction-follow-up-filter${tagFilter === followUpTag ? ' is-active' : ''}`}
-          type="button"
-          aria-pressed={tagFilter === followUpTag}
-          onClick={() => onTagFilterChange(tagFilter === followUpTag ? null : followUpTag)}
-          title={t('reviewFollowUpHelp')}
-        >
-          <Flag aria-hidden="true" />
-          {t('reviewFollowUp')}
-        </button>
-        {showSort ? (
-          <label className="transaction-reference-filter transaction-date-scope">
-            <span className="sr-only">{t('transactionDateScope')}</span>
-            <select
-              value={dateScopeOption}
+      {showSort ? (
+        <label className="transaction-reference-filter transaction-date-scope">
+          <span className="sr-only">{t('transactionDateScope')}</span>
+          <select
+            value={dateScopeOption}
+            onChange={(event) => {
+              const nextScope = event.target.value as TransactionDateScopeOption
+              if (nextScope === 'trailing7') {
+                onDateFromChange(trailingSevenDays.start)
+                onDateToChange(trailingSevenDays.end)
+                onDateScopeChange('range')
+                return
+              }
+              if (nextScope === 'trailing12') {
+                onDateFromChange(trailingTwelveMonths.start)
+                onDateToChange(trailingTwelveMonths.end)
+                onDateScopeChange('range')
+                return
+              }
+              onDateScopeChange(nextScope)
+            }}
+            title={t('transactionDateScopeHelp')}
+          >
+            <option value="month">{t('selectedMonth')}</option>
+            <option value="trailing7">{t('trailingSevenDays')}</option>
+            <option value="trailing12">{t('trailingTwelveMonths')}</option>
+            <option value="range">{t('customRange')}</option>
+            <option value="all">{t('allHistory')}</option>
+          </select>
+        </label>
+      ) : null}
+      {showSort && dateScope === 'range' ? (
+        <div className="transaction-custom-range" role="group" aria-label={t('customRange')}>
+          <label>
+            <span>{t('dateFrom')}</span>
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo}
               onChange={(event) => {
-                const nextScope = event.target.value as TransactionDateScopeOption
-                if (nextScope === 'trailing7') {
-                  onDateFromChange(trailingSevenDays.start)
-                  onDateToChange(trailingSevenDays.end)
-                  onDateScopeChange('range')
-                  return
-                }
-                if (nextScope === 'trailing12') {
-                  onDateFromChange(trailingTwelveMonths.start)
-                  onDateToChange(trailingTwelveMonths.end)
-                  onDateScopeChange('range')
-                  return
-                }
-                onDateScopeChange(nextScope)
+                if (event.target.value) onDateFromChange(event.target.value)
               }}
-              title={t('transactionDateScopeHelp')}
-            >
-              <option value="month">{t('selectedMonth')}</option>
-              <option value="trailing7">{t('trailingSevenDays')}</option>
-              <option value="trailing12">{t('trailingTwelveMonths')}</option>
-              <option value="range">{t('customRange')}</option>
-              <option value="all">{t('allHistory')}</option>
-            </select>
+            />
           </label>
-        ) : null}
-        {showSort && dateScope === 'range' ? (
-          <div className="transaction-custom-range" role="group" aria-label={t('customRange')}>
-            <label>
-              <span>{t('dateFrom')}</span>
-              <input
-                type="date"
-                value={dateFrom}
-                max={dateTo}
-                onChange={(event) => {
-                  if (event.target.value) onDateFromChange(event.target.value)
-                }}
-              />
-            </label>
-            <label>
-              <span>{t('dateTo')}</span>
-              <input
-                type="date"
-                value={dateTo}
-                min={dateFrom}
-                onChange={(event) => {
-                  if (event.target.value) onDateToChange(event.target.value)
-                }}
-              />
-            </label>
-          </div>
-        ) : null}
-        {showSort ? (
-          <label className="transaction-reference-filter transaction-sort-filter">
-            <span className="sr-only">{t('sortTransactions')}</span>
-            <select
-              value={sort}
-              onChange={(event) => onSortChange(event.target.value as TransactionSort)}
-            >
-              <option value="date_desc">{t('sortDateNewest')}</option>
-              <option value="date_asc">{t('sortDateOldest')}</option>
-              <option value="amount_desc">{t('sortAmountLargest')}</option>
-              <option value="amount_asc">{t('sortAmountSmallest')}</option>
-              <option value="payee_asc">{t('sortPayeeAscending')}</option>
-              <option value="payee_desc">{t('sortPayeeDescending')}</option>
-            </select>
+          <label>
+            <span>{t('dateTo')}</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom}
+              onChange={(event) => {
+                if (event.target.value) onDateToChange(event.target.value)
+              }}
+            />
           </label>
-        ) : null}
-        <label className="transaction-reference-filter">
-          <span className="sr-only">{t('filterByClearingStatus')}</span>
-          <select
-            value={clearingFilter}
-            onChange={(event) => onClearingFilterChange(event.target.value as TransactionClearingFilter)}
-          >
-            <option value="all">{t('allClearingStatuses')}</option>
-            <option value="uncleared">{t('uncleared')}</option>
-            <option value="cleared">{t('cleared')}</option>
-          </select>
-        </label>
-        <label className="transaction-reference-filter transaction-import-review-filter">
-          <span className="sr-only">{t('importReviewFilter')}</span>
-          <select
-            value={importReviewFilter}
-            onChange={(event) => onImportReviewFilterChange(
-              event.target.value as TransactionImportReviewFilter,
-            )}
-            title={t('importReviewFilterHelp')}
-          >
-            <option value="all">{t('allImportReviewStatuses')}</option>
-            <option value="unreviewed">{t('importReviewUnreviewed')}</option>
-            <option value="needs_follow_up">{t('importReviewNeedsFollowUp')}</option>
-            <option value="reviewed">{t('importReviewReviewed')}</option>
-          </select>
-        </label>
-        <label className="transaction-reference-filter">
-          <span className="sr-only">{t('filterByAccount')}</span>
-          <select
-            value={accountFilterId ?? ''}
-            onChange={(event) => onAccountFilterChange(event.target.value ? Number(event.target.value) : null)}
-          >
-            <option value="">{t('allAccounts')}</option>
-            {accounts.map((account) => {
-              const name = localizeEntityName(account.name, account.localizationKey)
-              return (
-                <option value={account.id} key={account.id}>
-                  {referenceLabel(name, account.isActive)}
-                </option>
-              )
-            })}
-          </select>
-        </label>
-        <label className="transaction-reference-filter">
-          <span className="sr-only">{t('filterByCategory')}</span>
-          <select
-            value={categoryFilterId ?? ''}
-            onChange={(event) => onCategoryFilterChange(event.target.value ? Number(event.target.value) : null)}
-          >
-            <option value="">{t('allCategories')}</option>
-            {visibleCategories.map((category) => {
-              const name = localizeEntityName(category.name, category.localizationKey)
-              const typePrefix = filter === 'all' ? `${t(category.type)} · ` : ''
-              return (
-                <option value={category.id} key={category.id}>
-                  {typePrefix}{referenceLabel(name, category.isActive)}
-                </option>
-              )
-            })}
-          </select>
-        </label>
-        <TransactionAmountFilter
-          key={`${locale}:${amountFilterMinor ?? ''}`}
-          amountFilterMinor={amountFilterMinor}
-          onAmountFilterChange={onAmountFilterChange}
-        />
-        {accountFilterId !== null || categoryFilterId !== null ? (
+        </div>
+      ) : null}
+      <ToolbarDisclosure
+        className="transaction-review-disclosure"
+        id="transaction-review-filters"
+        label={t('transactionReviewFilters')}
+        active={reviewFiltersActive}
+      >
+        <div className="transaction-review-filters">
           <button
-            className="transaction-filter-clear"
+            className={`button button-secondary transaction-duplicate-filter${duplicatesOnly ? ' is-active' : ''}`}
             type="button"
-            onClick={onClearReferenceFilters}
-            title={t('clearReferenceFilters')}
+            aria-pressed={duplicatesOnly}
+            onClick={() => onDuplicatesOnlyChange(!duplicatesOnly)}
+            title={t('reviewPossibleDuplicatesHelp')}
           >
-            <X aria-hidden="true" />
-            <span className="sr-only">{t('clearReferenceFilters')}</span>
+            <AlertTriangle aria-hidden="true" />
+            {t('reviewPossibleDuplicates')}
           </button>
-        ) : null}
-      </div>
-      {canExport ? (
-        <button
-          className="button button-secondary export-button"
-          type="button"
-          onClick={() => void exportTransactions()}
-          disabled={exporting}
-          aria-describedby="transaction-export-status"
-          title={t('exportCsvHelp')}
-        >
-          <Download aria-hidden="true" />
-          {exporting ? t('exportCsvPreparing') : t('exportCsv')}
-        </button>
-      ) : (
-        <button
-          className="button button-secondary export-button"
-          type="button"
-          disabled
-          title={t('exportCsvUnavailable')}
-        >
-          <Download aria-hidden="true" />
-          {t('exportCsv')}
-        </button>
-      )}
-      <p
-        id="transaction-export-status"
-        className={`transaction-export-status${exportState === 'error' ? ' is-error' : ''}`}
-        aria-live="polite"
-        aria-atomic="true"
+          <button
+            className={`button button-secondary transaction-follow-up-filter${tagFilter === followUpTag ? ' is-active' : ''}`}
+            type="button"
+            aria-pressed={tagFilter === followUpTag}
+            onClick={() => onTagFilterChange(tagFilter === followUpTag ? null : followUpTag)}
+            title={t('reviewFollowUpHelp')}
+          >
+            <Flag aria-hidden="true" />
+            {t('reviewFollowUp')}
+          </button>
+        </div>
+      </ToolbarDisclosure>
+      <ToolbarDisclosure
+        className="transaction-more-filters-disclosure"
+        id="transaction-more-filters"
+        label={t('moreTransactionFilters')}
+        active={moreFiltersActive}
       >
-        {exportStatus}
-      </p>
-      <button
-        id="csv-import-trigger"
-        className="button button-secondary csv-import-button"
-        type="button"
-        onClick={onCsvImport}
-        aria-expanded={csvImportOpen}
-        aria-controls="csv-import-panel"
-        ref={csvImportButtonRef}
-        disabled={!canImport}
-        title={!canImport ? t('csvImportUnavailable') : undefined}
+        <div className="transaction-reference-filters" aria-label={t('transactionReferenceFilters')}>
+          {showSort ? (
+            <label className="transaction-reference-filter transaction-sort-filter">
+              <span className="sr-only">{t('sortTransactions')}</span>
+              <select
+                value={sort}
+                onChange={(event) => onSortChange(event.target.value as TransactionSort)}
+              >
+                <option value="date_desc">{t('sortDateNewest')}</option>
+                <option value="date_asc">{t('sortDateOldest')}</option>
+                <option value="amount_desc">{t('sortAmountLargest')}</option>
+                <option value="amount_asc">{t('sortAmountSmallest')}</option>
+                <option value="payee_asc">{t('sortPayeeAscending')}</option>
+                <option value="payee_desc">{t('sortPayeeDescending')}</option>
+              </select>
+            </label>
+          ) : null}
+          <label className="transaction-reference-filter">
+            <span className="sr-only">{t('filterByClearingStatus')}</span>
+            <select
+              value={clearingFilter}
+              onChange={(event) => onClearingFilterChange(event.target.value as TransactionClearingFilter)}
+            >
+              <option value="all">{t('allClearingStatuses')}</option>
+              <option value="uncleared">{t('uncleared')}</option>
+              <option value="cleared">{t('cleared')}</option>
+            </select>
+          </label>
+          <label className="transaction-reference-filter transaction-import-review-filter">
+            <span className="sr-only">{t('importReviewFilter')}</span>
+            <select
+              value={importReviewFilter}
+              onChange={(event) => onImportReviewFilterChange(
+                event.target.value as TransactionImportReviewFilter,
+              )}
+              title={t('importReviewFilterHelp')}
+            >
+              <option value="all">{t('allImportReviewStatuses')}</option>
+              <option value="unreviewed">{t('importReviewUnreviewed')}</option>
+              <option value="needs_follow_up">{t('importReviewNeedsFollowUp')}</option>
+              <option value="reviewed">{t('importReviewReviewed')}</option>
+            </select>
+          </label>
+          <label className="transaction-reference-filter">
+            <span className="sr-only">{t('filterByAccount')}</span>
+            <select
+              value={accountFilterId ?? ''}
+              onChange={(event) => onAccountFilterChange(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">{t('allAccounts')}</option>
+              {accounts.map((account) => {
+                const name = localizeEntityName(account.name, account.localizationKey)
+                return (
+                  <option value={account.id} key={account.id}>
+                    {referenceLabel(name, account.isActive)}
+                  </option>
+                )
+              })}
+            </select>
+          </label>
+          <label className="transaction-reference-filter">
+            <span className="sr-only">{t('filterByCategory')}</span>
+            <select
+              value={categoryFilterId ?? ''}
+              onChange={(event) => onCategoryFilterChange(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">{t('allCategories')}</option>
+              {visibleCategories.map((category) => {
+                const name = localizeEntityName(category.name, category.localizationKey)
+                const typePrefix = filter === 'all' ? `${t(category.type)} · ` : ''
+                return (
+                  <option value={category.id} key={category.id}>
+                    {typePrefix}{referenceLabel(name, category.isActive)}
+                  </option>
+                )
+              })}
+            </select>
+          </label>
+          <TransactionAmountFilter
+            key={`${locale}:${amountFilterMinor ?? ''}`}
+            amountFilterMinor={amountFilterMinor}
+            onAmountFilterChange={onAmountFilterChange}
+          />
+          {accountFilterId !== null || categoryFilterId !== null ? (
+            <button
+              className="transaction-filter-clear"
+              type="button"
+              onClick={onClearReferenceFilters}
+              title={t('clearReferenceFilters')}
+            >
+              <X aria-hidden="true" />
+              <span className="sr-only">{t('clearReferenceFilters')}</span>
+            </button>
+          ) : null}
+        </div>
+      </ToolbarDisclosure>
+      <ToolbarDisclosure
+        className="transaction-actions-disclosure"
+        id="transaction-actions"
+        label={t('transactionActions')}
+        active={actionsActive}
       >
-        <FileUp aria-hidden="true" />
-        {t('csvImport')}
-      </button>
-      <button
-        id="ai-import-trigger"
-        className="button button-secondary ai-import-button"
-        type="button"
-        onClick={onAiImport}
-        aria-expanded={aiImportOpen}
-        aria-controls="bank-import-panel"
-        ref={aiImportButtonRef}
-      >
-        <Sparkles aria-hidden="true" />
-        {t('aiImport')}
-      </button>
+        <div className="transaction-actions">
+          {canExport ? (
+            <button
+              className="button button-secondary export-button"
+              type="button"
+              onClick={() => void exportTransactions()}
+              disabled={exporting}
+              aria-describedby="transaction-export-status"
+              title={t('exportCsvHelp')}
+            >
+              <Download aria-hidden="true" />
+              {exporting ? t('exportCsvPreparing') : t('exportCsv')}
+            </button>
+          ) : (
+            <button
+              className="button button-secondary export-button"
+              type="button"
+              disabled
+              title={t('exportCsvUnavailable')}
+            >
+              <Download aria-hidden="true" />
+              {t('exportCsv')}
+            </button>
+          )}
+          <p
+            id="transaction-export-status"
+            className={`transaction-export-status${exportState === 'error' ? ' is-error' : ''}`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {exportStatus}
+          </p>
+          <button
+            id="csv-import-trigger"
+            className="button button-secondary csv-import-button"
+            type="button"
+            onClick={onCsvImport}
+            aria-expanded={csvImportOpen}
+            aria-controls="csv-import-panel"
+            ref={csvImportButtonRef}
+            disabled={!canImport}
+            title={!canImport ? t('csvImportUnavailable') : undefined}
+          >
+            <FileUp aria-hidden="true" />
+            {t('csvImport')}
+          </button>
+          <button
+            id="ai-import-trigger"
+            className="button button-secondary ai-import-button"
+            type="button"
+            onClick={onAiImport}
+            aria-expanded={aiImportOpen}
+            aria-controls="bank-import-panel"
+            ref={aiImportButtonRef}
+          >
+            <Sparkles aria-hidden="true" />
+            {t('aiImport')}
+          </button>
+        </div>
+      </ToolbarDisclosure>
     </div>
+  )
+}
+
+type ToolbarDisclosureProps = {
+  className: string
+  id: string
+  label: string
+  active: boolean
+  children: ReactNode
+}
+
+function ToolbarDisclosure({
+  className,
+  id,
+  label,
+  active,
+  children,
+}: ToolbarDisclosureProps) {
+  const [userOpen, setUserOpen] = useState(false)
+  const open = active || userOpen
+
+  return (
+    <details
+      className={`transaction-toolbar-disclosure ${className}${active ? ' is-active' : ''}`}
+      open={open}
+    >
+      <summary
+        aria-controls={`${id}-panel`}
+        aria-expanded={open}
+        onClick={(event) => {
+          event.preventDefault()
+          if (!active) setUserOpen((current) => !current)
+        }}
+      >
+        <span>{label}</span>
+        <ChevronDown aria-hidden="true" />
+      </summary>
+      <div id={`${id}-panel`} className="transaction-toolbar-disclosure-panel">
+        {children}
+      </div>
+    </details>
   )
 }
 

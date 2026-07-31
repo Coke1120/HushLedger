@@ -517,6 +517,74 @@ textarea:focus-visible {
   border-radius: 18px;
 }
 
+.overview-monthly-review {
+  margin-bottom: 24px;
+}
+
+.overview-monthly-review-heading {
+  margin-bottom: 12px;
+}
+
+.overview-monthly-review-heading h2,
+.overview-monthly-review-heading p {
+  margin: 0;
+}
+
+.overview-monthly-review-heading h2 {
+  color: var(--brand-strong);
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.overview-monthly-review-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.overview-review-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  overflow-x: auto;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  scrollbar-width: thin;
+}
+
+.overview-review-tabs button {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.overview-review-tabs button:hover,
+.overview-review-tabs button.is-active {
+  color: var(--brand);
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgb(23 72 60 / 10%);
+}
+
+.overview-review-panel:focus-visible {
+  outline: 3px solid rgb(47 126 112 / 28%);
+  outline-offset: 3px;
+  border-radius: 18px;
+}
+
+.overview-review-panel > .category-spending-panel {
+  margin-bottom: 0;
+}
+
 .category-spending-heading {
   display: flex;
   gap: 14px;
@@ -1675,14 +1743,22 @@ textarea:focus-visible {
   width: 18px;
 }
 
-.transaction-toolbar {
+.view-overview .view-all-button {
   display: flex;
+}
+
+.view-overview .transaction-toolbar,
+.view-transactions .overview-region {
+  display: none;
+}
+
+.transaction-toolbar {
+  display: grid;
   width: 100%;
   min-width: 0;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: center;
-  justify-content: flex-end;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 220px);
+  gap: 10px;
+  align-items: start;
   justify-self: stretch;
 }
 
@@ -1692,9 +1768,138 @@ textarea:focus-visible {
 
 .view-transactions .transaction-toolbar {
   width: 100%;
-  flex-wrap: wrap;
-  justify-content: flex-end;
   justify-self: stretch;
+}
+
+.transaction-toolbar > .search-field {
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+}
+
+.transaction-toolbar > .filter-group {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.transaction-toolbar > .transaction-date-scope {
+  grid-column: 3;
+  grid-row: 1;
+  width: 100%;
+}
+
+.transaction-toolbar > .transaction-active-filters,
+.transaction-toolbar > .transaction-custom-range {
+  grid-column: 1 / -1;
+}
+
+.transaction-toolbar-disclosure {
+  min-width: 0;
+}
+
+.transaction-toolbar-disclosure[open] {
+  grid-column: 1 / -1;
+}
+
+.transaction-toolbar-disclosure > summary {
+  display: flex;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  cursor: pointer;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 750;
+  list-style: none;
+}
+
+.transaction-toolbar-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.transaction-toolbar-disclosure > summary:hover,
+.transaction-toolbar-disclosure.is-active > summary,
+.transaction-toolbar-disclosure[open] > summary {
+  color: var(--brand);
+  background: var(--income-soft);
+  border-color: var(--brand);
+}
+
+.transaction-toolbar-disclosure > summary svg {
+  width: 17px;
+  height: 17px;
+  transition: transform 160ms ease;
+}
+
+.transaction-toolbar-disclosure[open] > summary svg {
+  transform: rotate(180deg);
+}
+
+.transaction-toolbar-disclosure-panel {
+  padding: 12px;
+  margin-top: 8px;
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.transaction-review-filters,
+.transaction-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.transaction-actions .transaction-export-status {
+  flex: 1 1 100%;
+  order: 4;
+  text-align: left;
+}
+
+.transaction-more-filters-disclosure .transaction-reference-filters {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transaction-more-filters-disclosure .transaction-amount-filter {
+  min-width: 0;
+  grid-column: span 2;
+}
+
+.transaction-preview-filter-notice {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--line));
+  border-radius: 10px;
+  grid-column: 1 / -1;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.transaction-preview-filter-notice p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.transaction-preview-filter-notice .button {
+  min-height: 40px;
+  white-space: nowrap;
 }
 
 .transaction-filter-summary {
@@ -3632,6 +3837,42 @@ button.account-register-row:focus-visible {
   border-color: #ffffff;
 }
 
+.recurring-surface-switch {
+  display: grid;
+  width: min(100%, 520px);
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recurring-surface-switch button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.recurring-surface-switch button:hover,
+.recurring-surface-switch button.is-active {
+  color: var(--brand);
+  background: var(--income-soft);
+}
+
+.recurring-surface-switch svg {
+  width: 18px;
+  height: 18px;
+}
+
 .recurring-status {
   display: flex;
   gap: 10px;
@@ -4179,6 +4420,53 @@ button.account-register-row:focus-visible {
   gap: 18px;
   max-width: 880px;
   margin: 0 auto;
+}
+
+.settings-category-navigation {
+  display: grid;
+  padding: 5px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.settings-category-button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.settings-category-button:hover,
+.settings-category-button.is-selected {
+  color: var(--brand);
+  background: var(--surface);
+  border-color: var(--line);
+  box-shadow: 0 2px 8px rgb(23 72 60 / 8%);
+}
+
+.settings-category-content {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.settings-category-pane {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.settings-category-pane[hidden] {
+  display: none;
 }
 
 .settings-hero {
@@ -6083,61 +6371,6 @@ button.account-register-row:focus-visible {
   font-weight: 700;
 }
 
-@media (min-width: 901px) {
-  .transaction-toolbar {
-    display: grid;
-    grid-template-columns: minmax(220px, 1fr) auto auto auto;
-  }
-
-  .transaction-toolbar .search-field {
-    grid-column: 1;
-    grid-row: 1;
-    width: 100%;
-  }
-
-  .transaction-toolbar .filter-group {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .transaction-toolbar .transaction-duplicate-filter {
-    grid-column: 3;
-    grid-row: 1;
-  }
-
-  .transaction-toolbar .transaction-reference-filters {
-    grid-column: 1 / 3;
-    grid-row: 2;
-    width: 100%;
-  }
-
-  .transaction-toolbar .export-button {
-    grid-column: 4;
-    grid-row: 1;
-  }
-
-  .transaction-toolbar .csv-import-button {
-    grid-column: 3;
-    grid-row: 2;
-  }
-
-  .transaction-toolbar .ai-import-button {
-    grid-column: 4;
-    grid-row: 2;
-  }
-
-  .transaction-toolbar .transaction-active-filters {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    justify-self: start;
-  }
-
-  .transaction-toolbar .transaction-export-status {
-    grid-column: 1 / -1;
-    grid-row: 4;
-  }
-}
-
 @media (max-width: 1080px) {
   .transaction-toolbar {
     flex-wrap: wrap;
@@ -6774,6 +7007,17 @@ button.account-register-row:focus-visible {
     gap: 10px;
   }
 
+  .transaction-toolbar > .search-field,
+  .transaction-toolbar > .filter-group,
+  .transaction-toolbar > .transaction-date-scope,
+  .transaction-toolbar > .transaction-active-filters,
+  .transaction-toolbar > .transaction-custom-range,
+  .transaction-toolbar > .transaction-toolbar-disclosure,
+  .transaction-toolbar > .transaction-toolbar-disclosure[open] {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
   .search-field {
     width: 100%;
   }
@@ -6801,6 +7045,43 @@ button.account-register-row:focus-visible {
 
   .transaction-reference-filters > .transaction-reference-filter:last-of-type {
     grid-column: 1 / -1;
+  }
+
+  .transaction-more-filters-disclosure .transaction-reference-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-more-filters-disclosure .transaction-reference-filter,
+  .transaction-more-filters-disclosure .transaction-amount-filter {
+    grid-column: 1;
+  }
+
+  .transaction-more-filters-disclosure .transaction-amount-filter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .transaction-more-filters-disclosure .transaction-amount-filter .button {
+    width: 100%;
+  }
+
+  .transaction-review-filters,
+  .transaction-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction-review-filters .button,
+  .transaction-actions .button {
+    width: 100%;
+  }
+
+  .transaction-preview-filter-notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .transaction-preview-filter-notice .button {
+    width: 100%;
   }
 
   .transaction-row {
@@ -7146,6 +7427,27 @@ button.account-register-row:focus-visible {
   }
 
   .settings-page {
+    gap: 14px;
+  }
+
+  .settings-category-navigation {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .settings-category-button {
+    flex: 0 0 auto;
+    min-width: max-content;
+    scroll-snap-align: start;
+  }
+
+  .settings-category-content {
+    gap: 14px;
+  }
+
+  .settings-category-pane {
     gap: 14px;
   }
 
