@@ -17,6 +17,7 @@ const supportsProcessGroups = process.platform !== 'win32'
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'hushledger-integration-'))
 const freshState = join(temporaryRoot, 'fresh-state')
 const upgradeState = join(temporaryRoot, 'upgrade-state')
+const fictionalAiSettingsEncryptionKey = '33'.repeat(32)
 let workerProcess
 let nextProcess
 let providerServer
@@ -267,6 +268,7 @@ async function verifyUpgradeMigration() {
   const importReviewMigrationNames = allMigrationNames.filter((name) => /^0018_/.test(name))
   const multiCurrencyMigrationNames = allMigrationNames.filter((name) => /^0019_/.test(name))
   const ecbReferenceRateMigrationNames = allMigrationNames.filter((name) => /^0020_/.test(name))
+  const aiProviderSettingsMigrationNames = allMigrationNames.filter((name) => /^0021_/.test(name))
   assert.equal(initialMigrationNames.length, 4)
   assert.equal(preYearlyMigrationNames.length, 10)
   assert.deepEqual(yearlyMigrationNames, ['0015_yearly_recurring_rules.sql'])
@@ -275,6 +277,7 @@ async function verifyUpgradeMigration() {
   assert.deepEqual(importReviewMigrationNames, ['0018_import_review_status.sql'])
   assert.deepEqual(multiCurrencyMigrationNames, ['0019_multi_currency_accounts.sql'])
   assert.deepEqual(ecbReferenceRateMigrationNames, ['0020_ecb_reference_rates.sql'])
+  assert.deepEqual(aiProviderSettingsMigrationNames, ['0021_ai_provider_settings.sql'])
   await Promise.all(
     initialMigrationNames.map((name) => (
       copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
@@ -517,6 +520,23 @@ async function verifyUpgradeMigration() {
     upgradeConfig,
   ])
 
+  await Promise.all(
+    aiProviderSettingsMigrationNames.map((name) => (
+      copyFile(join(projectRoot, 'migrations', name), join(subsetDirectory, name))
+    )),
+  )
+  await runWrangler([
+    'd1',
+    'migrations',
+    'apply',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    upgradeState,
+    '--config',
+    upgradeConfig,
+  ])
+
   const verification = await runWrangler([
     'd1',
     'execute',
@@ -565,7 +585,7 @@ async function verifyUpgradeMigration() {
      SELECT revision FROM ledger_state WHERE id = 1;
      SELECT name FROM sqlite_master
      WHERE type = 'table' AND name IN (
-       'account_transfers', 'ecb_reference_rates', 'emergency_fund_goals', 'ledger_settings', 'recurring_transfer_rules'
+       'account_transfers', 'ai_provider_settings', 'ecb_reference_rates', 'emergency_fund_goals', 'ledger_settings', 'recurring_transfer_rules'
      )
      ORDER BY name;
      SELECT COUNT(*) AS emergencyFundRevisionTriggers
@@ -620,7 +640,10 @@ async function verifyUpgradeMigration() {
      WHERE type = 'index' AND name = 'idx_ecb_reference_rates_observed_on';
      SELECT COUNT(*) AS ecbReferenceRateRevisionTriggers
      FROM sqlite_master
-     WHERE type = 'trigger' AND name LIKE 'ledger_revision_ecb_reference_rates_%';`,
+     WHERE type = 'trigger' AND name LIKE 'ledger_revision_ecb_reference_rates_%';
+     SELECT name, type, "notnull" AS isNotNull
+     FROM pragma_table_info('ai_provider_settings')
+     ORDER BY cid;`,
     '--json',
   ])
   const statements = JSON.parse(verification.stdout)
@@ -677,6 +700,7 @@ async function verifyUpgradeMigration() {
   assert.equal(statements[7].results[0].revision, 7)
   assert.deepEqual(statements[8].results, [
     { name: 'account_transfers' },
+    { name: 'ai_provider_settings' },
     { name: 'ecb_reference_rates' },
     { name: 'emergency_fund_goals' },
     { name: 'ledger_settings' },
@@ -701,6 +725,16 @@ async function verifyUpgradeMigration() {
   assert.equal(statements[18].results[0].accountIndexes, 2)
   assert.equal(statements[19].results[0].ecbReferenceRateIndexes, 1)
   assert.equal(statements[20].results[0].ecbReferenceRateRevisionTriggers, 3)
+  assert.deepEqual(statements[21].results, [
+    { name: 'id', type: 'INTEGER', isNotNull: 0 },
+    { name: 'base_url', type: 'TEXT', isNotNull: 1 },
+    { name: 'api_key_ciphertext', type: 'BLOB', isNotNull: 1 },
+    { name: 'api_key_iv', type: 'BLOB', isNotNull: 1 },
+    { name: 'encryption_key_version', type: 'INTEGER', isNotNull: 1 },
+    { name: 'model', type: 'TEXT', isNotNull: 1 },
+    { name: 'created_at', type: 'TEXT', isNotNull: 1 },
+    { name: 'updated_at', type: 'TEXT', isNotNull: 1 },
+  ])
 
   await runWrangler([
     'd1',
@@ -970,6 +1004,8 @@ function startWorker(port, inspectorPort) {
       '--persist-to',
       freshState,
       '--test-scheduled',
+      '--var',
+      `AI_SETTINGS_ENCRYPTION_KEY_V1:${fictionalAiSettingsEncryptionKey}`,
       '--log-level',
       'error',
       '--show-interactive-dev-session=false',
@@ -992,7 +1028,7 @@ function startWorker(port, inspectorPort) {
   return child
 }
 
-function startNextDev(port) {
+function startNextDev(port, configPath) {
   const child = spawn(
     next,
     ['dev', '--hostname', '127.0.0.1', '--port', String(port)],
@@ -1003,6 +1039,7 @@ function startNextDev(port) {
         ...process.env,
         CI: '1',
         HUSHLEDGER_DEV_PERSIST_PATH: join(freshState, 'v3'),
+        HUSHLEDGER_DEV_WRANGLER_CONFIG_PATH: configPath,
         NEXT_TELEMETRY_DISABLED: '1',
         NO_COLOR: '1',
       },
@@ -2177,6 +2214,80 @@ async function verifyRecurringTransferRules(baseUrl, today, month) {
   }
 }
 
+async function verifyAiSettingsApi(baseUrl) {
+  const empty = await api(baseUrl, '/api/ai-settings')
+  assert.equal(empty.response.status, 200)
+  assert.equal(empty.payload.data, null)
+  assert.match(empty.response.headers.get('cache-control') ?? '', /private.*no-store/)
+
+  const created = await api(baseUrl, '/api/ai-settings', {
+    method: 'PUT',
+    body: {
+      settings: {
+        baseUrl: 'https://fictional-provider.example/v1',
+        apiKey: 'fictional-integration-api-key',
+        model: 'fictional-model-v1',
+      },
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(created.response.status, 201, JSON.stringify(created.payload))
+  assert.deepEqual(Object.keys(created.payload.data).sort(), [
+    'baseUrl',
+    'createdAt',
+    'hasApiKey',
+    'model',
+    'updatedAt',
+  ])
+  assert.equal(JSON.stringify(created.payload).includes('fictional-integration-api-key'), false)
+
+  const staleUpdate = await api(baseUrl, '/api/ai-settings', {
+    method: 'PUT',
+    body: {
+      settings: {
+        baseUrl: 'https://fictional-provider.example/v1',
+        model: 'fictional-model-v2',
+      },
+      expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  })
+  assert.equal(staleUpdate.response.status, 409)
+  assert.equal(staleUpdate.payload.error.code, 'AI_SETTINGS_VERSION_CONFLICT')
+
+  const retained = await api(baseUrl, '/api/ai-settings', {
+    method: 'PUT',
+    body: {
+      settings: {
+        baseUrl: 'https://fictional-provider.example/v1',
+        model: 'fictional-model-v2',
+      },
+      expectedUpdatedAt: created.payload.data.updatedAt,
+    },
+  })
+  assert.equal(retained.response.status, 200, JSON.stringify(retained.payload))
+  assert.equal(retained.payload.data.model, 'fictional-model-v2')
+  assert.equal('apiKey' in retained.payload.data, false)
+
+  const staleDelete = await api(baseUrl, '/api/ai-settings', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: created.payload.data.updatedAt },
+  })
+  assert.equal(staleDelete.response.status, 409)
+  assert.equal(staleDelete.payload.error.code, 'AI_SETTINGS_VERSION_CONFLICT')
+
+  const deleted = await api(baseUrl, '/api/ai-settings', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: retained.payload.data.updatedAt },
+  })
+  assert.equal(deleted.response.status, 200)
+  assert.deepEqual(deleted.payload.data, { deleted: true })
+
+  return {
+    aiSettingsApiChecks: 6,
+    aiSettingsResponsesRedacted: true,
+  }
+}
+
 async function verifyWorkerApi() {
   const port = await availablePort()
   const inspectorPort = await availablePort()
@@ -2184,6 +2295,7 @@ async function verifyWorkerApi() {
   workerProcess = startWorker(port, inspectorPort)
   await waitForHealth(baseUrl)
   await verifyNextShell(baseUrl)
+  const aiSettingsEvidence = await verifyAiSettingsApi(baseUrl)
 
   const today = hktCalendarDate()
   const month = today.slice(0, 7)
@@ -2405,14 +2517,26 @@ async function verifyWorkerApi() {
   const crossOriginAi = await api(baseUrl, '/api/ai/models', {
     method: 'POST',
     origin: 'https://attacker.invalid',
-    body: { provider: { baseUrl: 'https://provider.example/v1', apiKey: 'fictional' } },
+    body: {
+      provider: {
+        source: 'transient',
+        baseUrl: 'https://provider.example/v1',
+        apiKey: 'fictional',
+      },
+    },
   })
   assert.equal(crossOriginAi.response.status, 403)
   assert.equal(crossOriginAi.payload.error.code, 'ORIGIN_FORBIDDEN')
 
   const invalidAiConfig = await api(baseUrl, '/api/ai/models', {
     method: 'POST',
-    body: { provider: { baseUrl: 'https://provider.example/v1', apiKey: '' } },
+    body: {
+      provider: {
+        source: 'transient',
+        baseUrl: 'https://provider.example/v1',
+        apiKey: '',
+      },
+    },
   })
   assert.equal(invalidAiConfig.response.status, 400)
   assert.equal(invalidAiConfig.payload.error.code, 'AI_PROVIDER_CONFIG_INVALID')
@@ -2421,6 +2545,7 @@ async function verifyWorkerApi() {
     method: 'POST',
     body: {
       provider: {
+        source: 'transient',
         baseUrl: 'https://provider.example/v1',
         apiKey: 'fictional',
         model: 'fictional-model',
@@ -7083,6 +7208,7 @@ async function verifyWorkerApi() {
   assert(upgradedSchema8Backup.payload.data.transactions.every(({ cleared }) => cleared === true))
 
   return {
+    ...aiSettingsEvidence,
     createdRules: createdRules.length,
     firstRunCreated: firstRun.payload.data.created,
     cronCreated: 1,
@@ -7164,7 +7290,31 @@ async function verifyNextAiDrafts() {
   const nextPort = await availablePort()
   const providerPort = await availablePort()
   const baseUrl = `http://127.0.0.1:${nextPort}`
-  nextProcess = startNextDev(nextPort)
+  const nextWranglerDirectory = join(temporaryRoot, 'next-wrangler')
+  const nextWranglerConfig = join(nextWranglerDirectory, 'wrangler.json')
+  await mkdir(nextWranglerDirectory)
+  await Promise.all([
+    writeFile(
+      join(nextWranglerDirectory, 'integration-worker.js'),
+      "export default { fetch() { return new Response('integration-only') } }\n",
+    ),
+    writeFile(
+      join(nextWranglerDirectory, '.dev.vars'),
+      `AI_SETTINGS_ENCRYPTION_KEY_V1=${fictionalAiSettingsEncryptionKey}\n`,
+    ),
+    writeFile(nextWranglerConfig, JSON.stringify({
+      name: 'hushledger-next-integration',
+      main: 'integration-worker.js',
+      compatibility_date: '2026-07-11',
+      compatibility_flags: ['nodejs_compat'],
+      d1_databases: [{
+        binding: 'DB',
+        database_name: 'hushledger',
+        database_id: 'REPLACE_WITH_D1_DATABASE_ID',
+      }],
+    })),
+  ])
+  nextProcess = startNextDev(nextPort, nextWranglerConfig)
   await waitForNextHealth(baseUrl)
 
   const developmentServiceWorker = await fetch(`${baseUrl}/sw.js`)
@@ -7197,15 +7347,52 @@ async function verifyNextAiDrafts() {
   }
   const models = await api(baseUrl, '/api/ai/models', {
     method: 'POST',
-    body: { provider },
+    body: { provider: { source: 'transient', ...provider } },
   })
   assert.equal(models.response.status, 200, JSON.stringify(models.payload))
   assert.deepEqual(models.payload.data, ['fictional-model'])
 
+  const savedProvider = await api(baseUrl, '/api/ai-settings', {
+    method: 'PUT',
+    body: {
+      settings: { ...provider, model: 'fictional-model' },
+      expectedUpdatedAt: null,
+    },
+  })
+  assert.equal(savedProvider.response.status, 201, JSON.stringify(savedProvider.payload))
+  assert.equal('apiKey' in savedProvider.payload.data, false)
+
+  const storedModels = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    body: {
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: savedProvider.payload.data.updatedAt,
+      },
+    },
+  })
+  assert.equal(storedModels.response.status, 200, JSON.stringify(storedModels.payload))
+  assert.deepEqual(storedModels.payload.data, ['fictional-model'])
+
+  const staleStoredModels = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    body: {
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  assert.equal(staleStoredModels.response.status, 409, JSON.stringify(staleStoredModels.payload))
+  assert.equal(staleStoredModels.payload.error.code, 'AI_SETTINGS_VERSION_CONFLICT')
+
   const parsed = await api(baseUrl, '/api/imports/parse', {
     method: 'POST',
     body: {
-      provider: { ...provider, model: 'fictional-model' },
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: savedProvider.payload.data.updatedAt,
+      },
       accountId: account.id,
       currency: 'HKD',
       dateOrder: 'YMD',
@@ -7272,7 +7459,7 @@ async function verifyNextAiDrafts() {
   const repeatedParse = await api(baseUrl, '/api/imports/parse', {
     method: 'POST',
     body: {
-      provider: { ...provider, model: 'fictional-model' },
+      provider: { source: 'transient', ...provider, model: 'fictional-model' },
       accountId: account.id,
       currency: 'HKD',
       dateOrder: 'YMD',
@@ -7310,12 +7497,79 @@ async function verifyNextAiDrafts() {
   assert.equal(tombstonePreview.response.status, 200)
   assert.equal(tombstonePreview.payload.data.rows[0].status, 'already_imported')
 
+  await stopNext()
+  await runWrangler([
+    'd1',
+    'execute',
+    'hushledger',
+    '--local',
+    '--persist-to',
+    freshState,
+    '--config',
+    nextWranglerConfig,
+    '--command',
+    "UPDATE ai_provider_settings SET base_url = 'https://attacker.invalid/v1' WHERE id = 1;",
+    '--yes',
+  ])
+  nextProcess = startNextDev(nextPort, nextWranglerConfig)
+  await waitForNextHealth(baseUrl)
+
+  const cryptoFailedModels = await api(baseUrl, '/api/ai/models', {
+    method: 'POST',
+    body: {
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: savedProvider.payload.data.updatedAt,
+      },
+    },
+  })
+  assertAiSettingsCryptoFailure(cryptoFailedModels, provider.apiKey)
+
+  const cryptoFailedParse = await api(baseUrl, '/api/imports/parse', {
+    method: 'POST',
+    body: {
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: savedProvider.payload.data.updatedAt,
+      },
+      accountId: account.id,
+      currency: 'HKD',
+      dateOrder: 'YMD',
+      statementText: `${today} Must not reach attacker 12.34 DR`,
+    },
+  })
+  assertAiSettingsCryptoFailure(cryptoFailedParse, provider.apiKey)
+
+  const deletedProvider = await api(baseUrl, '/api/ai-settings', {
+    method: 'DELETE',
+    body: { expectedUpdatedAt: savedProvider.payload.data.updatedAt },
+  })
+  assert.equal(deletedProvider.response.status, 200, JSON.stringify(deletedProvider.payload))
+
   return {
     nextAiDrafts: 1,
     nextAiD1Writes: 1,
     nextAiTombstones: 1,
+    nextStoredAiProviderRoutes: 2,
+    nextStoredAiProviderStaleGuards: 1,
+    nextStoredAiProviderCryptoFailureGuards: 2,
     nextDevelopmentServiceWorkerRetirements: 1,
   }
+}
+
+function assertAiSettingsCryptoFailure(result, apiKey) {
+  assert.equal(result.response.status, 500, JSON.stringify(result.payload))
+  assert.equal(result.payload.ok, false)
+  assert.deepEqual(result.payload.error, {
+    code: 'AI_SETTINGS_ENCRYPTION_UNAVAILABLE',
+    message: 'AI provider 設定加密服務目前無法使用',
+  })
+  assert.match(result.response.headers.get('cache-control') ?? '', /private.*no-store/)
+  const serialized = JSON.stringify(result.payload)
+  assert.equal(serialized.includes(apiKey), false)
+  assert.equal(serialized.includes('attacker.invalid'), false)
+  assert.equal(serialized.includes('DECRYPTION_FAILED'), false)
+  assert.equal(serialized.includes('ciphertext'), false)
 }
 
 async function stopWorker() {
@@ -7382,8 +7636,8 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0020',
-      upgradeMigration: '0004-to-0020-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-import-review-emergency-fund-goals-and-ecb-reference-rates',
+      freshMigrations: '0001-0021',
+      upgradeMigration: '0004-to-0021-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-import-review-emergency-fund-goals-ecb-reference-rates-and-ai-provider-settings',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,

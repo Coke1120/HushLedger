@@ -1,7 +1,8 @@
 import { Check, Coffee, Heart, Languages, LockKeyhole, RefreshCw } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { languageOptions, useI18n, type Locale, type MessageKey } from '../i18n'
-import type { AiProviderSettings } from '../lib/ai'
+import type { AiProviderSettings, AiProviderSettingsRow } from '../lib/ai'
+import type { AiProviderSettingsStatus } from '../hooks/useMoneyData'
 import type { LedgerCurrencySettings } from '../lib/currency'
 import type { Account, Category, EmergencyFundGoal } from '../lib/schema'
 import { AiProviderSettingsForm } from './AiProviderSettingsForm'
@@ -31,6 +32,13 @@ const BUY_ME_A_COFFEE_URL = 'https://buymeacoffee.com/Coke1120'
 type SettingsPageProps = {
   aiSettings: AiProviderSettings
   onAiSettingsChange: (settings: AiProviderSettings) => void
+  aiSettingsRow: AiProviderSettingsRow | null
+  aiSettingsConflict: boolean
+  aiSettingsPersistenceStatus: AiProviderSettingsStatus
+  onResetAiSettings: () => void
+  onReloadAiSettings: () => Promise<unknown>
+  onSaveAiSettings: (settings: AiProviderSettings) => Promise<void>
+  onDeleteAiSettings: () => Promise<void>
   accounts: Account[]
   categories: Category[]
   emergencyFundGoal: EmergencyFundGoal | null
@@ -48,6 +56,13 @@ type SettingsPageProps = {
 export function SettingsPage({
   aiSettings,
   onAiSettingsChange,
+  aiSettingsRow,
+  aiSettingsConflict,
+  aiSettingsPersistenceStatus,
+  onResetAiSettings,
+  onReloadAiSettings,
+  onSaveAiSettings,
+  onDeleteAiSettings,
   accounts,
   categories,
   emergencyFundGoal,
@@ -304,6 +319,13 @@ export function SettingsPage({
         settings={aiSettings}
         disabled={ledgerRestoreInProgress}
         onChange={onAiSettingsChange}
+        persistedRow={aiSettingsRow}
+        conflict={aiSettingsConflict}
+        persistenceStatus={aiSettingsPersistenceStatus}
+        onReset={onResetAiSettings}
+        onReload={onReloadAiSettings}
+        onSave={onSaveAiSettings}
+        onDelete={onDeleteAiSettings}
       />
     </section>
   )

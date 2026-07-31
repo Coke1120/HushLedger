@@ -33,15 +33,53 @@ export const aiProviderSettingsSchema = aiProviderConnectionSchema
   .extend({ model: boundedText(200) })
   .strict()
 
+export const aiProviderSettingsWriteSchema = z
+  .object({
+    baseUrl: boundedText(2_048),
+    model: boundedText(200),
+    apiKey: apiKeySchema.optional(),
+  })
+  .strict()
+
+export const aiProviderSettingsMetadataSchema = z
+  .object({
+    baseUrl: boundedText(2_048),
+    model: boundedText(200),
+    hasApiKey: z.literal(true),
+    createdAt: z.string().datetime({ offset: true }),
+    updatedAt: z.string().datetime({ offset: true }),
+  })
+  .strict()
+
+export const aiModelsProviderSourceSchema = z.discriminatedUnion('source', [
+  aiProviderConnectionSchema.extend({ source: z.literal('transient') }).strict(),
+  z
+    .object({
+      source: z.literal('stored'),
+      expectedUpdatedAt: z.string().datetime({ offset: true }),
+    })
+    .strict(),
+])
+
+export const aiParseProviderSourceSchema = z.discriminatedUnion('source', [
+  aiProviderSettingsSchema.extend({ source: z.literal('transient') }).strict(),
+  z
+    .object({
+      source: z.literal('stored'),
+      expectedUpdatedAt: z.string().datetime({ offset: true }),
+    })
+    .strict(),
+])
+
 export const aiModelsRequestSchema = z
-  .object({ provider: aiProviderConnectionSchema })
+  .object({ provider: aiModelsProviderSourceSchema })
   .strict()
 
 export const aiDateOrderSchema = z.enum(['DMY', 'MDY', 'YMD'])
 
 export const aiParseRequestSchema = z
   .object({
-    provider: aiProviderSettingsSchema,
+    provider: aiParseProviderSourceSchema,
     accountId: z.number().int().positive(),
     currency: supportedCurrencySchema,
     dateOrder: aiDateOrderSchema,
@@ -121,6 +159,11 @@ export const aiImportRequestSchema = z
 
 export type AiProviderConnection = z.infer<typeof aiProviderConnectionSchema>
 export type AiProviderSettings = z.infer<typeof aiProviderSettingsSchema>
+export type AiProviderSettingsWrite = z.infer<typeof aiProviderSettingsWriteSchema>
+export type AiProviderSettingsMetadata = z.infer<typeof aiProviderSettingsMetadataSchema>
+export type AiProviderSettingsRow = AiProviderSettingsMetadata
+export type AiModelsProviderSource = z.infer<typeof aiModelsProviderSourceSchema>
+export type AiParseProviderSource = z.infer<typeof aiParseProviderSourceSchema>
 export type AiDateOrder = z.infer<typeof aiDateOrderSchema>
 export type AiParseRequest = z.infer<typeof aiParseRequestSchema>
 export type AiModelOutput = z.infer<typeof aiModelOutputSchema>

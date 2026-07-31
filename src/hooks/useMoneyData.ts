@@ -14,6 +14,11 @@ import {
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { ApiError, api } from '../lib/api'
 import type { LedgerCurrencySettings } from '../lib/currency'
+import { aiProviderSettingsMetadataSchema, type AiProviderSettingsRow } from '../lib/ai'
+import {
+  retainAiSettingsAfterMetadataFetch,
+  type AiSettingsMetadataFetchResult,
+} from '../lib/aiSettingsDraft'
 import {
   addDemo,
   deleteDemo,
@@ -57,6 +62,7 @@ import { subscribeToForegroundRefresh } from './foregroundRefresh'
 
 export type DataSource = 'loading' | 'live' | 'demo' | 'error'
 export type RefreshFailureMode = 'demo' | 'error' | 'preserve'
+export type AiProviderSettingsStatus = 'loading' | 'ready' | 'error'
 
 type Snapshot = DemoSnapshot
 
@@ -112,7 +118,10 @@ export function useMoneyData(
   const [actionMessage, setActionMessage] = useState<LocalizedMessage | null>(null)
   const [transactionPage, setTransactionPage] = useState<TransactionPageState>(emptyTransactionPage)
   const [snapshotVersion, setSnapshotVersion] = useState(0)
+  const [aiProviderSettingsStatus, setAiProviderSettingsStatus] =
+    useState<AiProviderSettingsStatus>('loading')
   const requestSequence = useRef(0)
+  const aiProviderSettingsRef = useRef<AiProviderSettingsRow | null>(snapshot.aiProviderSettings)
   const submitting = useRef(false)
   const loadingMore = useRef(false)
   const recoveringTransactionPage = useRef(false)
@@ -138,6 +147,7 @@ export function useMoneyData(
   const fetchSnapshot = useCallback(async (): Promise<{
     snapshot: Snapshot
     nextCursor: TransactionPageCursor | null
+    aiProviderSettingsResult: AiSettingsMetadataFetchResult
   }> => {
     const effectiveAccountId = registerAccountId ?? accountId
     const transferQuery = registerAccountId === null
@@ -158,6 +168,7 @@ export function useMoneyData(
       categories,
       emergencyFundGoal,
       ledgerSettings,
+      aiProviderSettings,
     ] = await Promise.all([
       api<TransactionQueryResult>('/api/transactions/query', {
         method: 'POST',
@@ -175,6 +186,11 @@ export function useMoneyData(
       api<Category[]>('/api/categories'),
       api<EmergencyFundGoal | null>('/api/emergency-fund-goal'),
       api<LedgerCurrencySettings>('/api/ledger-settings'),
+      api<unknown>('/api/ai-settings').then((value): AiSettingsMetadataFetchResult => {
+        const parsed = aiProviderSettingsMetadataSchema.nullable().safeParse(value)
+        if (!parsed.success) throw new Error('AI settings metadata response is invalid')
+        return { kind: 'loaded', settings: parsed.data }
+      }).catch((): AiSettingsMetadataFetchResult => ({ kind: 'failed' })),
     ])
     if (!isValidInitialTransactionPage(transactionResult)) {
       throw new Error('Transaction page response is inconsistent')
@@ -193,8 +209,13 @@ export function useMoneyData(
         categories,
         emergencyFundGoal,
         ledgerSettings,
+        aiProviderSettings: retainAiSettingsAfterMetadataFetch(
+          aiProviderSettingsRef.current,
+          aiProviderSettings,
+        ),
       },
       nextCursor: transactionResult.nextCursor,
+      aiProviderSettingsResult: aiProviderSettings,
     }
   }, [accountId, dateFrom, dateTo, month, registerAccountId, transactionQuery])
 
@@ -209,10 +230,12 @@ export function useMoneyData(
     async (failureMode: RefreshFailureMode = 'demo') => {
       const sequence = ++requestSequence.current
       setTransactionPage(emptyTransactionPage())
+      setAiProviderSettingsStatus('loading')
       if (failureMode !== 'preserve') setSaveError(null)
 
       if (!navigator.onLine) {
         setOnline(false)
+        setAiProviderSettingsStatus('error')
         if (failureMode === 'demo') {
           setDemoSnapshot()
           setSource('demo')
@@ -223,6 +246,12 @@ export function useMoneyData(
       try {
         const next = await fetchSnapshot()
         if (sequence !== requestSequence.current) return false
+        if (next.aiProviderSettingsResult.kind === 'loaded') {
+          aiProviderSettingsRef.current = next.aiProviderSettingsResult.settings
+          setAiProviderSettingsStatus('ready')
+        } else {
+          setAiProviderSettingsStatus('error')
+        }
         setLedgerCurrency(next.snapshot.ledgerSettings.currency)
         setSnapshot(next.snapshot)
         setTransactionPage({
@@ -238,6 +267,7 @@ export function useMoneyData(
         return true
       } catch {
         if (sequence !== requestSequence.current) return false
+        setAiProviderSettingsStatus('error')
         if (failureMode === 'demo') {
           setDemoSnapshot()
           setSource('demo')
@@ -774,6 +804,7 @@ export function useMoneyData(
     online,
     saving,
     snapshotVersion,
+    aiProviderSettingsStatus,
     transactionPageHasMore: source === 'live' && transactionPage.nextCursor !== null,
     transactionPageLoading: transactionPage.loading,
     transactionPageError: renderMessage(t, transactionPage.error),

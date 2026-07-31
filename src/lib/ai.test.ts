@@ -31,7 +31,7 @@ describe('AI import schemas', () => {
   it('accepts a strict provider and parse request', () => {
     assert.deepEqual(aiProviderSettingsSchema.parse(provider), provider)
     assert.equal(aiParseRequestSchema.safeParse({
-      provider,
+      provider: { source: 'transient', ...provider },
       accountId: 1,
       currency: 'HKD',
       dateOrder: 'DMY',
@@ -44,7 +44,7 @@ describe('AI import schemas', () => {
     ['unknown setting', { ...provider, persist: true }],
     ['unsafe API key', { ...provider, apiKey: 'fictional\nheader' }],
     ['unsupported currency', {
-      provider,
+      provider: { source: 'transient', ...provider },
       accountId: 1,
       currency: 'JPY',
       dateOrder: 'DMY',

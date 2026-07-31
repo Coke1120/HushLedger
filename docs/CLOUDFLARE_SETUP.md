@@ -102,6 +102,11 @@ For an existing database, export a backup first and read every new migration.
 D1 records applied migrations, so always add a new numbered migration instead
 of editing a migration that production has already applied.
 
+Do not deploy a build containing saved AI settings until
+`0021_ai_provider_settings.sql` appears in the applied migration list. On an
+existing Worker, also configure `AI_SETTINGS_ENCRYPTION_KEY_V1` as described in
+[Step 8](#8-use-ai-drafts-safely) before deploying the updated code.
+
 ## 4. Create the Worker without a public route
 
 The checked-in configuration explicitly sets both `workers_dev` and
@@ -245,13 +250,44 @@ off-platform backups. Record the current bookmark before any production restore
 so the restore itself can be reversed if necessary. See Cloudflare's
 [Time Travel documentation](https://developers.cloudflare.com/d1/reference/time-travel/).
 
+The app-level JSON backup deliberately excludes AI provider settings. A full D1
+export and Time Travel history can retain that separate row: the base URL and
+model remain readable configuration, while the provider API key is retained only
+as AES-GCM ciphertext with its IV and encryption-key version. Protect these copies
+as sensitive data even though they do not contain the plaintext provider key.
+
 ## 8. Use AI drafts safely
 
-AI bank-record draft parsing is optional and requires no deployment-time Worker
-secret. Each user enters an OpenAI-compatible base URL, API key, and model in
-Settings. The values stay only in that browser tab's memory and are cleared by a
-reload; they are not written to D1, browser storage, cookies, Worker variables, or
-the repository.
+AI bank-record draft parsing is optional. Each user enters an OpenAI-compatible
+base URL, API key, and model in Settings and can keep them only in the current tab.
+This memory-only mode clears on reload and requires no encryption secret.
+
+To allow explicit persistence, create an independent 32-byte encryption key and
+store it as a per-Worker secret. This command pipes the generated value directly
+to Wrangler, so the value is not printed or included in shell history:
+
+```bash
+openssl rand -hex 32 | npx wrangler secret put AI_SETTINGS_ENCRYPTION_KEY_V1
+```
+
+The value must be exactly 64 hexadecimal characters. Do not place it in
+`wrangler.jsonc`, an environment variable committed to the repository, or D1.
+For local persistence, put a separately generated value in the Git-ignored
+`.dev.vars` file beside `wrangler.jsonc`:
+
+```dotenv
+AI_SETTINGS_ENCRYPTION_KEY_V1=<output of openssl rand -hex 32>
+```
+
+Never commit the file or value. Losing or replacing the secret makes the existing
+saved API-key ciphertext undecryptable. After an intentional key change, enter and
+save the provider key again.
+
+Saved settings keep the base URL and model in D1 and the API key only as AES-GCM
+ciphertext. Browser and settings API responses expose only redacted metadata such
+as whether a key is configured; AI proxy routes load and decrypt the credential
+server-side. Plaintext provider keys are not persisted in browser storage, cookies,
+D1, Worker globals, or logs.
 
 For a Cloudflare deployment, the provider must use a public HTTPS hostname on
 port 443. A deployed Worker cannot call a model running on the user's localhost
@@ -267,7 +303,9 @@ outbound `fetch()` on Cloudflare's public-Internet routing path.
 Never place an AI API key in React source, client environment variables,
 `wrangler.jsonc`, a GitHub issue, build logs, screenshots, or test fixtures. The
 key being typed into the runtime password field is intentional BYOK input; it is
-not embedded in the client bundle. See
+not embedded in the client bundle. Deleting the saved settings row does not revoke
+the upstream credential; rotate or revoke it at the provider for immediate
+invalidation. See
 [AI_BANK_IMPORT_PLAN.md](../AI_BANK_IMPORT_PLAN.md) for the no-write draft boundary.
 
 ## Deployment checklist
@@ -275,11 +313,15 @@ not embedded in the client bundle. See
 - [ ] `npm run verify` succeeds from a clean checkout.
 - [ ] The production dependency audit has no high-severity finding.
 - [ ] Remote D1 migrations are applied to the intended database.
+- [ ] Migration `0021_ai_provider_settings.sql` was applied before deploying code
+      that persists AI settings.
 - [ ] The D1 binding is `DB`, the placeholder is gone, and `database_id` contains
       no token or secret.
 - [ ] Initial deploy has no `workers.dev`, preview, custom-domain, or route URL.
 - [ ] Access policy exists before the custom hostname is attached.
 - [ ] `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` are configured on the Worker.
+- [ ] `AI_SETTINGS_ENCRYPTION_KEY_V1` is configured as a 64-hex-character Worker
+      secret before saved AI settings are enabled.
 - [ ] Alternate Worker URLs are still disabled after secret updates and every
       later deployment.
 - [ ] A missing or invalid Access JWT is rejected by the custom Worker.

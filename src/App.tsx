@@ -39,8 +39,16 @@ import { useMoneyData } from './hooks/useMoneyData'
 import { startScheduledOutlookRefreshRetries } from './hooks/scheduledOutlookRefresh'
 import { useI18n } from './i18n'
 import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
-import type { AiProviderSettings } from './lib/ai'
+import type { AiProviderSettings, AiProviderSettingsRow } from './lib/ai'
+import {
+  aiSettingsDraftHasConflict,
+  aiSettingsRowOverrideIsSuperseded,
+  updateAiSettingsDraft,
+  type AiSettingsDraft,
+  type AiSettingsRowOverride,
+} from './lib/aiSettingsDraft'
 import { recurringRuleDraftFromTransaction } from './lib/recurringDraft'
+import { api } from './lib/api'
 import { TRANSACTION_PAGE_SIZE } from './lib/schema'
 import {
   addSavedTransactionView,
@@ -106,7 +114,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [recurringRuleFocusId, setRecurringRuleFocusId] = useState<string | null>(null)
   const [recurringTransferRuleFocusId, setRecurringTransferRuleFocusId] = useState<string | null>(null)
   const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
-  const [aiSettings, setAiSettings] = useState(initialAiSettings)
+  const [aiSettingsDraft, setAiSettingsDraft] = useState<AiSettingsDraft | null>(null)
+  const [aiSettingsRowOverride, setAiSettingsRowOverride] = useState<
+    AiSettingsRowOverride | null
+  >(null)
+
   const [savedTransactionViews, setSavedTransactionViews] = useState<SavedTransactionView[]>([])
   const [ledgerGeneration, setLedgerGeneration] = useState(0)
   const [ledgerRestoreInProgress, setLedgerRestoreInProgress] = useState(false)
@@ -171,6 +183,69 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const ledgerMutationInProgress = otherLedgerMutationInProgress || settingsMutationInProgress
   const ledgerInteractionLocked = ledgerRestoreInProgress || ledgerMutationInProgress
   const transactionEntryDisabled = ledgerInteractionLocked || data.source === 'loading'
+  const currentAiSettingsRowOverride = aiSettingsRowOverride
+    && !aiSettingsRowOverrideIsSuperseded(
+      aiSettingsRowOverride,
+      data.aiProviderSettings?.updatedAt ?? null,
+    )
+    ? aiSettingsRowOverride
+    : null
+  const aiSettingsRow = currentAiSettingsRowOverride
+    ? currentAiSettingsRowOverride.settings
+    : (data.aiProviderSettings ?? null)
+  const aiSettings: AiProviderSettings = aiSettingsDraft?.settings ?? (aiSettingsRow
+    ? { baseUrl: aiSettingsRow.baseUrl, apiKey: '', model: aiSettingsRow.model }
+    : initialAiSettings)
+  const aiSettingsConflict = aiSettingsDraftHasConflict(
+    aiSettingsDraft,
+    aiSettingsRow?.updatedAt ?? null,
+  )
+
+  const changeAiSettings = useCallback((settings: AiProviderSettings) => {
+    setAiSettingsDraft((current) => updateAiSettingsDraft(
+      current,
+      settings,
+      aiSettingsRow?.updatedAt ?? null,
+    ))
+  }, [aiSettingsRow?.updatedAt])
+
+  const saveAiSettings = useCallback(async (settings: AiProviderSettings) => {
+    if (data.aiProviderSettingsStatus !== 'ready') {
+      throw new Error('AI settings metadata is unavailable')
+    }
+    const expectedUpdatedAt = aiSettingsDraft?.baseUpdatedAt ?? aiSettingsRow?.updatedAt ?? null
+    const saved = await api<AiProviderSettingsRow>('/api/ai-settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        settings: {
+          baseUrl: settings.baseUrl,
+          model: settings.model,
+          ...(settings.apiKey.trim() ? { apiKey: settings.apiKey } : {}),
+        },
+        expectedUpdatedAt,
+      }),
+    })
+    setAiSettingsRowOverride({ settings: saved, replacedUpdatedAt: expectedUpdatedAt })
+    setAiSettingsDraft(null)
+    await data.refresh('preserve')
+  }, [aiSettingsDraft?.baseUpdatedAt, aiSettingsRow?.updatedAt, data])
+
+  const deleteAiSettings = useCallback(async () => {
+    if (data.aiProviderSettingsStatus !== 'ready') {
+      throw new Error('AI settings metadata is unavailable')
+    }
+    if (!aiSettingsRow) return
+    const expectedUpdatedAt = aiSettingsDraft?.baseUpdatedAt ?? aiSettingsRow.updatedAt
+    await api<{ deleted: true }>('/api/ai-settings', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedUpdatedAt }),
+    })
+    setAiSettingsRowOverride({ settings: null, replacedUpdatedAt: expectedUpdatedAt })
+    setAiSettingsDraft(null)
+    await data.refresh('preserve')
+  }, [aiSettingsDraft?.baseUpdatedAt, aiSettingsRow, data])
   const scheduledOutlookStartOn = data.summary.scheduledOutlook?.startOn
 
   useEffect(() => {
@@ -844,6 +919,9 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
               <BankImportPanel
                 key={`ai-import-${data.ledgerSettings.updatedAt}`}
                 settings={aiSettings}
+                persistedSettings={aiSettingsRow}
+                settingsConflict={aiSettingsConflict}
+                persistedSettingsAvailable={data.aiProviderSettingsStatus === 'ready'}
                 accounts={data.accounts}
                 categories={data.categories}
                 available={data.source === 'live' && data.online}
@@ -985,7 +1063,14 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
         <div hidden={view !== 'settings'}>
           <SettingsPage
             aiSettings={aiSettings}
-            onAiSettingsChange={setAiSettings}
+            onAiSettingsChange={changeAiSettings}
+            aiSettingsRow={aiSettingsRow}
+            aiSettingsConflict={aiSettingsConflict}
+            aiSettingsPersistenceStatus={data.aiProviderSettingsStatus}
+            onResetAiSettings={() => setAiSettingsDraft(null)}
+            onReloadAiSettings={() => data.refresh('preserve')}
+            onSaveAiSettings={saveAiSettings}
+            onDeleteAiSettings={deleteAiSettings}
             accounts={data.accounts}
             categories={data.categories}
             emergencyFundGoal={data.emergencyFundGoal}

@@ -23,7 +23,9 @@ support branches yet.
 
 The application does not provide its own login system. Operators must protect
 every production route with Cloudflare Access and configure `CF_ACCESS_TEAM_DOMAIN`
-and `CF_ACCESS_AUD` as Worker secrets. The custom Worker fails closed outside
+and `CF_ACCESS_AUD` as Worker secrets. Operators who persist AI provider settings
+must also configure the independent `AI_SETTINGS_ENCRYPTION_KEY_V1` Worker secret.
+The custom Worker fails closed outside
 localhost and cryptographically verifies each Access JWT's signature, issuer,
 audience, and lifetime before Next.js handles the request. Operators must also
 keep secrets out of client bundles and the repository, enable strong authentication
@@ -35,8 +37,11 @@ on their Cloudflare account, and maintain encrypted off-platform backups. See
 The Settings JSON backup contains plaintext financial data. Its SHA-256 value is
 an integrity check, not encryption, a signature, or proof of origin. Keep backup
 files only in encrypted storage and never attach them to public issues, logs, test
-fixtures, or pull requests. AI provider credentials and browser preferences are
-not included. Creating the download requires an explicit same-origin JSON `POST`;
+fixtures, or pull requests. AI provider settings and browser preferences are
+deliberately excluded. D1 exports and Time Travel history can contain the separate
+AI settings row, but only with the API key represented as AES-GCM ciphertext and
+its non-secret IV and key version. Creating the download requires an explicit
+same-origin JSON `POST`;
 the endpoint does not support `GET`, preventing cross-site navigation from causing
 an authenticated browser to write a plaintext backup into Downloads or synchronized
 storage.
@@ -77,10 +82,22 @@ override every suggested value before saving.
 ## User-provided AI credentials
 
 The optional AI draft feature accepts an OpenAI-compatible base URL, API key, and
-model in Settings. These values are held only in the current tab's React memory;
-they must never be persisted in local/session storage, cookies, D1, Worker
-globals, logs, URLs, HTML, screenshots, or test fixtures. Reloading or closing the
-tab clears them.
+model in Settings. A user can keep them only in the current tab's React memory or
+explicitly save the connection settings. Memory-only use clears the values when
+the tab reloads or closes. Saved settings store the base URL and model in D1 and
+store the API key only as AES-GCM ciphertext. Encryption uses the operator-managed
+`AI_SETTINGS_ENCRYPTION_KEY_V1` Worker secret, which must be exactly 64 hexadecimal
+characters (32 bytes) and must remain separate from D1, exports, source control,
+logs, screenshots, and test fixtures.
+
+Browser and settings API responses contain only redacted metadata, including
+whether a key exists; they never return the key or ciphertext. The AI proxy routes
+load and decrypt a saved credential server-side only when it is used. Neither
+transient nor saved keys belong in local/session storage, cookies, URLs, HTML, or
+client environment variables. Deleting saved settings removes the D1 row but does
+not revoke the credential at its upstream provider. Rotate or revoke the provider
+key for immediate invalidation. D1 exports and Time Travel retain ciphertext, not
+plaintext, for as long as those database copies remain available.
 
 The browser connects only to same-origin HushLedger endpoints. Route Handlers
 validate Access/local authorization and Origin before proxying requests, never
@@ -107,4 +124,4 @@ Analyze. It is kept in UI memory, is not logged or stored in D1, and model outpu
 is treated as untrusted. Strict server validation and deterministic minor-unit
 parsing occur before editable drafts are returned. Only rows explicitly reviewed
 and selected by the user can enter the transactional import path; raw text and
-provider credentials are never written to D1.
+plaintext provider credentials are never written to D1.

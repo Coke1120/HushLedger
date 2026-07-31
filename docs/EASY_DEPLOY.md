@@ -150,10 +150,13 @@ Paste:
 
 ```bash
 npx wrangler d1 migrations apply hushledger --remote
+npx wrangler d1 migrations list hushledger --remote
 ```
 
 If Cloudflare asks for confirmation, check that the database name is
 `hushledger`, then answer `y`. Wait for the migrations to finish successfully.
+The applied list must include `0021_ai_provider_settings.sql` before you deploy
+this version of the app.
 
 ## 7. Build and upload HushLedger
 
@@ -241,6 +244,28 @@ This prevents a forged header from being treated as a valid login.
 Do not continue until both commands succeed. On any non-local hostname, HushLedger
 deliberately refuses requests when these values are missing or a token is invalid.
 
+### Protect saved AI provider settings
+
+AI drafts are optional. Keeping a provider key only in the open tab needs no
+additional secret. If you want Settings to retain it across reloads, generate an
+independent encryption key and save it as a Worker secret:
+
+```bash
+openssl rand -hex 32 | npx wrangler secret put AI_SETTINGS_ENCRYPTION_KEY_V1
+```
+
+This creates exactly 64 hexadecimal characters (32 bytes) and pipes the value
+directly to Wrangler, so it is not printed or included in shell history. Do not
+paste the value into `wrangler.jsonc`, D1, GitHub, or a screenshot. If `openssl`
+is unavailable, keep using memory-only AI settings and follow the
+[advanced guide](CLOUDFLARE_SETUP.md#8-use-ai-drafts-safely) before enabling
+persistence.
+
+HushLedger stores a saved provider key only as AES-GCM ciphertext in D1. The
+browser receives redacted settings metadata, and the AI proxy routes decrypt the
+key server-side. Keep the Worker secret: losing or replacing it makes the saved
+credential undecryptable.
+
 Each `wrangler secret put` command creates and deploys a new Worker version. The
 Worker is still unreachable because you have not attached a hostname. Reopen
 **Workers & Pages > hushledger > Settings > Domains & Routes** and confirm again
@@ -286,14 +311,19 @@ Save these three details somewhere private:
 - The location of your extracted `HushLedger-main` folder.
 
 HushLedger does not need an app password or banking password. Its optional AI
-draft feature uses your own provider key, entered in Settings and held only until
-the tab reloads or closes. Never paste banking records, API keys, passwords, or
+draft feature uses your own provider key. You can keep it only until the tab
+reloads or explicitly save it using the encrypted settings flow above. Never paste
+banking records, API keys, passwords, or
 Cloudflare tokens into GitHub issues or screenshots. Wrangler's browser sign-in
 authorizes deployment; HushLedger itself does not need an application API key.
 
 After the private ledger is working, open Settings and download a full-ledger
 JSON backup. It is plaintext financial data: keep it in encrypted storage and
-download a fresh copy before migrations or an in-app restore.
+download a fresh copy before migrations or an in-app restore. This app backup
+deliberately excludes AI settings. Full D1 exports and Time Travel can retain the
+AI settings row, but the provider key remains ciphertext rather than plaintext.
+Deleting saved settings does not revoke the key at the provider; rotate or revoke
+it there when immediate invalidation is required.
 
 If you only imported part of an account’s history, edit that account in Settings
 and enter the statement balance immediately before the chosen start date. Enter
@@ -328,6 +358,7 @@ For updates, backups, recovery tests, and more advanced security options, use th
 | Cloudflare says the custom domain already has a DNS or CNAME record | Choose a new, unused subdomain. Do not delete an existing record unless you know what service depends on it. |
 | The custom domain is still unavailable | Wait a few minutes, then confirm that the hostname in Access and the hostname in Domains & Routes are identical. |
 | HushLedger returns `ACCESS_CONFIG_MISSING` | Repeat the JWT verification steps and confirm both Worker secrets were saved to the `hushledger` Worker. |
+| Saving AI settings reports that encryption is unavailable | Configure `AI_SETTINGS_ENCRYPTION_KEY_V1` as exactly 64 hexadecimal characters, then try again. |
 | HushLedger opens without a Cloudflare sign-in screen | Remove the Custom Domain immediately, then correct the Access application and exact-email policy before reconnecting it. |
 
 ## Official Cloudflare references

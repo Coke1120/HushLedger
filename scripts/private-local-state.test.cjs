@@ -10,6 +10,7 @@ const projectRoot = path.resolve(__dirname, '..')
 const preloadPath = path.join(__dirname, 'private-local-state.cjs')
 const wranglerPath = path.join(projectRoot, 'node_modules', 'wrangler', 'bin', 'wrangler.js')
 const temporaryDirectories = []
+const migrationApplyTimeoutMs = 120_000
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -42,7 +43,7 @@ describe('private local state launcher', { skip: process.platform === 'win32' },
       cwd: projectRoot,
       encoding: 'utf8',
       env: { ...process.env, CI: 'true', NO_COLOR: '1' },
-      timeout: 30_000,
+      timeout: migrationApplyTimeoutMs,
     })
 
     assert.equal(result.status, 0, result.stderr || result.stdout)
@@ -151,7 +152,7 @@ describe('private local state launcher', { skip: process.platform === 'win32' },
         HUSHLEDGER_DEV_PERSIST_PATH: ignoredStateDirectory,
         NO_COLOR: '1',
       },
-      timeout: 30_000,
+      timeout: migrationApplyTimeoutMs,
     })
 
     assert.equal(result.status, 0, result.stderr || result.stdout)

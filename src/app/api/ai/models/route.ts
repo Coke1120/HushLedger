@@ -1,5 +1,15 @@
-import { MAX_AI_MODELS_REQUEST_BYTES, aiModelsRequestSchema } from '../../../../lib/ai'
+import {
+  MAX_AI_MODELS_REQUEST_BYTES,
+  aiModelsRequestSchema,
+  type AiModelsProviderSource,
+  type AiProviderConnection,
+} from '../../../../lib/ai'
 import { aiProviderFailure, listAiModels } from '../../../../server/ai'
+import {
+  AiSettingsCryptoError,
+  getStoredAiProviderSettings,
+} from '../../../../server/aiSettings'
+import { getCloudflareEnv } from '../../../../server/db'
 import {
   apiNotFound,
   apiRoute,
@@ -36,12 +46,22 @@ export const POST = apiRoute(async (request) => {
   }
 
   try {
-    const models = await listAiModels(parsed.data.provider, {
+    const provider = await resolveProvider(parsed.data.provider)
+    if (provider instanceof Response) return provider
+
+    const models = await listAiModels(provider, {
       allowLoopback: isLocalDevelopmentRequest(request),
       applicationOrigin: requestOrigin(request),
     })
     return jsonSuccess(models)
   } catch (error) {
+    if (error instanceof AiSettingsCryptoError) {
+      return jsonError(
+        500,
+        'AI_SETTINGS_ENCRYPTION_UNAVAILABLE',
+        'AI provider 設定加密服務目前無法使用',
+      )
+    }
     const failure = aiProviderFailure(error)
     if (!failure) throw error
     return jsonError(failure.status, failure.code, failure.message)
@@ -59,4 +79,26 @@ function requestOrigin(request: Request) {
   return request.headers.get('x-hushledger-access-verified') === 'true'
     ? (request.headers.get('x-hushledger-request-origin') ?? new URL(request.url).origin)
     : new URL(request.url).origin
+}
+
+async function resolveProvider(
+  source: AiModelsProviderSource,
+): Promise<AiProviderConnection | Response> {
+  if (source.source === 'transient') {
+    return { baseUrl: source.baseUrl, apiKey: source.apiKey }
+  }
+
+  const env = await getCloudflareEnv()
+  const result = await getStoredAiProviderSettings(
+    env.DB,
+    env.AI_SETTINGS_ENCRYPTION_KEY_V1,
+    source.expectedUpdatedAt,
+  )
+  if (result.kind === 'not_found') {
+    return jsonError(404, 'AI_SETTINGS_NOT_FOUND', '找不到 AI provider 設定')
+  }
+  if (result.kind === 'version_conflict') {
+    return jsonError(409, 'AI_SETTINGS_VERSION_CONFLICT', 'AI provider 設定已被修改，請重新載入後再試')
+  }
+  return result.settings
 }

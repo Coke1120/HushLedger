@@ -3,6 +3,7 @@ import {
   type LedgerCurrencySettings,
   type SupportedCurrency,
 } from './currency'
+import type { AiProviderSettingsRow } from './ai'
 import {
   demoAccounts,
   demoAccountBalances,
@@ -43,6 +44,7 @@ export type DemoSnapshot = {
   categories: Category[]
   emergencyFundGoal: EmergencyFundGoal | null
   ledgerSettings: LedgerCurrencySettings
+  aiProviderSettings: AiProviderSettingsRow | null
 }
 
 export function buildDemoSnapshot(
@@ -103,5 +105,6 @@ export function buildDemoSnapshot(
       updatedAt: '1970-01-01T00:00:00.000Z',
       canChangeCurrency: false,
     },
+    aiProviderSettings: null,
   }
 }

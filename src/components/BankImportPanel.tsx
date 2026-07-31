@@ -9,6 +9,7 @@ import {
   bankImportDraftsSchema,
   type AiDateOrder,
   type AiProviderSettings,
+  type AiProviderSettingsRow,
   type BankImportDraft,
 } from '../lib/ai'
 import { api } from '../lib/api'
@@ -29,6 +30,9 @@ type EditableBankImportDraft = Omit<BankImportDraft, 'amountMinor'> & {
 
 type BankImportPanelProps = {
   settings: AiProviderSettings
+  persistedSettings: AiProviderSettingsRow | null
+  settingsConflict: boolean
+  persistedSettingsAvailable: boolean
   accounts: Account[]
   categories: Category[]
   available: boolean
@@ -41,6 +45,9 @@ type BankImportPanelProps = {
 
 export function BankImportPanel({
   settings,
+  persistedSettings,
+  settingsConflict,
+  persistedSettingsAvailable,
   accounts,
   categories,
   available,
@@ -66,7 +73,14 @@ export function BankImportPanel({
   const [status, setStatus] = useState('')
   const requestIdRef = useRef(0)
   const requestControllerRef = useRef<AbortController | null>(null)
-  const configured = aiProviderSettingsSchema.safeParse(settings).success
+  const transientProvider = aiProviderSettingsSchema.safeParse(settings)
+  const canUseStoredProvider = !settings.apiKey.trim()
+    && persistedSettingsAvailable
+    && !settingsConflict
+    && persistedSettings?.hasApiKey === true
+    && settings.baseUrl.trim() === persistedSettings.baseUrl
+    && settings.model.trim() === persistedSettings.model
+  const configured = transientProvider.success || canUseStoredProvider
   const statementBytes = new TextEncoder().encode(statementText.trim()).byteLength
   const previewStatusByKey = useMemo(
     () => new Map(preview?.rows.map((row) => [row.importKey, row.status]) ?? []),
@@ -130,11 +144,14 @@ export function BankImportPanel({
     setError('')
     setStatus('')
 
-    const provider = aiProviderSettingsSchema.safeParse(settings)
-    if (!provider.success) {
+    const parsedTransientProvider = aiProviderSettingsSchema.safeParse(settings)
+    if (!parsedTransientProvider.success && !canUseStoredProvider) {
       setError(t('aiConfigureFirst'))
       return
     }
+    const provider = parsedTransientProvider.success
+      ? { source: 'transient' as const, ...parsedTransientProvider.data }
+      : { source: 'stored' as const, expectedUpdatedAt: persistedSettings!.updatedAt }
     if (!available) {
       setError(t('aiOffline'))
       return
@@ -159,7 +176,7 @@ export function BankImportPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: provider.data,
+          provider,
           accountId,
           currency: selectedAccount.currency,
           dateOrder,

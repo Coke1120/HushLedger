@@ -4,7 +4,11 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 type HushLedgerEnv = CloudflareEnv & { DB: D1Database }
 
-export async function getDatabase() {
+export async function getCloudflareEnv(): Promise<HushLedgerEnv> {
   const { env } = await getCloudflareContext({ async: true })
-  return (env as HushLedgerEnv).DB
+  return env as HushLedgerEnv
+}
+
+export async function getDatabase() {
+  return (await getCloudflareEnv()).DB
 }

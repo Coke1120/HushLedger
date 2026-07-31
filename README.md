@@ -429,9 +429,11 @@ production authentication boundary.
 | Use it privately from multiple devices | `npm run deploy` | Cloudflare D1 | Yes: account, domain, and Access |
 
 HushLedger itself does not use an application API key. Its optional AI draft
-feature uses a provider key that you enter in Settings; that key stays only in
-the current browser tab's memory and is cleared on reload. Local data stays in
-Wrangler's ignored local state and is separate from any deployed D1 database.
+feature uses a provider key that you enter in Settings. You can use it only in the
+current tab or explicitly persist it as AES-GCM ciphertext in D1. Browser and API
+responses expose only redacted settings metadata; AI proxy routes decrypt a saved
+key server-side. Local data stays in Wrangler's ignored local state and is separate
+from any deployed D1 database.
 After you attach its protected custom domain, a Cloudflare deployment becomes
 internet-reachable, but the app must remain private behind Cloudflare Access; it
 is not intended to be a public ledger.
@@ -475,9 +477,13 @@ deployment; it does not pull or replace a Docker or Apple Container image.
 Settings can download one versioned JSON file containing the ledger currency and
 every account, category, optional emergency-fund checkpoint, recurring transaction
 or transfer rule (including soft-deleted rule history), transaction, account transfer, and import
-tombstone, plus any explicitly fetched ECB reference-rate observations. AI provider credentials, pasted bank text, language preferences,
+tombstone, plus any explicitly fetched ECB reference-rate observations. AI provider settings, pasted bank text, language preferences,
 update preferences, saved transaction views, remembered bank CSV layouts, and
 screen privacy state are intentionally excluded.
+
+This app-level backup exclusion does not remove saved AI settings from the D1
+database. A database export or Time Travel history can retain the settings row,
+with the API key represented as ciphertext rather than plaintext.
 
 The JSON file is plaintext financial data. Store it only in encrypted storage and
 do not commit, email, or attach it to an issue. Its SHA-256 checksum detects damage
@@ -523,8 +529,8 @@ Schema 20 also preserves optional ECB reference-rate observations; older backups
 upgrade with an empty observation list and never invent rates.
 For a
 backup larger than 7 MiB, long-term disaster recovery,
-or a database-level archive, use the encrypted Wrangler D1 export, restore, and
-recovery process in
+or a database-level archive, keep Wrangler D1 exports in encrypted off-platform
+storage and follow the restore and recovery process in
 [the advanced Cloudflare guide](docs/CLOUDFLARE_SETUP.md#7-back-up-and-test-recovery).
 
 ## Local development
@@ -574,6 +580,18 @@ providers work locally. Under `npm run dev`, you may also use a loopback provide
 such as `http://127.0.0.1:<port>/v1`. A deployed Worker—and the production-style
 `npm run preview` runtime—cannot reach a provider running on your computer's
 localhost.
+
+Memory-only AI use needs no encryption secret. To persist provider settings in
+the local D1 database, add one freshly generated 64-character hexadecimal value
+to the Git-ignored `.dev.vars` file:
+
+```dotenv
+AI_SETTINGS_ENCRYPTION_KEY_V1=<output of openssl rand -hex 32>
+```
+
+Run `openssl rand -hex 32` locally, paste its output after `=`, and never commit
+the file or value. Replacing or losing this key makes existing saved credentials
+undecryptable; enter and save the provider key again after an intentional change.
 
 `npm run start` is intentionally not defined. A plain Next.js production server
 does not provide HushLedger's Cloudflare D1 binding. Use `npm run dev` for normal
@@ -712,6 +730,7 @@ npm run types:worker
 | `0018_import_review_status.sql` | Adds a nullable three-state local checklist for imported transactions, backfilling rows with surviving import keys as unreviewed while leaving manual rows unchanged. |
 | `0019_multi_currency_accounts.sql` | Preserves native currencies per account and dependent monetary rows, while keeping the ledger currency as a reporting currency until explicit conversion is added. |
 | `0020_ecb_reference_rates.sql` | Adds immutable, explicitly fetched EUR-base ECB reference-rate observations without modifying ledger money. |
+| `0021_ai_provider_settings.sql` | Adds single-row AI provider settings with an AES-GCM ciphertext, IV, and encryption-key version; app ledger backups deliberately exclude this row. |
 
 Apply migrations locally:
 
@@ -722,6 +741,8 @@ npm run db:local
 Remote migrations modify production data. Confirm the Cloudflare account,
 database, and backups before following the
 [Cloudflare deployment guide](docs/CLOUDFLARE_SETUP.md).
+Apply `0021_ai_provider_settings.sql` before deploying code that persists AI
+settings.
 
 ## API
 
@@ -793,6 +814,9 @@ PATCH  /api/recurring-transfer-rules/:id/status
 POST   /api/recurring-transfer-rules/:id/skip
 DELETE /api/recurring-transfer-rules/:id
 POST   /api/recurring-transfer-rules/run-due
+GET    /api/ai-settings  (redacted saved-provider metadata only; never returns key material)
+PUT    /api/ai-settings  (conflict-safe encrypted persistence; requires the Worker encryption secret)
+DELETE /api/ai-settings  (removes saved settings; does not revoke the upstream provider key)
 POST   /api/ai/models
 POST   /api/imports/parse  (create untrusted AI drafts; never writes D1)
 POST   /api/imports/ai  (preview or commit reviewed AI drafts, maximum 200 rows)
@@ -937,7 +961,7 @@ setup, including:
   path, with alternate Worker URLs disabled.
 - Unauthorized and authorized browser verification.
 - Encrypted external backups and restore drills.
-- AI provider networking and privacy guidance.
+- The AI-settings encryption Worker secret, networking, and privacy guidance.
 
 Do not enter real financial data until Cloudflare Access protects the custom
 hostname and every path, including `/api/*`, while `workers.dev` and Preview URLs
@@ -948,8 +972,9 @@ remain disabled.
 The Transactions view can turn pasted plain-text online banking records into
 editable drafts through a user-provided OpenAI-compatible provider:
 
-1. Open Settings and enter the provider base URL, API key, and model ID. “Load
-   models” tests `GET {baseUrl}/models`; manual model entry remains available.
+1. Open Settings and enter the provider base URL, API key, and model ID. Keep the
+   values in this tab or explicitly save them. “Load models” tests
+   `GET {baseUrl}/models`; manual model entry remains available.
 2. Open Transactions, select **AI drafts**, choose the target account and date
    order, then paste at most 64 KiB of text.
 3. Review every returned field. Parsing never writes a transaction or raw
@@ -963,13 +988,21 @@ The provider must support Chat Completions and strict `json_schema` structured
 output. Browser code calls only same-origin HushLedger routes; the server appends
 fixed `/models` and `/chat/completions` paths and forwards the provider request.
 Enter only a provider URL you trust; local public hostnames are not DNS-pinned.
-The key, provider settings, pasted text, and unsaved drafts remain in current-tab
-memory and disappear on reload. They are not stored in local/session storage,
-cookies, D1, service-worker caches, or logs. The pasted text is sent to the
-provider only after you select **Analyze**. Saving sends only the validated,
-edited transaction fields to HushLedger; D1 retains a one-way source key and
-transaction ID so re-analysis, including after deletion, does not silently
-restore the same source row.
+Transient settings, pasted text, and unsaved drafts remain in current-tab memory
+and disappear on reload. Explicitly saved settings persist the base URL and model
+in D1 and the API key only as AES-GCM ciphertext encrypted with the independent
+operator-managed Worker secret. Browser and settings API responses return only
+redacted metadata; the AI proxy routes load and decrypt the saved key server-side.
+Neither mode stores the plaintext key in browser storage, cookies, service-worker
+caches, or logs. The pasted text is sent to the provider only after you select
+**Analyze**. Saving reviewed transactions sends only validated, edited fields to
+HushLedger; D1 retains a one-way source key and transaction ID so re-analysis,
+including after deletion, does not silently restore the same source row.
+
+The full-ledger JSON backup excludes AI settings. D1 exports and Time Travel can
+retain the ciphertext row. Deleting saved settings does not revoke the upstream
+credential; rotate or revoke it with the provider when immediate invalidation is
+required.
 
 OpenAI references: [API key safety](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safet),
 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs),
@@ -986,8 +1019,8 @@ duplicate-review, idempotency, and atomic-commit boundary.
   SHA-256 integrity check passes; keep them in encrypted storage.
 - Never record complete amounts, payees, notes, bank records, account identifiers,
   or request bodies in logs, screenshots, issues, or pull requests.
-- Never persist an AI provider key in browser storage. Reload the tab to clear the
-  in-memory provider settings immediately.
+- Never persist an AI provider key in browser storage. Use transient tab memory or
+  the encrypted D1 settings flow; rotate or revoke the upstream key after exposure.
 - Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 ## Contributing

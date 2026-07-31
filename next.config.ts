@@ -3,9 +3,15 @@ import { randomUUID } from 'node:crypto'
 import type { NextConfig } from 'next'
 
 const devPersistPath = process.env.HUSHLEDGER_DEV_PERSIST_PATH
+const devWranglerConfigPath = process.env.HUSHLEDGER_DEV_WRANGLER_CONFIG_PATH
 const releaseId = process.env.HUSHLEDGER_RELEASE_ID ?? process.env.GITHUB_SHA ?? randomUUID()
 void initOpenNextCloudflareForDev(
-  devPersistPath ? { persist: { path: devPersistPath } } : undefined,
+  devPersistPath || devWranglerConfigPath
+    ? {
+        ...(devPersistPath ? { persist: { path: devPersistPath } } : {}),
+        ...(devWranglerConfigPath ? { configPath: devWranglerConfigPath } : {}),
+      }
+    : undefined,
 )
 
 const nextConfig: NextConfig = {
