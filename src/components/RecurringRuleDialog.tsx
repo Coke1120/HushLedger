@@ -19,6 +19,7 @@ import {
 type RecurringRuleDialogProps = {
   rule: RecurringRule | null
   draft: RecurringRuleCreateInput | null
+  draftKind: 'manual' | 'ai' | null
   accounts: Account[]
   categories: Category[]
   ledgerContext: string
@@ -33,6 +34,7 @@ type RecurringRuleDialogProps = {
 export function RecurringRuleDialog({
   rule,
   draft,
+  draftKind,
   accounts,
   categories,
   ledgerContext,
@@ -70,7 +72,9 @@ export function RecurringRuleDialog({
     draft?.firstOccurrenceOn ?? initialRule?.scheduleStartsOn ?? currentHongKongDate().date,
   )
   const [scheduleEndDate, setScheduleEndDate] = useState(initialRule?.scheduleEndsOn ?? '')
-  const [isActive, setIsActive] = useState(initialRule?.isActive ?? true)
+  const aiDraft = draftKind === 'ai'
+  const [isActive, setIsActive] = useState(aiDraft ? false : (initialRule?.isActive ?? true))
+  const [aiDraftReviewed, setAiDraftReviewed] = useState(false)
   const [localError, setLocalError] = useState('')
   const [openingLedgerContext] = useState(ledgerContext)
   const selectedAccount = selectableAccounts.find((account) => account.id === accountId)
@@ -181,6 +185,10 @@ export function RecurringRuleDialog({
     event.preventDefault()
     if (!draftMutable) return
     setLocalError('')
+    if (aiDraft && !aiDraftReviewed) {
+      setLocalError(t('aiDraftReviewRequired'))
+      return
+    }
     const data = new FormData(event.currentTarget)
 
     if (!isValidCalendarDate(scheduleDate)) {
@@ -264,7 +272,7 @@ export function RecurringRuleDialog({
         aria-describedby={describedBy}
       >
         <header className="dialog-header">
-          <h2 id="recurring-dialog-title">{editing ? t('editRecurringRule') : t('addRecurringRule')}</h2>
+          <h2 id="recurring-dialog-title">{editing ? t('editRecurringRule') : aiDraft ? t('aiRecurringDraftTitle') : t('addRecurringRule')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={saving} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
@@ -274,7 +282,7 @@ export function RecurringRuleDialog({
           <fieldset className="transaction-form-fields" disabled={saving || !draftMutable}>
           {draft ? (
             <p className="duplicate-form-note" id="recurring-draft-note">
-              {t('recurringDraftReviewHelp')}
+              {t(aiDraft ? 'aiRecurringDraftReviewHelp' : 'recurringDraftReviewHelp')}
             </p>
           ) : null}
           <label>
@@ -444,6 +452,17 @@ export function RecurringRuleDialog({
             </span>
           </label>
 
+          {aiDraft ? (
+            <label className="ai-draft-review-toggle">
+              <input
+                type="checkbox"
+                checked={aiDraftReviewed}
+                onChange={(event) => setAiDraftReviewed(event.target.checked)}
+              />
+              <span>{t('aiDraftReviewAcknowledgement')}</span>
+            </label>
+          ) : null}
+
           <p className="schedule-note" id="recurring-future-note">
             {t('recurringHistoryHelp')}
           </p>
@@ -457,7 +476,7 @@ export function RecurringRuleDialog({
           {!mutable ? <p className="offline-form-note">{t('offlineRecurringForm')}</p> : null}
 
           <div className="dialog-actions">
-            <button className="button button-primary save-button" type="submit" disabled={saving || !draftMutable}>
+            <button className="button button-primary save-button" type="submit" disabled={saving || !draftMutable || (aiDraft && !aiDraftReviewed)}>
               {saving ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
               {saving ? t('saving') : editing ? t('saveChanges') : t('createRecurringRule')}
             </button>

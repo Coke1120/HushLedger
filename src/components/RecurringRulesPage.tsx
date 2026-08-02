@@ -45,6 +45,7 @@ type RecurringRulesPageProps = {
   accounts: Account[]
   categories: Category[]
   draft: RecurringRuleCreateInput | null
+  draftKind: 'manual' | 'ai' | null
   focusRuleId: string | null
   focusTransferRuleId: string | null
   ledgerContext: string
@@ -62,6 +63,7 @@ export function RecurringRulesPage({
   accounts,
   categories,
   draft,
+  draftKind,
   focusRuleId,
   focusTransferRuleId,
   ledgerContext,
@@ -513,6 +515,7 @@ export function RecurringRulesPage({
           key={draft?.id ?? editingRule?.id ?? 'new'}
           rule={draft ? null : editingRule}
           draft={draft}
+          draftKind={draftKind}
           accounts={accounts}
           categories={categories}
           ledgerContext={ledgerContext}

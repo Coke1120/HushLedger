@@ -12,7 +12,7 @@ function renderToolbar(
   tagFilter: string | null,
   options: {
     amountFilterMinor?: number | null
-    aiImportOpen?: boolean
+    aiCopilotOpen?: boolean
     duplicatesOnly?: boolean
     importReviewFilter?: 'all' | 'unreviewed' | 'needs_follow_up' | 'reviewed'
     payeeFilter?: string | null
@@ -21,7 +21,7 @@ function renderToolbar(
 ) {
   const {
     amountFilterMinor = null,
-    aiImportOpen = false,
+    aiCopilotOpen = false,
     duplicatesOnly = false,
     importReviewFilter = 'all',
     payeeFilter = null,
@@ -84,11 +84,11 @@ function renderToolbar(
       onCategoryFilterChange: noop,
       onClearReferenceFilters: noop,
       onCsvImport: noop,
-      onAiImport: noop,
+      onAiCopilot: noop,
       csvImportOpen: false,
-      aiImportOpen,
+      aiCopilotOpen,
       csvImportButtonRef: createRef<HTMLButtonElement>(),
-      aiImportButtonRef: createRef<HTMLButtonElement>(),
+      aiCopilotButtonRef: createRef<HTMLButtonElement>(),
     }),
   ))
 }
@@ -134,14 +134,14 @@ describe('calm transaction toolbar disclosures', () => {
   it('opens each disclosure when a contained filter or panel is active', () => {
     const reviewMarkup = renderToolbar(null, { duplicatesOnly: true })
     const moreMarkup = renderToolbar(null, { amountFilterMinor: 12_345 })
-    const actionsMarkup = renderToolbar(null, { aiImportOpen: true })
+    const actionsMarkup = renderToolbar(null, { aiCopilotOpen: true })
 
     assert.match(reviewMarkup, /transaction-review-disclosure is-active" open=""/)
     assert.match(reviewMarkup, /transaction-duplicate-filter is-active[^>]*aria-pressed="true"/)
     assert.match(moreMarkup, /transaction-more-filters-disclosure is-active" open=""/)
     assert.match(moreMarkup, /class="transaction-amount-filter"/)
     assert.match(actionsMarkup, /transaction-actions-disclosure is-active" open=""/)
-    assert.match(actionsMarkup, /id="ai-import-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="bank-import-panel"/)
+    assert.match(actionsMarkup, /id="ai-copilot-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="ai-copilot-panel"/)
   })
 
   it('releases the Actions disclosure after export reaches a terminal state', () => {

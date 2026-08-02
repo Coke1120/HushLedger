@@ -3,6 +3,8 @@
 import { ChevronRight } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
+import { AiCopilotPanel } from './components/AiCopilotPanel'
+import { aiCopilotActionIsCurrent } from './components/aiCopilotActionSafety'
 import { BankImportPanel } from './components/BankImportPanel'
 import { AccountTransferDialog } from './components/AccountTransferDialog'
 import { AccountTransferList } from './components/AccountTransferList'
@@ -44,6 +46,7 @@ import { startScheduledOutlookRefreshRetries } from './hooks/scheduledOutlookRef
 import { useI18n } from './i18n'
 import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
 import type { AiProviderSettings, AiProviderSettingsRow } from './lib/ai'
+import type { AiCopilotAction } from './lib/aiCopilot'
 import {
   aiSettingsDraftHasConflict,
   aiSettingsRowOverrideIsSuperseded,
@@ -116,10 +119,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [editingTransfer, setEditingTransfer] = useState<AccountTransfer | null>(null)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [transactionDraft, setTransactionDraft] = useState<TransactionInput | null>(null)
+  const [transactionDraftKind, setTransactionDraftKind] = useState<'duplicate' | 'ai' | null>(null)
   const [recurringDraft, setRecurringDraft] = useState<RecurringRuleCreateInput | null>(null)
+  const [recurringDraftKind, setRecurringDraftKind] = useState<'manual' | 'ai' | null>(null)
   const [recurringRuleFocusId, setRecurringRuleFocusId] = useState<string | null>(null)
   const [recurringTransferRuleFocusId, setRecurringTransferRuleFocusId] = useState<string | null>(null)
-  const [importMode, setImportMode] = useState<'csv' | 'ai' | null>(null)
+  const [importMode, setImportMode] = useState<'csv' | 'copilot' | 'ai' | null>(null)
+  const [aiCopilotActionStale, setAiCopilotActionStale] = useState(false)
   const [aiSettingsDraft, setAiSettingsDraft] = useState<AiSettingsDraft | null>(null)
   const [aiSettingsRowOverride, setAiSettingsRowOverride] = useState<
     AiSettingsRowOverride | null
@@ -134,7 +140,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [ledgerBackupDue, setLedgerBackupDue] = useState<boolean | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
-  const aiImportButtonRef = useRef<HTMLButtonElement>(null)
+  const aiCopilotButtonRef = useRef<HTMLButtonElement>(null)
   const importPanelRef = useRef<HTMLElement>(null)
   const transactionLoadStatusRef = useRef<HTMLParagraphElement>(null)
   const initialViewRef = useRef(true)
@@ -285,6 +291,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     clearActionMessage()
     setEditingTransaction(null)
     setTransactionDraft(null)
+    setTransactionDraftKind(null)
     setDialogOpen(true)
   }, [clearActionMessage, transactionEntryDisabled])
 
@@ -293,6 +300,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     clearActionMessage()
     setEditingTransaction(transaction)
     setTransactionDraft(null)
+    setTransactionDraftKind(null)
     setDialogOpen(true)
   }, [clearActionMessage, ledgerInteractionLocked])
 
@@ -300,6 +308,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     clearActionMessage()
     setEditingTransaction(null)
     setTransactionDraft(duplicateTransactionDraft(transaction))
+    setTransactionDraftKind('duplicate')
     setDialogOpen(true)
   }, [clearActionMessage])
 
@@ -307,6 +316,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setDialogOpen(false)
     setEditingTransaction(null)
     setTransactionDraft(null)
+    setTransactionDraftKind(null)
   }, [])
   const openTransferDialog = useCallback((transfer: AccountTransfer | null = null) => {
     if (ledgerInteractionLocked) return
@@ -318,7 +328,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTransferDialogOpen(false)
     setEditingTransfer(null)
   }, [])
-  const closeRecurringDraft = useCallback(() => setRecurringDraft(null), [])
+  const closeRecurringDraft = useCallback(() => {
+    setRecurringDraft(null)
+    setRecurringDraftKind(null)
+  }, [])
   const clearRecurringRuleFocus = useCallback(() => setRecurringRuleFocusId(null), [])
   const clearRecurringTransferRuleFocus = useCallback(
     () => setRecurringTransferRuleFocusId(null),
@@ -372,11 +385,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     closeDialog()
     setImportMode(null)
     setRecurringDraft(recurringRuleDraftFromTransaction(transaction, draftName))
+    setRecurringDraftKind('manual')
     changeView('recurring')
   }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
-  const openImport = useCallback((mode: 'csv' | 'ai') => {
+  const openImport = useCallback((mode: 'csv' | 'copilot' | 'ai') => {
     if (ledgerInteractionLocked) return
+    setAiCopilotActionStale(false)
     setRegisterAccountId(null)
     setView('transactions')
     setImportMode(mode)
@@ -384,10 +399,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [ledgerInteractionLocked])
 
   const closeImport = useCallback(() => {
-    const button = importMode === 'csv' ? csvImportButtonRef : aiImportButtonRef
+    const button = importMode === 'csv' ? csvImportButtonRef : aiCopilotButtonRef
     setImportMode(null)
     requestAnimationFrame(() => button.current?.focus())
   }, [importMode])
+
+  const returnToAiCopilot = useCallback(() => setImportMode('copilot'), [])
 
   const changeTransactionFilter = useCallback((nextFilter: TransactionFilter) => {
     setFilter(nextFilter)
@@ -620,6 +637,70 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setImportMode(null)
     setRegisterAccountId(null)
   }, [])
+
+  const applyAiCopilotAction = useCallback((action: AiCopilotAction) => {
+    if (ledgerInteractionLocked) return
+    if (!aiCopilotActionIsCurrent(action, data.accounts, data.categories)) {
+      setAiCopilotActionStale(true)
+      return
+    }
+    setAiCopilotActionStale(false)
+
+    if (action.type === 'show_transactions') {
+      resetTransactionFilters()
+      setFilter(action.filters.transactionType)
+      setCategoryFilterId(action.filters.categoryId)
+      setImportReviewFilter(action.filters.importReviewStatus)
+      setDuplicatesOnly(action.filters.duplicatesOnly)
+      setSearch(action.filters.search ?? '')
+      changeView('transactions')
+      return
+    }
+
+    if (action.type === 'show_overview') {
+      setImportMode(null)
+      setOverviewReview(action.review)
+      changeView('overview')
+      return
+    }
+
+    if (action.type === 'open_recurring') {
+      setImportMode(null)
+      setRecurringRuleFocusId(null)
+      setRecurringTransferRuleFocusId(null)
+      changeView('recurring')
+      return
+    }
+
+    if (action.type === 'open_ai_import') {
+      openImport('ai')
+      return
+    }
+
+    clearActionMessage()
+    setImportMode(null)
+    if (action.type === 'draft_transaction') {
+      setEditingTransaction(null)
+      setTransactionDraft(action.input)
+      setTransactionDraftKind('ai')
+      setDialogOpen(true)
+      return
+    }
+
+    setRecurringRuleFocusId(null)
+    setRecurringTransferRuleFocusId(null)
+    setRecurringDraft({ ...action.input, isActive: false })
+    setRecurringDraftKind('ai')
+    changeView('recurring')
+  }, [
+    changeView,
+    clearActionMessage,
+    data.accounts,
+    data.categories,
+    ledgerInteractionLocked,
+    openImport,
+    resetTransactionFilters,
+  ])
 
   const openSummaryTransactions = useCallback((nextFilter: TransactionFilter) => {
     if (ledgerInteractionLocked) return
@@ -903,11 +984,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onCategoryFilterChange={setCategoryFilterId}
                 onClearReferenceFilters={clearReferenceFilters}
                 onCsvImport={() => openImport('csv')}
-                onAiImport={() => openImport('ai')}
+                onAiCopilot={() => openImport('copilot')}
                 csvImportOpen={importMode === 'csv'}
-                aiImportOpen={importMode === 'ai'}
+                aiCopilotOpen={importMode === 'copilot'}
                 csvImportButtonRef={csvImportButtonRef}
-                aiImportButtonRef={aiImportButtonRef}
+                aiCopilotButtonRef={aiCopilotButtonRef}
               />
               {view === 'overview' && overviewTransactionFiltersActive ? (
                 <div className="transaction-preview-filter-notice">
@@ -967,6 +1048,29 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
+            {registerAccountId === null && view === 'transactions' && importMode === 'copilot' ? (
+              <>
+                {aiCopilotActionStale ? (
+                  <div className="status-banner status-warning" role="alert">
+                    <span>{t('aiCopilotActionStale')}</span>
+                  </div>
+                ) : null}
+                <AiCopilotPanel
+                  key={`ai-copilot-${month}`}
+                  month={month}
+                  settings={aiSettings}
+                  persistedSettings={aiSettingsRow}
+                  settingsConflict={aiSettingsConflict}
+                  persistedSettingsAvailable={data.aiProviderSettingsStatus === 'ready'}
+                  available={data.source === 'live' && data.online}
+                  panelRef={importPanelRef}
+                  onClose={closeImport}
+                  onConfigure={() => openSettings('connections')}
+                  onOpenAiImport={() => openImport('ai')}
+                  onAction={applyAiCopilotAction}
+                />
+              </>
+            ) : null}
             {registerAccountId === null && view === 'transactions' && importMode === 'ai' ? (
               <BankImportPanel
                 key={`ai-import-${data.ledgerSettings.updatedAt}`}
@@ -978,7 +1082,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 categories={data.categories}
                 available={data.source === 'live' && data.online}
                 panelRef={importPanelRef}
-                onClose={closeImport}
+                onClose={returnToAiCopilot}
                 onConfigure={() => openSettings('connections')}
                 onImported={() => data.refresh('error')}
                 onMutationStateChange={setImportMutationInProgress}
@@ -1100,6 +1204,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             accounts={data.accounts}
             categories={data.categories}
             draft={recurringDraft}
+            draftKind={recurringDraftKind}
             focusRuleId={recurringRuleFocusId}
             focusTransferRuleId={recurringTransferRuleFocusId}
             ledgerContext={data.ledgerSettings.updatedAt}
@@ -1150,7 +1255,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
       />
       {dialogOpen ? (
         <TransactionDialog
-          key={`${ledgerGeneration}:${editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `duplicate:${transactionDraft.id}` : 'new'}`}
+          key={`${ledgerGeneration}:${editingTransaction ? `edit:${editingTransaction.id}` : transactionDraft ? `${transactionDraftKind ?? 'duplicate'}:${transactionDraft.id}` : 'new'}`}
           accounts={data.accounts}
           categories={data.categories}
           ledgerContext={data.ledgerSettings.updatedAt}
@@ -1160,6 +1265,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
           source={data.source}
           transaction={editingTransaction}
           draft={transactionDraft}
+          draftKind={transactionDraftKind}
           onClose={closeDialog}
           onSubmit={saveTransaction}
           onDelete={removeTransaction}

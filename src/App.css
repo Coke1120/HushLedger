@@ -4366,6 +4366,29 @@ button.account-register-row:focus-visible {
   line-height: 1.4;
 }
 
+.ai-draft-review-toggle {
+  display: flex !important;
+  gap: 10px !important;
+  align-items: flex-start;
+  padding: 12px;
+  color: var(--ink);
+  background: var(--warning-bg);
+  border: 1px solid #eadb9d;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.transaction-dialog .ai-draft-review-toggle input {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
 .confirmation-dialog {
   position: relative;
   width: min(440px, 100%);
@@ -5517,7 +5540,7 @@ button.account-register-row:focus-visible {
   color: var(--expense);
 }
 
-.ai-import-button,
+.ai-copilot-button,
 .csv-import-button,
 .export-button {
   flex: none;
@@ -5667,6 +5690,403 @@ button.account-register-row:focus-visible {
   padding: 24px;
   background: var(--surface-soft);
   border-bottom: 1px solid var(--line);
+}
+
+.ai-copilot-panel {
+  padding: 24px;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+}
+
+.ai-copilot-heading,
+.ai-copilot-heading-copy,
+.ai-copilot-section-heading,
+.ai-copilot-form-footer,
+.ai-copilot-response-heading {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.ai-copilot-heading,
+.ai-copilot-section-heading,
+.ai-copilot-form-footer {
+  justify-content: space-between;
+}
+
+.ai-copilot-heading-copy {
+  min-width: 0;
+}
+
+.ai-copilot-mark,
+.ai-copilot-insight-icon {
+  display: grid;
+  flex: 0 0 auto;
+  color: var(--brand);
+  background: var(--income-soft);
+  border-radius: 12px;
+  place-items: center;
+}
+
+.ai-copilot-mark {
+  width: 44px;
+  height: 44px;
+}
+
+.ai-copilot-mark svg {
+  width: 22px;
+  height: 22px;
+}
+
+.ai-copilot-heading h3,
+.ai-copilot-section-heading h4,
+.ai-copilot-response h5,
+.ai-copilot-response h6,
+.ai-copilot-insight h5 {
+  margin: 0;
+  color: var(--brand-strong);
+}
+
+.ai-copilot-heading h3 {
+  font-size: 21px;
+}
+
+.ai-copilot-heading p,
+.ai-copilot-section-heading p,
+.ai-copilot-response-actions > p,
+.ai-copilot-insight p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ai-copilot-availability,
+.ai-copilot-loading,
+.ai-copilot-privacy-note {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+
+.ai-copilot-availability {
+  padding: 11px 12px;
+  margin-top: 16px;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border: 1px solid #eadb9d;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.ai-copilot-availability svg,
+.ai-copilot-loading svg,
+.ai-copilot-privacy-note svg,
+.ai-copilot-response-heading svg {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+}
+
+.ai-copilot-insights,
+.ai-copilot-conversation {
+  padding: 18px;
+  margin-top: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+}
+
+.ai-copilot-section-heading h4 {
+  font-size: 16px;
+}
+
+.ai-copilot-import-shortcut {
+  flex: 0 0 auto;
+}
+
+.ai-copilot-loading,
+.ai-copilot-empty {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-copilot-inline-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.ai-copilot-inline-error .form-error {
+  margin: 0;
+}
+
+.ai-copilot-insight-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ai-copilot-insight {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 11px;
+  padding: 14px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.ai-copilot-insight.is-warning {
+  border-color: #eadb9d;
+}
+
+.ai-copilot-insight-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.ai-copilot-insight.is-warning .ai-copilot-insight-icon {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.ai-copilot-insight-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ai-copilot-insight .button {
+  min-height: 36px;
+  margin-top: 12px;
+}
+
+.ai-copilot-quick-prompts,
+.ai-copilot-action-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-copilot-quick-prompts {
+  margin-top: 14px;
+}
+
+.ai-copilot-quick-prompts button {
+  min-height: 36px;
+  padding: 7px 11px;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border: 1px solid #c2ddd3;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-copilot-quick-prompts button:not(:disabled):hover {
+  border-color: var(--brand);
+}
+
+.ai-copilot-form {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+
+.ai-copilot-form > label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ai-copilot-form textarea {
+  width: 100%;
+  min-height: 112px;
+  padding: 11px 12px;
+  color: var(--ink);
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  font: inherit;
+  resize: vertical;
+}
+
+.ai-copilot-form textarea:focus-visible {
+  border-color: var(--focus);
+  outline: 3px solid rgb(30 115 87 / 14%);
+}
+
+.ai-copilot-preview {
+  overflow: hidden;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.ai-copilot-preview > summary {
+  padding: 11px 12px;
+  color: var(--brand-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.ai-copilot-preview-content {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ai-copilot-preview-content p,
+.ai-copilot-preview-content h5,
+.ai-copilot-preview-content ul {
+  margin: 0;
+}
+
+.ai-copilot-preview-content h5 {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.ai-copilot-preview-content ul {
+  padding-left: 18px;
+}
+
+.ai-copilot-preview-excluded {
+  padding: 9px 10px;
+  color: var(--brand-strong);
+  background: var(--income-soft);
+  border-radius: 8px;
+  font-weight: 650;
+}
+
+.ai-copilot-review-toggle {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.ai-copilot-review-toggle input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.ai-copilot-form-footer {
+  gap: 12px;
+  align-items: center;
+}
+
+.ai-copilot-privacy-note {
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ai-copilot-privacy-note svg {
+  color: var(--brand);
+}
+
+.ai-copilot-response {
+  padding: 16px;
+  margin-top: 16px;
+  background: var(--income-soft);
+  border: 1px solid #c2ddd3;
+  border-radius: 12px;
+}
+
+.ai-copilot-response-heading {
+  gap: 8px;
+  align-items: center;
+}
+
+.ai-copilot-reply {
+  margin: 10px 0 0;
+  color: var(--ink);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.ai-copilot-response-actions {
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid #b7d6cb;
+}
+
+.ai-copilot-evidence {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid #b7d6cb;
+}
+
+.ai-copilot-evidence ul,
+.ai-copilot-evidence p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.ai-copilot-evidence ul {
+  padding-left: 18px;
+}
+
+.ai-copilot-action-list {
+  margin-top: 10px;
+}
+
+.ai-copilot-action {
+  display: flex;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 11px;
+  align-items: center;
+  color: var(--brand-strong);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid #a9cdbf;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.ai-copilot-action.is-draft {
+  border-style: dashed;
+}
+
+.ai-copilot-action svg {
+  width: 17px;
+  min-width: 17px;
+  height: 17px;
+}
+
+.ai-copilot-action-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.ai-copilot-action-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .bank-import-heading,
@@ -7638,7 +8058,7 @@ button.account-register-row:focus-visible {
 }
 
 @media (max-width: 767px) {
-  .view-transactions .ai-import-button,
+  .view-transactions .ai-copilot-button,
   .view-transactions .csv-import-button,
   .view-transactions .export-button,
   .ai-settings-actions .button,
@@ -7677,8 +8097,25 @@ button.account-register-row:focus-visible {
     width: 100%;
   }
 
-  .bank-import-panel {
+  .bank-import-panel,
+  .ai-copilot-panel {
     padding: 18px 16px;
+  }
+
+  .ai-copilot-section-heading,
+  .ai-copilot-form-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ai-copilot-import-shortcut,
+  .ai-copilot-form-footer .button {
+    width: 100%;
+  }
+
+  .ai-copilot-insights,
+  .ai-copilot-conversation {
+    padding: 15px;
   }
 
   .ai-configure-notice,

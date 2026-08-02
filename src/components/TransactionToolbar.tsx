@@ -63,11 +63,11 @@ type TransactionToolbarProps = {
   onCategoryFilterChange: (value: number | null) => void
   onClearReferenceFilters: () => void
   onCsvImport: () => void
-  onAiImport: () => void
+  onAiCopilot: () => void
   csvImportOpen: boolean
-  aiImportOpen: boolean
+  aiCopilotOpen: boolean
   csvImportButtonRef: RefObject<HTMLButtonElement | null>
-  aiImportButtonRef: RefObject<HTMLButtonElement | null>
+  aiCopilotButtonRef: RefObject<HTMLButtonElement | null>
 }
 
 export function TransactionToolbar({
@@ -108,11 +108,11 @@ export function TransactionToolbar({
   onCategoryFilterChange,
   onClearReferenceFilters,
   onCsvImport,
-  onAiImport,
+  onAiCopilot,
   csvImportOpen,
-  aiImportOpen,
+  aiCopilotOpen,
   csvImportButtonRef,
-  aiImportButtonRef,
+  aiCopilotButtonRef,
 }: TransactionToolbarProps) {
   const { locale, localizeEntityName, t } = useI18n()
   const [exportState, setExportState] = useState<TransactionExportState>('idle')
@@ -205,7 +205,7 @@ export function TransactionToolbar({
   )
   const actionsActive = transactionActionsDisclosureActive(
     csvImportOpen,
-    aiImportOpen,
+    aiCopilotOpen,
     exportState,
   )
 
@@ -508,16 +508,16 @@ export function TransactionToolbar({
             {t('csvImport')}
           </button>
           <button
-            id="ai-import-trigger"
-            className="button button-secondary ai-import-button"
+            id="ai-copilot-trigger"
+            className="button button-secondary ai-copilot-button"
             type="button"
-            onClick={onAiImport}
-            aria-expanded={aiImportOpen}
-            aria-controls="bank-import-panel"
-            ref={aiImportButtonRef}
+            onClick={onAiCopilot}
+            aria-expanded={aiCopilotOpen}
+            aria-controls="ai-copilot-panel"
+            ref={aiCopilotButtonRef}
           >
             <Sparkles aria-hidden="true" />
-            {t('aiImport')}
+            {t('aiCopilot')}
           </button>
         </div>
       </ToolbarDisclosure>

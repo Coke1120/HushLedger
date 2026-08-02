@@ -27,6 +27,7 @@ type TransactionDialogProps = {
   source: 'loading' | 'live' | 'demo' | 'error'
   transaction: Transaction | null
   draft: TransactionInput | null
+  draftKind: 'duplicate' | 'ai' | null
   onClose: () => void
   onSubmit: (input: TransactionInput) => Promise<boolean>
   onDelete: (transaction: Transaction) => Promise<boolean>
@@ -51,6 +52,7 @@ export function TransactionDialog({
   source,
   transaction,
   draft,
+  draftKind,
   onClose,
   onSubmit,
   onDelete,
@@ -78,6 +80,7 @@ export function TransactionDialog({
   const [checkingDuplicate, setCheckingDuplicate] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [localError, setLocalError] = useState('')
+  const [aiDraftReviewed, setAiDraftReviewed] = useState(false)
   const [openingLedgerContext] = useState(ledgerContext)
   const [draftSource, setDraftSource] = useState<'live' | 'demo' | null>(() => (
     source === 'live' || source === 'demo' ? source : null
@@ -114,6 +117,7 @@ export function TransactionDialog({
   const canDuplicate = hasActiveReferences
   const canMakeRecurring = hasActiveReferences && !transaction?.recurringRuleId
   const busy = saving || checkingDuplicate || deleting
+  const aiDraft = draftKind === 'ai'
   const currentSource = source === 'live' || source === 'demo' ? source : null
   const sourceAvailable = currentSource !== null && currentSource === (draftSource ?? currentSource)
   const ledgerContextChanged = sourceAvailable && dialogLedgerContextChanged(
@@ -279,6 +283,10 @@ export function TransactionDialog({
     event.preventDefault()
     if (!mutable) return
     setLocalError('')
+    if (aiDraft && !aiDraftReviewed) {
+      setLocalError(t('aiDraftReviewRequired'))
+      return
+    }
     const data = new FormData(event.currentTarget)
     if (!isValidCalendarDate(date)) {
       setLocalError(t('invalidDate'))
@@ -386,7 +394,7 @@ export function TransactionDialog({
         aria-describedby={error ? 'transaction-form-error' : undefined}
       >
         <header className="dialog-header">
-          <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
+          <h2 id="transaction-dialog-title">{t(transaction ? 'editTransaction' : aiDraft ? 'aiTransactionDraftTitle' : draft ? 'duplicateTransaction' : 'addTransaction')}</h2>
           <button className="icon-button dialog-close" type="button" onClick={closeIfSafe} disabled={busy} aria-label={t('close')}>
             <X aria-hidden="true" />
           </button>
@@ -400,7 +408,11 @@ export function TransactionDialog({
           aria-busy={busy}
         >
           <fieldset className="transaction-form-fields" disabled={busy || !mutable}>
-          {draft ? <p className="duplicate-form-note">{t('duplicateReviewHelp')}</p> : null}
+          {draft ? (
+            <p className="duplicate-form-note">
+              {t(aiDraft ? 'aiTransactionDraftReviewHelp' : 'duplicateReviewHelp')}
+            </p>
+          ) : null}
           {transaction && !hasActiveReferences ? (
             <p className="duplicate-form-note">{t('duplicateUnavailableHelp')}</p>
           ) : null}
@@ -602,6 +614,17 @@ export function TransactionDialog({
             <p className="offline-form-note">{t('transactionDraftSourceChanged')}</p>
           ) : null}
 
+          {aiDraft ? (
+            <label className="ai-draft-review-toggle">
+              <input
+                type="checkbox"
+                checked={aiDraftReviewed}
+                onChange={(event) => setAiDraftReviewed(event.target.checked)}
+              />
+              <span>{t('aiDraftReviewAcknowledgement')}</span>
+            </label>
+          ) : null}
+
           <div className="dialog-actions transaction-dialog-actions">
             {transaction ? (
               <button
@@ -639,7 +662,7 @@ export function TransactionDialog({
             <button
               className="button button-primary save-button"
               type="submit"
-              disabled={busy || !mutable}
+              disabled={busy || !mutable || (aiDraft && !aiDraftReviewed)}
               aria-keyshortcuts="Control+Enter Meta+Enter"
               title={t('saveTransactionShortcutHelp')}
             >

@@ -21,6 +21,9 @@ const fictionalAiSettingsEncryptionKey = '33'.repeat(32)
 let workerProcess
 let nextProcess
 let providerServer
+let providerCopilotRequests = 0
+let expectedCopilotProviderContext = null
+let delayedCopilotProviderResponse = null
 
 function hktCalendarDate() {
   return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -166,6 +169,9 @@ async function availablePort() {
 }
 
 async function startFakeAiProvider(port, { categoryName, occurredOn }) {
+  providerCopilotRequests = 0
+  expectedCopilotProviderContext = null
+  delayedCopilotProviderResponse = null
   providerServer = createHttpServer((request, response) => {
     const respond = (status, payload) => {
       response.writeHead(status, { 'content-type': 'application/json' })
@@ -187,13 +193,98 @@ async function startFakeAiProvider(port, { categoryName, occurredOn }) {
 
     const chunks = []
     request.on('data', (chunk) => chunks.push(chunk))
-    request.on('end', () => {
+    request.on('end', async () => {
       try {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8'))
         assert.equal(body.model, 'fictional-model')
         assert.equal(body.max_completion_tokens, 4_096)
         assert.equal(body.max_tokens, undefined)
         assert.equal(body.response_format?.json_schema?.strict, true)
+        if (body.response_format?.json_schema?.name === 'hushledger_ai_copilot') {
+          providerCopilotRequests += 1
+          assert.deepEqual(body.messages?.map(({ role }) => role), ['system', 'user'])
+          const userPayload = JSON.parse(body.messages[1].content).untrustedUserData
+          const selectedMonth = occurredOn.slice(0, 7)
+          assert.equal(userPayload.locale, 'en')
+          assert.equal(userPayload.prompt, 'Review the selected month')
+          assert.deepEqual(userPayload.context, expectedCopilotProviderContext)
+          assert.equal(userPayload.context.month, selectedMonth)
+          assert.equal(userPayload.context.scheduledOutlook.startOn, `${selectedMonth}-01`)
+          assert.equal(
+            userPayload.context.scheduledOutlook.endOnExclusive,
+            `${shiftCalendarMonth(selectedMonth, 1)}-01`,
+          )
+          assert.equal(hasNestedKey(userPayload.context, 'payee'), false)
+          assert.equal(hasNestedKey(userPayload.context, 'note'), false)
+          const account = userPayload.context.activeAccounts.find(
+            (item) => item.currency === 'HKD',
+          )
+          const category = userPayload.context.activeCategories.find(
+            (item) => item.type === 'expense',
+          )
+          assert(account)
+          assert(category)
+          if (delayedCopilotProviderResponse) {
+            const delayedResponse = delayedCopilotProviderResponse
+            delayedCopilotProviderResponse = null
+            delayedResponse.markStarted()
+            await delayedResponse.released
+          }
+          respond(200, {
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  reply: 'Integration copilot reply',
+                  evidenceReferences: [
+                    { kind: 'summary', metric: 'expense' },
+                  ],
+                  actions: [
+                    {
+                      type: 'show_transactions',
+                      filters: {
+                        transactionType: 'expense',
+                        categoryId: category.id,
+                        importReviewStatus: 'all',
+                        duplicatesOnly: false,
+                        search: null,
+                      },
+                    },
+                    {
+                      type: 'draft_transaction',
+                      input: {
+                        type: 'expense',
+                        amountMinor: 1_234,
+                        accountId: account.id,
+                        categoryId: category.id,
+                        occurredOn,
+                        payee: 'Draft only',
+                        note: '',
+                      },
+                    },
+                    {
+                      type: 'draft_recurring_rule',
+                      input: {
+                        name: 'Paused draft only',
+                        type: 'expense',
+                        amountMinor: 1_234,
+                        accountId: account.id,
+                        categoryId: category.id,
+                        frequency: 'monthly',
+                        scheduleStartsOn: occurredOn,
+                        scheduleEndsOn: null,
+                        firstOccurrenceOn: null,
+                        payee: 'Draft only',
+                        note: '',
+                      },
+                    },
+                  ],
+                }),
+                refusal: null,
+              },
+            }],
+          })
+          return
+        }
         respond(200, {
           choices: [{
             message: {
@@ -223,6 +314,26 @@ async function startFakeAiProvider(port, { categoryName, occurredOn }) {
     providerServer.once('error', reject)
     providerServer.listen(port, '127.0.0.1', resolveReady)
   })
+}
+
+function delayNextCopilotProviderResponse() {
+  let markStarted
+  let release
+  const started = new Promise((resolveStarted) => {
+    markStarted = resolveStarted
+  })
+  const released = new Promise((resolveReleased) => {
+    release = resolveReleased
+  })
+  delayedCopilotProviderResponse = { markStarted, released }
+  return { started, release }
+}
+
+function hasNestedKey(value, target) {
+  if (Array.isArray(value)) return value.some((item) => hasNestedKey(item, target))
+  if (!value || typeof value !== 'object') return false
+  if (Object.hasOwn(value, target)) return true
+  return Object.values(value).some((item) => hasNestedKey(item, target))
 }
 
 function runWrangler(args) {
@@ -2299,6 +2410,7 @@ async function verifyWorkerApi() {
 
   const today = hktCalendarDate()
   const month = today.slice(0, 7)
+  const openingStartsRegisterRange = today === `${month}-01`
   const previousMonth = shiftCalendarMonth(month, -1)
   const accountsResult = await api(baseUrl, '/api/accounts')
   const categoriesResult = await api(baseUrl, '/api/categories')
@@ -3675,10 +3787,16 @@ async function verifyWorkerApi() {
   )
   assert.equal(sourceRegister.response.status, 200, JSON.stringify(sourceRegister.payload))
   assert.equal(sourceRegister.payload.data.accountId, account.id)
-  assert.equal(sourceRegister.payload.data.startingBalanceMinor, null)
-  assert.equal(sourceRegister.payload.data.availableFrom, today)
+  assert.equal(
+    sourceRegister.payload.data.startingBalanceMinor,
+    openingStartsRegisterRange ? 100_000 : null,
+  )
+  assert.equal(
+    sourceRegister.payload.data.availableFrom,
+    openingStartsRegisterRange ? null : today,
+  )
   assert.equal(sourceRegister.payload.data.endingBalanceMinor, 50_000)
-  assert.equal(sourceRegister.payload.data.entryCount, 2)
+  assert.equal(sourceRegister.payload.data.entryCount, openingStartsRegisterRange ? 1 : 2)
   assert.deepEqual(
     sourceRegister.payload.data.entries.map((entry) => ({
       kind: entry.kind,
@@ -3697,14 +3815,16 @@ async function verifyWorkerApi() {
         cleared: false,
         transferDirection: 'out',
       },
-      {
-        kind: 'opening',
-        sourceId: null,
-        amountMinor: 100_000,
-        runningBalanceMinor: 100_000,
-        cleared: null,
-        transferDirection: null,
-      },
+      ...(openingStartsRegisterRange
+        ? []
+        : [{
+            kind: 'opening',
+            sourceId: null,
+            amountMinor: 100_000,
+            runningBalanceMinor: 100_000,
+            cleared: null,
+            transferDirection: null,
+          }]),
     ],
   )
   const registerBeforeOpening = await api(
@@ -7361,6 +7481,208 @@ async function verifyNextAiDrafts() {
   })
   assert.equal(savedProvider.response.status, 201, JSON.stringify(savedProvider.payload))
   assert.equal('apiKey' in savedProvider.payload.data, false)
+  const settingsBeforeCopilot = await api(baseUrl, '/api/ai-settings')
+  assert.equal(settingsBeforeCopilot.response.status, 200, JSON.stringify(settingsBeforeCopilot.payload))
+
+  const copilotLedgerProbe = await downloadLedgerBackup(baseUrl)
+  assert.equal(copilotLedgerProbe.response.status, 200, JSON.stringify(copilotLedgerProbe.payload))
+  const ledgerBeforeCopilot = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: copilotLedgerProbe.payload },
+  })
+  assert.equal(ledgerBeforeCopilot.response.status, 200, JSON.stringify(ledgerBeforeCopilot.payload))
+
+  const copilotInsights = await api(baseUrl, `/api/ai/copilot?month=${month}`)
+  assert.equal(copilotInsights.response.status, 200, JSON.stringify(copilotInsights.payload))
+  assert(Array.isArray(copilotInsights.payload.data.insights))
+  assert(copilotInsights.payload.data.insights.length <= 5)
+  assert.equal(typeof copilotInsights.payload.data.context.partial, 'boolean')
+  assert.equal(copilotInsights.payload.data.preview.month, month)
+  assert.equal(hasNestedKey(copilotInsights.payload.data.preview, 'transactions'), false)
+  assert.equal(hasNestedKey(copilotInsights.payload.data.preview, 'payee'), false)
+  assert.equal(hasNestedKey(copilotInsights.payload.data.preview, 'note'), false)
+  assert.equal(hasNestedKey(copilotInsights.payload.data.preview, 'apiKey'), false)
+  assert.match(copilotInsights.payload.data.contextDigest, /^[0-9a-f]{64}$/)
+  assert.equal(
+    copilotInsights.payload.data.contextDigest,
+    createHash('sha256')
+      .update(canonicalJson({ version: 1, context: copilotInsights.payload.data.preview }))
+      .digest('hex'),
+  )
+  expectedCopilotProviderContext = copilotInsights.payload.data.preview
+  const ledgerAfterCopilotInsights = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: copilotLedgerProbe.payload },
+  })
+  assert.equal(
+    ledgerAfterCopilotInsights.response.status,
+    200,
+    JSON.stringify(ledgerAfterCopilotInsights.payload),
+  )
+  assert.equal(
+    ledgerAfterCopilotInsights.payload.data.currentRevision,
+    ledgerBeforeCopilot.payload.data.currentRevision,
+  )
+  assert.equal(
+    ledgerAfterCopilotInsights.payload.data.currentDigest,
+    ledgerBeforeCopilot.payload.data.currentDigest,
+  )
+  const settingsAfterCopilotInsights = await api(baseUrl, '/api/ai-settings')
+  assert.equal(
+    settingsAfterCopilotInsights.response.status,
+    200,
+    JSON.stringify(settingsAfterCopilotInsights.payload),
+  )
+  assert.deepEqual(settingsAfterCopilotInsights.payload.data, settingsBeforeCopilot.payload.data)
+  const invalidCopilotMonth = await api(baseUrl, '/api/ai/copilot?month=2026-13')
+  assert.equal(invalidCopilotMonth.response.status, 400)
+  assert.equal(invalidCopilotMonth.payload.error.code, 'AI_COPILOT_INPUT_INVALID')
+  const disabledCopilotMethod = await api(baseUrl, `/api/ai/copilot?month=${month}`, {
+    method: 'DELETE',
+    body: {},
+  })
+  assert.equal(disabledCopilotMethod.response.status, 404)
+
+  const copilotBody = {
+    provider: {
+      source: 'stored',
+      expectedUpdatedAt: savedProvider.payload.data.updatedAt,
+    },
+    locale: 'en',
+    month,
+    expectedContextDigest: copilotInsights.payload.data.contextDigest,
+    prompt: 'Review the selected month',
+  }
+  const crossOriginCopilot = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: copilotBody,
+  })
+  assert.equal(crossOriginCopilot.response.status, 403)
+  assert.equal(crossOriginCopilot.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const invalidCopilotBody = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: { ...copilotBody, privateMemo: 'must be rejected' },
+  })
+  assert.equal(invalidCopilotBody.response.status, 400)
+  assert.equal(invalidCopilotBody.payload.error.code, 'AI_COPILOT_INPUT_INVALID')
+  const staleContextCopilot = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: { ...copilotBody, expectedContextDigest: '0'.repeat(64) },
+  })
+  assert.equal(staleContextCopilot.response.status, 409)
+  assert.equal(staleContextCopilot.payload.error.code, 'AI_COPILOT_CONTEXT_CHANGED')
+  assert.equal(providerCopilotRequests, 0)
+  const copilot = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: copilotBody,
+  })
+  assert.equal(copilot.response.status, 200, JSON.stringify(copilot.payload))
+  assert.equal(copilot.payload.data.reply, 'Integration copilot reply')
+  assert.equal(copilot.payload.data.contextDigest, copilotBody.expectedContextDigest)
+  assert.equal(copilot.payload.data.evidence.length, 1)
+  assert.equal(copilot.payload.data.evidence[0].kind, 'summary')
+  assert.equal(copilot.payload.data.evidence[0].metric, 'expense')
+  assert.equal(copilot.payload.data.evidence[0].amountMinor, copilotInsights.payload.data.preview.summary.expenseMinor)
+  assert.equal(copilot.payload.data.actions.length, 3)
+  assert.equal(copilot.payload.data.actions[0].type, 'show_transactions')
+  assert.equal(copilot.payload.data.actions[1].type, 'draft_transaction')
+  assert.match(copilot.payload.data.actions[1].input.id, /^[0-9a-f-]{36}$/)
+  assert.equal(copilot.payload.data.actions[1].input.currency, 'HKD')
+  assert.equal(copilot.payload.data.actions[1].input.cleared, false)
+  assert.equal(copilot.payload.data.actions[2].type, 'draft_recurring_rule')
+  assert.match(copilot.payload.data.actions[2].input.id, /^[0-9a-f-]{36}$/)
+  assert.equal(copilot.payload.data.actions[2].input.currency, 'HKD')
+  assert.equal(copilot.payload.data.actions[2].input.isActive, false)
+  assert.equal(typeof copilot.payload.data.context.partial, 'boolean')
+  assert.equal(providerCopilotRequests, 1)
+  const staleStoredCopilot = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: {
+      ...copilotBody,
+      provider: {
+        source: 'stored',
+        expectedUpdatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    },
+  })
+  assert.equal(staleStoredCopilot.response.status, 409)
+  assert.equal(staleStoredCopilot.payload.error.code, 'AI_SETTINGS_VERSION_CONFLICT')
+  const ledgerAfterCopilot = await api(baseUrl, '/api/backups/ledger', {
+    method: 'POST',
+    body: { mode: 'preview', backup: copilotLedgerProbe.payload },
+  })
+  assert.equal(ledgerAfterCopilot.response.status, 200, JSON.stringify(ledgerAfterCopilot.payload))
+  assert.equal(
+    ledgerAfterCopilot.payload.data.currentRevision,
+    ledgerAfterCopilotInsights.payload.data.currentRevision,
+  )
+  assert.equal(
+    ledgerAfterCopilot.payload.data.currentDigest,
+    ledgerAfterCopilotInsights.payload.data.currentDigest,
+  )
+  const settingsAfterCopilot = await api(baseUrl, '/api/ai-settings')
+  assert.equal(settingsAfterCopilot.response.status, 200, JSON.stringify(settingsAfterCopilot.payload))
+  assert.deepEqual(settingsAfterCopilot.payload.data, settingsAfterCopilotInsights.payload.data)
+  const afterCopilotTransactions = await api(baseUrl, `/api/transactions?month=${month}`)
+  assert.equal(afterCopilotTransactions.response.status, 200)
+  assert.deepEqual(afterCopilotTransactions.payload.data, beforeTransactions.payload.data)
+
+  const delayedProvider = delayNextCopilotProviderResponse()
+  const revisionGuardedCopilotRequest = api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: copilotBody,
+  })
+  await delayedProvider.started
+  const revisionGuardTransaction = {
+    id: '90000000-0000-4000-8000-000000000001',
+    type: 'expense',
+    amountMinor: 1,
+    currency: 'HKD',
+    accountId: account.id,
+    categoryId: category.id,
+    occurredOn: today,
+    cleared: false,
+    payee: 'Copilot revision guard',
+    note: '',
+  }
+  const createdRevisionGuardTransaction = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: revisionGuardTransaction,
+  })
+  delayedProvider.release()
+  assert.equal(
+    createdRevisionGuardTransaction.response.status,
+    201,
+    JSON.stringify(createdRevisionGuardTransaction.payload),
+  )
+  const revisionGuardedCopilot = await revisionGuardedCopilotRequest
+  assert.equal(
+    revisionGuardedCopilot.response.status,
+    409,
+    JSON.stringify(revisionGuardedCopilot.payload),
+  )
+  assert.equal(revisionGuardedCopilot.payload.error.code, 'AI_COPILOT_CONTEXT_CHANGED')
+  assert.equal('data' in revisionGuardedCopilot.payload, false)
+  assert.equal(hasNestedKey(revisionGuardedCopilot.payload, 'reply'), false)
+  assert.equal(hasNestedKey(revisionGuardedCopilot.payload, 'actions'), false)
+  assert.equal(providerCopilotRequests, 2)
+  const deletedRevisionGuardTransaction = await api(
+    baseUrl,
+    `/api/transactions/${revisionGuardTransaction.id}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: createdRevisionGuardTransaction.payload.data.updatedAt },
+    },
+  )
+  assert.equal(
+    deletedRevisionGuardTransaction.response.status,
+    200,
+    JSON.stringify(deletedRevisionGuardTransaction.payload),
+  )
+  const transactionsAfterRevisionGuard = await api(baseUrl, `/api/transactions?month=${month}`)
+  assert.equal(transactionsAfterRevisionGuard.response.status, 200)
+  assert.deepEqual(transactionsAfterRevisionGuard.payload.data, beforeTransactions.payload.data)
 
   const storedModels = await api(baseUrl, '/api/ai/models', {
     method: 'POST',
@@ -7540,6 +7862,12 @@ async function verifyNextAiDrafts() {
   })
   assertAiSettingsCryptoFailure(cryptoFailedParse, provider.apiKey)
 
+  const cryptoFailedCopilot = await api(baseUrl, '/api/ai/copilot', {
+    method: 'POST',
+    body: copilotBody,
+  })
+  assertAiSettingsCryptoFailure(cryptoFailedCopilot, provider.apiKey)
+
   const deletedProvider = await api(baseUrl, '/api/ai-settings', {
     method: 'DELETE',
     body: { expectedUpdatedAt: savedProvider.payload.data.updatedAt },
@@ -7547,12 +7875,14 @@ async function verifyNextAiDrafts() {
   assert.equal(deletedProvider.response.status, 200, JSON.stringify(deletedProvider.payload))
 
   return {
-    nextAiDrafts: 1,
+    nextAiDrafts: 2,
+    nextAiCopilotRoutes: 10,
+    nextAiCopilotD1Writes: 0,
     nextAiD1Writes: 1,
     nextAiTombstones: 1,
     nextStoredAiProviderRoutes: 2,
     nextStoredAiProviderStaleGuards: 1,
-    nextStoredAiProviderCryptoFailureGuards: 2,
+    nextStoredAiProviderCryptoFailureGuards: 3,
     nextDevelopmentServiceWorkerRetirements: 1,
   }
 }
