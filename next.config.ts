@@ -16,6 +16,9 @@ void initOpenNextCloudflareForDev(
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  turbopack: {
+    root: import.meta.dirname,
+  },
   env: {
     HUSHLEDGER_RELEASE_ID: releaseId,
   },

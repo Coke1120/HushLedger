@@ -565,7 +565,9 @@ describe('AI Copilot provider adapter', () => {
   ] as const) {
     it(`rejects a provider credential reflected in Copilot ${reflectedField}`, async () => {
       const output = {
-        reply: 'Drafts ready for review.',
+        reply: reflectedField === 'reply'
+          ? `Leaked ${provider.apiKey}`
+          : 'Drafts ready for review.',
         evidenceReferences: [],
         actions: [
           {
@@ -576,14 +578,16 @@ describe('AI Copilot provider adapter', () => {
               accountId: 2,
               categoryId: 3,
               occurredOn: '2026-07-31',
-              payee: 'Cafe',
-              note: 'Lunch',
+              payee: reflectedField === 'transaction.payee' ? provider.apiKey : 'Cafe',
+              note: reflectedField === 'transaction.note'
+                ? `Leaked ${provider.apiKey}`
+                : 'Lunch',
             },
           },
           {
             type: 'draft_recurring_rule',
             input: {
-              name: 'Monthly lunch',
+              name: reflectedField === 'recurring.name' ? provider.apiKey : 'Monthly lunch',
               type: 'expense',
               amountMinor: 8_800,
               accountId: 2,
@@ -592,19 +596,14 @@ describe('AI Copilot provider adapter', () => {
               scheduleStartsOn: '2026-08-01',
               scheduleEndsOn: null,
               firstOccurrenceOn: null,
-              payee: 'Cafe',
-              note: 'Lunch plan',
+              payee: reflectedField === 'recurring.payee'
+                ? `Leaked ${provider.apiKey}`
+                : 'Cafe',
+              note: reflectedField === 'recurring.note' ? provider.apiKey : 'Lunch plan',
             },
           },
         ],
       }
-
-      if (reflectedField === 'reply') output.reply = `Leaked ${provider.apiKey}`
-      if (reflectedField === 'transaction.payee') output.actions[0]!.input.payee = provider.apiKey
-      if (reflectedField === 'transaction.note') output.actions[0]!.input.note = `Leaked ${provider.apiKey}`
-      if (reflectedField === 'recurring.name') output.actions[1]!.input.name = provider.apiKey
-      if (reflectedField === 'recurring.payee') output.actions[1]!.input.payee = `Leaked ${provider.apiKey}`
-      if (reflectedField === 'recurring.note') output.actions[1]!.input.note = provider.apiKey
 
       await assert.rejects(
         askAiCopilot(
