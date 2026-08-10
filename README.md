@@ -609,16 +609,16 @@ Then open `http://localhost:8787`.
 ## Containerized local use
 
 The optional container image runs the same OpenNext Worker and local D1 runtime
-without installing Node.js on the host. It is for one-computer use only. Both
-Docker Desktop and Apple Container build the same OCI-compatible `Dockerfile`.
+without installing Node.js on the host. It is a private local deployment, not a
+public server. Both Docker Desktop and Apple Container build the same
+OCI-compatible `Dockerfile`.
 The build context excludes local `.env*` and Wrangler `.dev.vars*` secrets.
 Pending D1 migrations are applied automatically whenever the container starts.
 
 Keep port `8787` bound to `127.0.0.1`. Local mode has no application login, so do
 not expose this container to a LAN or the public internet. Treat its data volume
 as private financial data. Container startup removes group/other POSIX mode access
-from `/data` before migrations run. Use the Cloudflare deployment path for
-multi-device access.
+from `/data` before migrations run.
 
 ### Docker Desktop
 
@@ -655,6 +655,25 @@ container run --name hushledger --detach \
 Open `http://127.0.0.1:8787`. Use `container stop hushledger` and
 `container start hushledger` without losing data. Deleting `hushledger-data`
 permanently deletes the local ledger in either runtime.
+
+### Access from another Tailscale computer
+
+Keep the container bound to `127.0.0.1`; do not change the publish address to
+`0.0.0.0`. On the other computer, open an SSH tunnel through the tailnet to a
+host with SSH enabled:
+
+```bash
+ssh -N -L 8787:127.0.0.1:8787 user@hushledger-host
+```
+
+Replace `user@hushledger-host` with the Docker host's SSH user and Tailscale
+MagicDNS name or IP, keep the tunnel running, then open
+`http://127.0.0.1:8787` on that computer. Local mode has no application login,
+so restrict SSH access with the tailnet policy and host permissions.
+
+Do not use Tailscale Funnel. A direct Tailscale Serve URL is not currently
+supported because HushLedger's local-access bypass accepts only loopback
+hostnames; use the SSH tunnel or the private Cloudflare deployment path.
 
 Public HTTPS AI providers work from the container. A provider running on the
 host's `localhost` is intentionally not part of this local-container path.
