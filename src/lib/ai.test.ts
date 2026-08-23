@@ -24,6 +24,8 @@ const modelRow = {
   amountText: '123.45',
   currency: 'HKD',
   description: 'Example merchant',
+  reference: null,
+  runningBalance: null,
   suggestedCategoryName: '餐飲',
   confidence: 0.92,
   flags: [],
@@ -162,6 +164,64 @@ describe('AI import schemas', () => {
     ).status, 'mismatch')
   })
 
+  it('checks source-ordered running balances forward or reverse and reports mismatching rows', () => {
+    const noEvidence = {
+      openingBalance: null,
+      closingBalance: null,
+      debitTotal: null,
+      creditTotal: null,
+    }
+    const balance = (sourceLine: number, amountMinor: number) => ({
+      sourceLine,
+      sourceText: `Balance ${amountMinor}`,
+      amountText: String(amountMinor / 100),
+      amountMinor,
+    })
+    const forward = [
+      { sourceLine: 1, type: 'income' as const, amountMinor: 1_000, runningBalance: balance(1, 11_000) },
+      { sourceLine: 2, type: 'expense' as const, amountMinor: 2_000, runningBalance: balance(2, 9_000) },
+    ]
+    const reverse = [
+      { sourceLine: 1, occurredOn: '2026-07-12', type: 'expense' as const, amountMinor: 2_000, runningBalance: balance(1, 9_000) },
+      { sourceLine: 2, occurredOn: '2026-07-11', type: 'income' as const, amountMinor: 1_000, runningBalance: balance(2, 11_000) },
+    ]
+
+    assert.equal(calculateBankStatementVerification(
+      noEvidence,
+      forward,
+    ).runningBalanceStatus, 'matched')
+    assert.equal(calculateBankStatementVerification(
+      noEvidence,
+      reverse,
+    ).runningBalanceStatus, 'matched')
+    assert.equal(calculateBankStatementVerification(
+      noEvidence,
+      [forward[0]!],
+    ).runningBalanceStatus, 'unavailable')
+
+    const mismatch = calculateBankStatementVerification(noEvidence, [
+      forward[0]!,
+      { ...forward[1]!, runningBalance: balance(2, 8_900) },
+    ])
+    assert.equal(mismatch.status, 'unavailable')
+    assert.equal(mismatch.runningBalanceStatus, 'mismatch')
+    assert.deepEqual(mismatch.runningBalanceMismatchSourceLines, [2])
+
+    const reverseMismatch = calculateBankStatementVerification(noEvidence, [
+      { ...reverse[0]!, runningBalance: balance(1, 8_900) },
+      reverse[1]!,
+    ])
+    assert.deepEqual(reverseMismatch.runningBalanceMismatchSourceLines, [1])
+
+    const sparseMismatch = calculateBankStatementVerification(noEvidence, [
+      { sourceLine: 1, occurredOn: '2026-07-10', type: 'income', amountMinor: 100, runningBalance: balance(1, 10_000) },
+      { sourceLine: 2, occurredOn: '2026-07-11', type: 'expense', amountMinor: 1_000, runningBalance: null },
+      { sourceLine: 3, occurredOn: '2026-07-12', type: 'income', amountMinor: 500, runningBalance: null },
+      { sourceLine: 4, occurredOn: '2026-07-13', type: 'expense', amountMinor: 100, runningBalance: balance(4, 9_500) },
+    ])
+    assert.deepEqual(sparseMismatch.runningBalanceMismatchSourceLines, [2, 3, 4])
+  })
+
   it('caps model rows and requires known warning flags', () => {
     assert.equal(aiModelOutputSchema.safeParse({
       ...modelOutput,
@@ -179,6 +239,8 @@ describe('AI import schemas', () => {
       importKey: `ai:statement:row:${'a'.repeat(64)}`,
       sourceLine: 1,
       sourceText: 'Example merchant 123.45 DR',
+      bankReference: null,
+      runningBalance: null,
       occurredOn: '2026-07-11',
       type: 'expense',
       amountText: '123.45',
@@ -206,6 +268,9 @@ describe('AI import schemas', () => {
         balanceDifferenceMinor: null,
         debitDifferenceMinor: null,
         creditDifferenceMinor: null,
+        runningBalanceStatus: 'unavailable',
+        runningBalanceCheckedRows: 0,
+        runningBalanceMismatchSourceLines: [],
       },
     }).success, true)
     assert.equal(aiImportRequestSchema.safeParse({

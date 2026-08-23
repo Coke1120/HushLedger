@@ -4,7 +4,10 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import type { TransactionImportRow } from '../lib/transactionImport'
+import {
+  transactionImportRowSchema,
+  type TransactionImportRow,
+} from '../lib/transactionImport'
 
 type Row = Record<string, unknown>
 type BatchResult<T> = {
@@ -68,6 +71,34 @@ if (!childRun) {
         database.close()
       }
     })
+
+    it('accepts only import review states that still require human review', () => {
+      const row = {
+        id: '10000000-0000-4000-8000-000000000001',
+        type: 'expense',
+        amountMinor: 1000,
+        currency: 'HKD',
+        accountId: 1,
+        categoryId: 1,
+        occurredOn: '2026-07-14',
+        cleared: true,
+        payee: 'Statement charge',
+        note: '',
+        sourceRow: 1,
+        importKey: `ai:statement:row:${'a'.repeat(64)}`,
+        include: true,
+      }
+
+      assert.equal(transactionImportRowSchema.safeParse(row).success, true)
+      assert.equal(transactionImportRowSchema.safeParse({
+        ...row,
+        initialReviewStatus: 'needs_follow_up',
+      }).success, true)
+      assert.equal(transactionImportRowSchema.safeParse({
+        ...row,
+        initialReviewStatus: 'reviewed',
+      }).success, false)
+    })
   })
 
   describe('import review server-only checks', () => {
@@ -91,7 +122,10 @@ if (!childRun) {
     createTransaction,
     deleteTransaction,
     listTransactions,
+    setTransactionsCategory,
+    setTransactionsClearing,
     setTransactionsImportReviewStatus,
+    updateTransaction,
   } = await import('./money')
 
   class TestStatement {
@@ -325,6 +359,90 @@ if (!childRun) {
         database.close()
       }
     })
+
+    it('preserves review state for clearing-only edits and resets material edits', async () => {
+      const database = new TestDatabase()
+      try {
+        insertTransaction(database, importedId, { imported: true })
+        database.raw.prepare(`
+          UPDATE transactions SET import_review_status = 'reviewed' WHERE id = ?
+        `).run(importedId)
+
+        const clearingOnly = await updateTransaction(
+          database as unknown as D1Database,
+          importedId,
+          {
+            type: 'expense',
+            amountMinor: 1000,
+            currency: 'HKD',
+            accountId: 1,
+            categoryId: 1,
+            occurredOn: '2026-07-14',
+            cleared: true,
+            payee: importedId,
+            note: '',
+            updatedAt: futureVersion,
+          },
+        )
+        assert.equal(clearingOnly.kind, 'updated')
+        if (clearingOnly.kind !== 'updated') return
+        assert.equal(clearingOnly.transaction.importReviewStatus, 'reviewed')
+
+        const material = await updateTransaction(
+          database as unknown as D1Database,
+          importedId,
+          {
+            type: 'expense',
+            amountMinor: 1000,
+            currency: 'HKD',
+            accountId: 1,
+            categoryId: 1,
+            occurredOn: '2026-07-14',
+            cleared: true,
+            payee: 'Corrected payee',
+            note: '',
+            updatedAt: clearingOnly.transaction.updatedAt,
+          },
+        )
+        assert.equal(material.kind, 'updated')
+        if (material.kind === 'updated') {
+          assert.equal(material.transaction.importReviewStatus, 'unreviewed')
+        }
+
+        insertTransaction(database, secondImportedId, { imported: true })
+        database.raw.prepare(`
+          UPDATE transactions SET import_review_status = 'needs_follow_up' WHERE id = ?
+        `).run(secondImportedId)
+        assert.deepEqual(await setTransactionsClearing(
+          database as unknown as D1Database,
+          {
+            cleared: true,
+            transactions: [{ id: secondImportedId, updatedAt: futureVersion }],
+          },
+        ), { kind: 'updated', count: 1 })
+        const afterClearing = database.raw.prepare(`
+          SELECT import_review_status AS status, updated_at AS updatedAt
+          FROM transactions WHERE id = ?
+        `).get(secondImportedId) as { status: string; updatedAt: string }
+        assert.equal(afterClearing.status, 'needs_follow_up')
+
+        database.raw.exec(`
+          INSERT INTO categories VALUES (2, 'Travel', NULL, 'plane', '#654321', 'expense', 1)
+        `)
+        assert.deepEqual(await setTransactionsCategory(
+          database as unknown as D1Database,
+          {
+            categoryId: 2,
+            transactions: [{ id: secondImportedId, updatedAt: afterClearing.updatedAt }],
+          },
+        ), { kind: 'updated', count: 1 })
+        assert.equal(database.raw.prepare(`
+          SELECT import_review_status AS status FROM transactions WHERE id = ?
+        `).get(secondImportedId)?.status, 'unreviewed')
+      } finally {
+        database.close()
+      }
+    })
   })
 
   describe('transaction import review provenance', () => {
@@ -449,7 +567,7 @@ if (!childRun) {
       }
     })
 
-    it('marks both new and matched statement rows as unreviewed', async () => {
+    it('defaults clean imports and persists follow-up state for new and matched rows', async () => {
       const database = new TestDatabase()
       try {
         insertTransaction(database, manualId, { payee: 'Existing card charge' })
@@ -472,6 +590,22 @@ if (!childRun) {
           {
             id: secondImportedId,
             type: 'expense',
+            amountMinor: 1500,
+            currency: 'HKD',
+            accountId: 1,
+            categoryId: 1,
+            occurredOn: '2026-07-15',
+            cleared: true,
+            payee: 'Uncertain new statement charge',
+            note: '',
+            sourceRow: 2,
+            importKey: `csv:hushledger:id:${secondImportedId}`,
+            include: true,
+            initialReviewStatus: 'needs_follow_up',
+          },
+          {
+            id: thirdImportedId,
+            type: 'expense',
             amountMinor: 1000,
             currency: 'HKD',
             accountId: 1,
@@ -480,24 +614,26 @@ if (!childRun) {
             cleared: true,
             payee: 'Existing card charge',
             note: '',
-            sourceRow: 2,
-            importKey: `csv:hushledger:id:${secondImportedId}`,
+            sourceRow: 3,
+            importKey: `csv:hushledger:id:${thirdImportedId}`,
             include: true,
+            initialReviewStatus: 'needs_follow_up',
           },
         ]
 
         const outcome = await commitTransactionImport(database as unknown as D1Database, rows)
         assert.equal(outcome.kind, 'committed')
         if (outcome.kind === 'committed') {
-          assert.equal(outcome.result.imported, 1)
+          assert.equal(outcome.result.imported, 2)
           assert.equal(outcome.result.matched, 1)
         }
         assert.deepEqual(plainRows(database.raw.prepare(`
           SELECT id, cleared, import_review_status AS status
           FROM transactions ORDER BY id
         `).all()), [
-          { id: manualId, cleared: 1, status: 'unreviewed' },
+          { id: manualId, cleared: 1, status: 'needs_follow_up' },
           { id: importedId, cleared: 1, status: 'unreviewed' },
+          { id: secondImportedId, cleared: 1, status: 'needs_follow_up' },
         ])
       } finally {
         database.close()

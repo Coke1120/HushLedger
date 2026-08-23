@@ -6292,6 +6292,20 @@ button.account-register-row:focus-visible {
   font-size: 11px;
 }
 
+.ai-verification-running {
+  padding-top: 10px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ai-verification-running.is-mismatch {
+  color: var(--warning);
+  font-weight: 700;
+}
+
 .ai-draft-list {
   display: grid;
   gap: 12px;
@@ -6383,6 +6397,54 @@ button.account-register-row:focus-visible {
   font-weight: 700;
 }
 
+.ai-statement-transfer {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(180px, 260px) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.ai-statement-transfer > div,
+.ai-statement-transfer label {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-statement-transfer strong,
+.ai-statement-transfer label > span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-statement-transfer small,
+.ai-statement-transfer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ai-statement-transfer .ai-transfer-blocked {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.ai-statement-transfer select {
+  width: 100%;
+  min-height: 40px;
+}
+
+.ai-statement-transfer .form-error {
+  grid-column: 1 / -1;
+  color: var(--error);
+}
+
 .ai-draft-fields {
   display: grid;
   grid-template-columns: 150px 130px 130px minmax(150px, 1fr) minmax(150px, 1fr) 44px;
@@ -6432,6 +6494,68 @@ button.account-register-row:focus-visible {
 .ai-import-actions > span {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-import-next {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  margin-top: 16px;
+  background: var(--income-soft);
+  border: 1px solid #bcdccf;
+  border-radius: 12px;
+}
+
+.ai-import-next h4,
+.ai-import-next p {
+  margin: 0;
+}
+
+.ai-import-next p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-import-next-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ai-import-reconcile-action {
+  display: grid;
+  grid-template-columns: minmax(190px, 260px) auto;
+  gap: 8px;
+  align-items: end;
+  width: 100%;
+}
+
+.ai-import-reconcile-action label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-import-reconcile-action input {
+  min-height: 40px;
+}
+
+.ai-import-reconcile-action small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.ai-import-reconcile-action .field-error {
+  color: var(--error);
   font-weight: 700;
 }
 
@@ -8264,6 +8388,7 @@ button.account-register-row:focus-visible {
   .ai-configure-notice,
   .ai-draft-review-heading,
   .ai-import-actions,
+  .ai-import-next,
   .csv-import-actions {
     align-items: stretch;
     flex-direction: column;
@@ -8276,7 +8401,8 @@ button.account-register-row:focus-visible {
 
   .bank-import-options,
   .ai-verification-totals,
-  .ai-draft-fields {
+  .ai-draft-fields,
+  .ai-statement-transfer {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -8352,6 +8478,15 @@ button.account-register-row:focus-visible {
 
   .ai-import-actions .button {
     width: 100%;
+  }
+
+  .ai-import-next-actions,
+  .ai-import-next-actions .button {
+    width: 100%;
+  }
+
+  .ai-import-reconcile-action {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-remove-draft {

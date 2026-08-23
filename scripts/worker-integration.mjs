@@ -300,6 +300,8 @@ async function startFakeAiProvider(port, { categoryName, occurredOn }) {
                   amountText: '12.34',
                   currency: 'HKD',
                   description: 'Integration merchant',
+                  reference: null,
+                  runningBalance: null,
                   suggestedCategoryName: categoryName,
                   confidence: 0.99,
                   flags: [],
@@ -4620,6 +4622,199 @@ async function verifyWorkerApi() {
   })
   assert.equal(repeatedTransferDelete.response.status, 404)
 
+  const statementTransferImportBody = {
+    importKey: `ai:statement:row:${'9'.repeat(64)}`,
+    statementAccountId: account.id,
+    counterpartyAccountId: transferDestination.id,
+    amountMinor: 12_345,
+    occurredOn: today,
+    direction: 'outflow',
+    note: 'Imported own-account transfer',
+  }
+  const crossOriginStatementTransfer = await api(baseUrl, '/api/imports/statement-transfer', {
+    method: 'POST',
+    origin: 'https://attacker.invalid',
+    body: statementTransferImportBody,
+  })
+  assert.equal(crossOriginStatementTransfer.response.status, 403)
+  assert.equal(crossOriginStatementTransfer.payload.error.code, 'ORIGIN_FORBIDDEN')
+  const invalidStatementTransfer = await api(baseUrl, '/api/imports/statement-transfer', {
+    method: 'POST',
+    body: {
+      ...statementTransferImportBody,
+      counterpartyAccountId: statementTransferImportBody.statementAccountId,
+    },
+  })
+  assert.equal(invalidStatementTransfer.response.status, 400)
+  assert.equal(invalidStatementTransfer.payload.error.code, 'VALIDATION_ERROR')
+
+  const transferLikeTransactionBody = {
+    id: '69000000-0000-4000-8000-000000000002',
+    type: 'expense',
+    amountMinor: 23_456,
+    currency: account.currency,
+    accountId: account.id,
+    categoryId: expenseCategory.id,
+    occurredOn: today,
+    cleared: true,
+    payee: 'Existing ordinary row',
+    note: 'Must not become a transfer',
+  }
+  const transferLikeTransaction = await api(baseUrl, '/api/transactions', {
+    method: 'POST',
+    body: transferLikeTransactionBody,
+  })
+  assert.equal(transferLikeTransaction.response.status, 201)
+  const transfersBeforeTransactionConflict = await api(baseUrl, `/api/transfers?month=${month}`)
+  const transactionConflict = await api(baseUrl, '/api/imports/statement-transfer', {
+    method: 'POST',
+    body: {
+      ...statementTransferImportBody,
+      importKey: `ai:statement:row:${'5'.repeat(64)}`,
+      amountMinor: transferLikeTransactionBody.amountMinor,
+      note: 'Different statement description',
+    },
+  })
+  assert.equal(transactionConflict.response.status, 409)
+  assert.equal(
+    transactionConflict.payload.error.code,
+    'STATEMENT_TRANSFER_POSSIBLE_DUPLICATE',
+  )
+  const transfersAfterTransactionConflict = await api(baseUrl, `/api/transfers?month=${month}`)
+  assert.deepEqual(
+    transfersAfterTransactionConflict.payload.data.map(({ id }) => id),
+    transfersBeforeTransactionConflict.payload.data.map(({ id }) => id),
+  )
+  const deletedTransferLikeTransaction = await api(
+    baseUrl,
+    `/api/transactions/${transferLikeTransactionBody.id}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: transferLikeTransaction.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedTransferLikeTransaction.response.status, 200)
+
+  const racedStatementTransfers = await Promise.all([
+    api(baseUrl, '/api/imports/statement-transfer', {
+      method: 'POST',
+      body: {
+        ...statementTransferImportBody,
+        importKey: `ai:statement:row:${'7'.repeat(64)}`,
+        statementAccountId: transferDestination.id,
+        counterpartyAccountId: account.id,
+        direction: 'inflow',
+      },
+    }),
+    api(baseUrl, '/api/imports/statement-transfer', {
+      method: 'POST',
+      body: statementTransferImportBody,
+    }),
+  ])
+  assert.deepEqual(
+    racedStatementTransfers.map(({ response }) => response.status).sort(),
+    [200, 201],
+  )
+  const createdStatementTransfer = racedStatementTransfers.find(
+    ({ payload }) => payload.data.kind === 'created',
+  )
+  const matchedStatementTransfer = racedStatementTransfers.find(
+    ({ payload }) => payload.data.kind === 'matched',
+  )
+  assert(createdStatementTransfer)
+  assert(matchedStatementTransfer)
+  assert.equal(
+    matchedStatementTransfer.payload.data.transferId,
+    createdStatementTransfer.payload.data.transferId,
+  )
+  const statementTransferTransactionPreview = await api(baseUrl, '/api/imports/ai', {
+    method: 'POST',
+    body: {
+      mode: 'preview',
+      rows: [{
+        id: '69000000-0000-4000-8000-000000000001',
+        importKey: statementTransferImportBody.importKey,
+        sourceRow: 1,
+        include: true,
+        type: 'expense',
+        amountMinor: statementTransferImportBody.amountMinor,
+        currency: account.currency,
+        accountId: account.id,
+        categoryId: expenseCategory.id,
+        occurredOn: today,
+        cleared: true,
+        payee: 'Must stay a transfer',
+        note: '',
+      }],
+    },
+  })
+  assert.equal(statementTransferTransactionPreview.response.status, 200)
+  assert.equal(
+    statementTransferTransactionPreview.payload.data.rows[0].status,
+    'already_imported',
+  )
+
+  const importedStatementTransfer = await api(
+    baseUrl,
+    `/api/transfers/${createdStatementTransfer.payload.data.transferId}`,
+  )
+  assert.equal(importedStatementTransfer.response.status, 200)
+  assert.equal(importedStatementTransfer.payload.data.fromAccountId, account.id)
+  assert.equal(importedStatementTransfer.payload.data.toAccountId, transferDestination.id)
+  assert.equal(importedStatementTransfer.payload.data.fromCleared, true)
+  assert.equal(importedStatementTransfer.payload.data.toCleared, true)
+  const deletedImportedStatementTransfer = await api(
+    baseUrl,
+    `/api/transfers/${createdStatementTransfer.payload.data.transferId}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: importedStatementTransfer.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedImportedStatementTransfer.response.status, 200)
+  const replayAfterStatementTransferDeletion = await api(
+    baseUrl,
+    '/api/imports/statement-transfer',
+    { method: 'POST', body: statementTransferImportBody },
+  )
+  assert.equal(replayAfterStatementTransferDeletion.response.status, 200)
+  assert.deepEqual(replayAfterStatementTransferDeletion.payload.data, {
+    kind: 'already_imported',
+  })
+  const deletedImportedStatementTransferLookup = await api(
+    baseUrl,
+    `/api/transfers/${createdStatementTransfer.payload.data.transferId}`,
+  )
+  assert.equal(deletedImportedStatementTransferLookup.response.status, 404)
+
+  const inflowStatementTransfer = await api(baseUrl, '/api/imports/statement-transfer', {
+    method: 'POST',
+    body: {
+      ...statementTransferImportBody,
+      importKey: `ai:statement:row:${'8'.repeat(64)}`,
+      direction: 'inflow',
+    },
+  })
+  assert.equal(inflowStatementTransfer.response.status, 201)
+  const importedInflowStatementTransfer = await api(
+    baseUrl,
+    `/api/transfers/${inflowStatementTransfer.payload.data.transferId}`,
+  )
+  assert.equal(importedInflowStatementTransfer.response.status, 200)
+  assert.equal(importedInflowStatementTransfer.payload.data.fromAccountId, transferDestination.id)
+  assert.equal(importedInflowStatementTransfer.payload.data.toAccountId, account.id)
+  assert.equal(importedInflowStatementTransfer.payload.data.fromCleared, false)
+  assert.equal(importedInflowStatementTransfer.payload.data.toCleared, true)
+  const deletedInflowStatementTransfer = await api(
+    baseUrl,
+    `/api/transfers/${inflowStatementTransfer.payload.data.transferId}`,
+    {
+      method: 'DELETE',
+      body: { updatedAt: importedInflowStatementTransfer.payload.data.updatedAt },
+    },
+  )
+  assert.equal(deletedInflowStatementTransfer.response.status, 200)
+
   const cappedExportRows = await api(baseUrl, `/api/transactions?month=${month}&search=export%20bulk`)
   assert.equal(cappedExportRows.response.status, 200)
   assert.equal(cappedExportRows.payload.data.length, 200)
@@ -6832,6 +7027,10 @@ async function verifyWorkerApi() {
     emergencyFundGoal.payload.data.updatedAt,
   )
   assert(backup.data.transactionImportKeys.length > 0)
+  assert(backup.data.transactionImportKeys.some(({ importKey, transactionId }) => (
+    importKey === statementTransferImportBody.importKey
+    && transactionId === createdStatementTransfer.payload.data.transferId
+  )))
   assert.deepEqual(backup.data.ecbReferenceRates, [{
     quoteCurrency: 'USD', rate: '1.1424', observedOn: '2026-07-13', fetchedAt: '2026-07-13T16:00:00.000Z',
   }])
@@ -7016,6 +7215,15 @@ async function verifyWorkerApi() {
   assert.deepEqual(restoredEmergencyFundGoal.payload.data, expectedRestoredEmergencyFundGoal)
   const restoredBackup = await downloadLedgerBackup(baseUrl)
   assert.deepEqual(restoredBackup.payload.data, backup.data)
+  const restoredStatementTransferReplay = await api(
+    baseUrl,
+    '/api/imports/statement-transfer',
+    { method: 'POST', body: statementTransferImportBody },
+  )
+  assert.equal(restoredStatementTransferReplay.response.status, 200)
+  assert.deepEqual(restoredStatementTransferReplay.payload.data, {
+    kind: 'already_imported',
+  })
 
   const schema17Backup = withoutImportReviewData(backup)
   schema17Backup.schemaVersion = 17
@@ -7743,6 +7951,9 @@ async function verifyNextAiDrafts() {
     balanceDifferenceMinor: null,
     debitDifferenceMinor: null,
     creditDifferenceMinor: null,
+    runningBalanceStatus: 'unavailable',
+    runningBalanceCheckedRows: 0,
+    runningBalanceMismatchSourceLines: [],
   })
 
   const afterTransactions = await api(baseUrl, `/api/transactions?month=${month}`)

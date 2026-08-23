@@ -32,6 +32,7 @@ function renderRegister(
   dateFrom = register.dateFrom,
   dateTo = register.dateTo,
   registerData = register,
+  initialStatementBalanceMinor: number | null = null,
 ) {
   const context: I18nContextValue = {
     locale: 'en',
@@ -69,6 +70,7 @@ function renderRegister(
       loading: false,
       saving: false,
       reconcileInitially: true,
+      initialStatementBalanceMinor,
       onClose: () => undefined,
       onDateRangeChange: () => undefined,
       onEditTransaction: () => undefined,
@@ -103,6 +105,16 @@ describe('statement-period reconciliation', () => {
     assert.match(markup, /type="password"/)
     assert.match(markup, /autoComplete="off"/)
     assert.doesNotMatch(markup, /HK\$980\.00|HK\$990\.00|-HK\$10\.00/)
+  })
+
+  it('prefills a handed-off closing balance while keeping it editable and ephemeral', () => {
+    const markup = renderRegister(false, register.accountId, true, register.dateFrom,
+      register.dateTo, register, -12_345)
+
+    assert.match(markup, /value="-123\.45"/)
+    assert.match(markup, /value="2026-06-13"/)
+    assert.match(markup, /value="2026-07-12"/)
+    assert.doesNotMatch(markup, /readonly/)
   })
 
   it('never renders a prior account snapshot while another account is loading', () => {

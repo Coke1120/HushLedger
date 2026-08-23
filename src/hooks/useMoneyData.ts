@@ -59,9 +59,14 @@ import {
 import { transactionQueryFromFilters } from '../lib/transactionQuery'
 import { actionData } from './actionResult'
 import { subscribeToForegroundRefresh } from './foregroundRefresh'
+import {
+  moneyMutationSource,
+  sourceAfterMoneyRefreshFailure,
+  type DataSource,
+  type RefreshFailureMode,
+} from './moneyDataAccess'
 
-export type DataSource = 'loading' | 'live' | 'demo' | 'error'
-export type RefreshFailureMode = 'demo' | 'error' | 'preserve'
+export type { DataSource, RefreshFailureMode } from './moneyDataAccess'
 export type AiProviderSettingsStatus = 'loading' | 'ready' | 'error'
 
 type Snapshot = DemoSnapshot
@@ -122,9 +127,15 @@ export function useMoneyData(
     useState<AiProviderSettingsStatus>('loading')
   const requestSequence = useRef(0)
   const aiProviderSettingsRef = useRef<AiProviderSettingsRow | null>(snapshot.aiProviderSettings)
+  const demoFallbackAllowed = useRef(true)
+  const writableSource = useRef<'live' | 'demo' | null>(null)
   const submitting = useRef(false)
   const loadingMore = useRef(false)
   const recoveringTransactionPage = useRef(false)
+  const getMoneyMutationSource = useCallback(
+    () => moneyMutationSource(source, navigator.onLine, writableSource.current),
+    [source],
+  )
 
   const transactionQuery = useMemo(() => transactionQueryFromFilters({
     month,
@@ -236,13 +247,23 @@ export function useMoneyData(
       if (!navigator.onLine) {
         setOnline(false)
         setAiProviderSettingsStatus('error')
-        if (failureMode === 'demo') {
+        const nextSource = sourceAfterMoneyRefreshFailure(
+          false,
+          failureMode,
+          demoFallbackAllowed.current,
+        )
+        if (nextSource === 'demo') {
           setDemoSnapshot()
-          setSource('demo')
         }
+        writableSource.current = null
+        if (nextSource !== null) setSource(nextSource)
         return false
       }
 
+      demoFallbackAllowed.current = false
+      writableSource.current = null
+      setOnline(true)
+      setSource((current) => current === 'demo' ? 'loading' : current)
       try {
         const next = await fetchSnapshot()
         if (sequence !== requestSequence.current) return false
@@ -262,18 +283,19 @@ export function useMoneyData(
           refreshRequired: false,
         })
         setSnapshotVersion((current) => current + 1)
+        writableSource.current = 'live'
         setSource('live')
         setOnline(true)
         return true
       } catch {
         if (sequence !== requestSequence.current) return false
         setAiProviderSettingsStatus('error')
-        if (failureMode === 'demo') {
-          setDemoSnapshot()
-          setSource('demo')
-        } else if (failureMode === 'error') {
-          setSource('error')
-        }
+        writableSource.current = null
+        setSource(sourceAfterMoneyRefreshFailure(
+          true,
+          failureMode,
+          demoFallbackAllowed.current,
+        ) ?? 'error')
         return false
       }
     },
@@ -300,8 +322,14 @@ export function useMoneyData(
       requestSequence.current += 1
       setTransactionPage(emptyTransactionPage())
       setOnline(false)
-      setDemoSnapshot()
-      setSource('demo')
+      const nextSource = sourceAfterMoneyRefreshFailure(
+        false,
+        'demo',
+        demoFallbackAllowed.current,
+      ) ?? 'error'
+      if (nextSource === 'demo') setDemoSnapshot()
+      writableSource.current = null
+      setSource(nextSource)
     }
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
@@ -412,12 +440,15 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (!navigator.onLine) {
-          setSaveError(message('transactionOfflineError'))
+        const mutationSource = getMoneyMutationSource()
+        if (mutationSource === null) {
+          setSaveError(message(
+            navigator.onLine ? 'transactionSaveFailed' : 'transactionOfflineError',
+          ))
           return false
         }
 
-        if (source === 'demo') {
+        if (mutationSource === 'demo') {
           if (original) updateDemo(input)
           else addDemo(input)
           setDemoSnapshot()
@@ -450,7 +481,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, setDemoSnapshot, source],
+    [getMoneyMutationSource, refresh, setDemoSnapshot],
   )
 
   const removeTransaction = useCallback(
@@ -462,12 +493,15 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (!navigator.onLine) {
-          setSaveError(message('transactionOfflineError'))
+        const mutationSource = getMoneyMutationSource()
+        if (mutationSource === null) {
+          setSaveError(message(
+            navigator.onLine ? 'transactionDeleteFailed' : 'transactionOfflineError',
+          ))
           return false
         }
 
-        if (source === 'demo') {
+        if (mutationSource === 'demo') {
           deleteDemo(transaction.id)
           setDemoSnapshot()
           setActionMessage(message('demoTransactionChanged'))
@@ -486,7 +520,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, setDemoSnapshot, source],
+    [getMoneyMutationSource, refresh, setDemoSnapshot],
   )
 
   const setSelectedTransactionsClearing = useCallback(
@@ -503,12 +537,15 @@ export function useMoneyData(
       }
 
       try {
-        if (!navigator.onLine) {
-          setSaveError(message('transactionOfflineError'))
+        const mutationSource = getMoneyMutationSource()
+        if (mutationSource === null) {
+          setSaveError(message(
+            navigator.onLine ? 'transactionBulkClearingFailed' : 'transactionOfflineError',
+          ))
           return false
         }
 
-        if (source === 'demo') {
+        if (mutationSource === 'demo') {
           const result = setDemoTransactionsClearing(input)
           if (result.kind === 'version_conflict') {
             setSaveError(message('errorTransactionVersionConflict'))
@@ -542,7 +579,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, setDemoSnapshot, source],
+    [getMoneyMutationSource, refresh, setDemoSnapshot],
   )
 
   const setSelectedTransactionsImportReviewStatus = useCallback(
@@ -558,12 +595,12 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (source === 'demo') {
-          setSaveError(message('importReviewUnavailable'))
-          return false
-        }
         if (!navigator.onLine) {
           setSaveError(message('transactionOfflineError'))
+          return false
+        }
+        if (getMoneyMutationSource() !== 'live') {
+          setSaveError(message('importReviewUnavailable'))
           return false
         }
 
@@ -597,7 +634,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, source],
+    [getMoneyMutationSource, refresh],
   )
 
   const setAccountRegisterEntryClearing = useCallback(
@@ -609,7 +646,7 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (!navigator.onLine || source !== 'live') {
+        if (getMoneyMutationSource() !== 'live') {
           setSaveError(message('accountRegisterEntryClearingFailed'))
           return false
         }
@@ -631,7 +668,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, source],
+    [getMoneyMutationSource, refresh],
   )
 
   const setSelectedTransactionsCategory = useCallback(
@@ -648,12 +685,15 @@ export function useMoneyData(
       }
 
       try {
-        if (!navigator.onLine) {
-          setSaveError(message('transactionOfflineError'))
+        const mutationSource = getMoneyMutationSource()
+        if (mutationSource === null) {
+          setSaveError(message(
+            navigator.onLine ? 'transactionBulkCategoryFailed' : 'transactionOfflineError',
+          ))
           return false
         }
 
-        if (source === 'demo') {
+        if (mutationSource === 'demo') {
           const result = setDemoTransactionsCategory(input)
           if (result.kind === 'version_conflict') {
             setSaveError(message('errorTransactionVersionConflict'))
@@ -690,7 +730,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, setDemoSnapshot, source],
+    [getMoneyMutationSource, refresh, setDemoSnapshot],
   )
 
   const saveAccountTransfer = useCallback(
@@ -702,8 +742,10 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (!navigator.onLine || source !== 'live') {
-          setSaveError(message(source === 'live' ? 'transferOfflineError' : 'transferUnavailable'))
+        if (getMoneyMutationSource() !== 'live') {
+          setSaveError(message(
+            navigator.onLine ? 'transferUnavailable' : 'transferOfflineError',
+          ))
           return false
         }
 
@@ -731,7 +773,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, source],
+    [getMoneyMutationSource, refresh],
   )
 
   const removeAccountTransfer = useCallback(
@@ -743,8 +785,10 @@ export function useMoneyData(
       setActionMessage(null)
 
       try {
-        if (!navigator.onLine || source !== 'live') {
-          setSaveError(message(source === 'live' ? 'transferOfflineError' : 'transferUnavailable'))
+        if (getMoneyMutationSource() !== 'live') {
+          setSaveError(message(
+            navigator.onLine ? 'transferUnavailable' : 'transferOfflineError',
+          ))
           return false
         }
         await actionData(deleteAccountTransferAction(transfer.id, { updatedAt: transfer.updatedAt }))
@@ -759,7 +803,7 @@ export function useMoneyData(
         setSaving(false)
       }
     },
-    [refresh, source],
+    [getMoneyMutationSource, refresh],
   )
 
   const visibleSnapshot = useMemo(

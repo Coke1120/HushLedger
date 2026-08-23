@@ -97,7 +97,7 @@ export const aiParseRequestSchema = z
   })
   .strict()
 
-export const aiDraftFlagSchema = z.enum([
+const aiModelDraftFlagSchema = z.enum([
   'UNCERTAIN_DATE',
   'UNCERTAIN_AMOUNT',
   'UNCERTAIN_DIRECTION',
@@ -105,6 +105,11 @@ export const aiDraftFlagSchema = z.enum([
   'POSSIBLE_DUPLICATE',
   'POSSIBLE_TRANSFER',
   'NEEDS_REVIEW',
+])
+
+export const aiDraftFlagSchema = z.enum([
+  ...aiModelDraftFlagSchema.options,
+  'RUNNING_BALANCE_MISMATCH',
 ])
 
 const aiStatementBalanceSchema = z
@@ -118,6 +123,13 @@ const aiStatementTotalSchema = z
   .object({
     sourceLine: z.number().int().positive(),
     amountText: boundedText(32).regex(new RegExp(AI_NON_NEGATIVE_DECIMAL_PATTERN)),
+  })
+  .strict()
+
+const aiStatementReferenceSchema = z
+  .object({
+    sourceLine: z.number().int().positive(),
+    referenceText: boundedText(80),
   })
   .strict()
 
@@ -137,38 +149,17 @@ export const aiModelOutputSchema = z
             amountText: boundedText(32).regex(new RegExp(AI_POSITIVE_DECIMAL_PATTERN)),
             currency: supportedCurrencySchema,
             description: z.string().trim().max(80),
+            reference: aiStatementReferenceSchema.nullable(),
+            runningBalance: aiStatementBalanceSchema.nullable(),
             suggestedCategoryName: z.string().trim().min(1).max(80).nullable(),
             confidence: z.number().min(0).max(1),
-            flags: z.array(aiDraftFlagSchema).max(8),
+            flags: z.array(aiModelDraftFlagSchema).max(8),
           })
           .strict(),
       )
       .max(MAX_AI_DRAFT_ROWS),
   })
   .strict()
-
-export const bankImportDraftSchema = z
-  .object({
-    id: z.string().uuid(),
-    importKey: transactionImportKeySchema.refine(
-      (value) => /^ai:statement:row:[0-9a-f]{64}$/.test(value),
-    ),
-    sourceLine: z.number().int().positive(),
-    sourceText: z.string().max(240),
-    occurredOn: z.string().refine(isValidCalendarDate),
-    type: transactionTypeSchema,
-    amountText: boundedText(32),
-    amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    currency: supportedCurrencySchema,
-    accountId: z.number().int().positive(),
-    categoryId: z.number().int().positive().nullable(),
-    payee: z.string().trim().max(80),
-    confidence: z.number().min(0).max(1),
-    flags: z.array(aiDraftFlagSchema).max(9),
-  })
-  .strict()
-
-export const bankImportDraftsSchema = z.array(bankImportDraftSchema).max(MAX_AI_DRAFT_ROWS)
 
 export const bankStatementSourceAmountSchema = z
   .object({
@@ -184,6 +175,31 @@ export const bankStatementSourceAmountSchema = z
   .strict()
 
 export type BankStatementSourceAmount = z.infer<typeof bankStatementSourceAmountSchema>
+
+export const bankImportDraftSchema = z
+  .object({
+    id: z.string().uuid(),
+    importKey: transactionImportKeySchema.refine(
+      (value) => /^ai:statement:row:[0-9a-f]{64}$/.test(value),
+    ),
+    sourceLine: z.number().int().positive(),
+    sourceText: z.string().max(240),
+    bankReference: z.string().min(6).max(80).nullable(),
+    runningBalance: bankStatementSourceAmountSchema.nullable(),
+    occurredOn: z.string().refine(isValidCalendarDate),
+    type: transactionTypeSchema,
+    amountText: boundedText(32),
+    amountMinor: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    currency: supportedCurrencySchema,
+    accountId: z.number().int().positive(),
+    categoryId: z.number().int().positive().nullable(),
+    payee: z.string().trim().max(80),
+    confidence: z.number().min(0).max(1),
+    flags: z.array(aiDraftFlagSchema).max(9),
+  })
+  .strict()
+
+export const bankImportDraftsSchema = z.array(bankImportDraftSchema).max(MAX_AI_DRAFT_ROWS)
 
 export const bankStatementVerificationSchema = z
   .object({
@@ -217,6 +233,11 @@ export const bankStatementVerificationSchema = z
       .min(Number.MIN_SAFE_INTEGER)
       .max(Number.MAX_SAFE_INTEGER)
       .nullable(),
+    runningBalanceStatus: z.enum(['matched', 'mismatch', 'unavailable']),
+    runningBalanceCheckedRows: z.number().int().min(0).max(MAX_AI_DRAFT_ROWS),
+    runningBalanceMismatchSourceLines: z
+      .array(z.number().int().positive())
+      .max(MAX_AI_DRAFT_ROWS),
   })
   .strict()
 
@@ -237,9 +258,16 @@ export type BankStatementParseResult = z.infer<typeof bankStatementParseResultSc
 
 export function calculateBankStatementVerification(
   evidence: BankStatementVerificationEvidence,
-  entries: readonly { type: 'income' | 'expense'; amountMinor: number }[],
+  entries: readonly {
+    type: 'income' | 'expense'
+    amountMinor: number
+    sourceLine?: number
+    occurredOn?: string
+    runningBalance?: BankStatementSourceAmount | null
+  }[],
 ): BankStatementVerification {
   const parsed = exactTransactionTotals(entries)
+  const runningBalance = calculateRunningBalanceVerification(entries)
   const balanceDifferenceMinor = evidence.openingBalance && evidence.closingBalance
     ? calculateReconciliationDifference(
         evidence.closingBalance.amountMinor,
@@ -272,6 +300,85 @@ export function calculateBankStatementVerification(
     balanceDifferenceMinor,
     debitDifferenceMinor,
     creditDifferenceMinor,
+    runningBalanceStatus: runningBalance.status,
+    runningBalanceCheckedRows: runningBalance.checkedRows,
+    runningBalanceMismatchSourceLines: runningBalance.mismatchSourceLines,
+  }
+}
+
+function calculateRunningBalanceVerification(
+  entries: readonly {
+    type: 'income' | 'expense'
+    amountMinor: number
+    sourceLine?: number
+    occurredOn?: string
+    runningBalance?: BankStatementSourceAmount | null
+  }[],
+) {
+  const ordered = entries
+    .map((entry, index) => ({ ...entry, index }))
+    .sort((left, right) => (left.sourceLine ?? left.index) - (right.sourceLine ?? right.index))
+  const checkpoints = ordered
+    .map((entry, index) => ({ entry, index }))
+    .filter(({ entry }) => entry.runningBalance)
+
+  if (checkpoints.length < 2) {
+    return {
+      status: 'unavailable' as const,
+      checkedRows: 0,
+      mismatchSourceLines: [] as number[],
+    }
+  }
+
+  const forwardMismatches: number[] = []
+  const reverseMismatches: number[] = []
+  const checkedRows = checkpoints[checkpoints.length - 1]!.index - checkpoints[0]!.index
+  for (let index = 1; index < checkpoints.length; index += 1) {
+    const previous = checkpoints[index - 1]!
+    const current = checkpoints[index]!
+    const previousBalance = BigInt(previous.entry.runningBalance!.amountMinor)
+    const currentBalance = BigInt(current.entry.runningBalance!.amountMinor)
+    let forwardDelta = 0n
+    let reverseDelta = 0n
+
+    for (let rowIndex = previous.index; rowIndex <= current.index; rowIndex += 1) {
+      const row = ordered[rowIndex]!
+      const delta = BigInt(row.type === 'income' ? row.amountMinor : -row.amountMinor)
+      if (rowIndex > previous.index) forwardDelta += delta
+      if (rowIndex < current.index) reverseDelta += delta
+    }
+
+    if (previousBalance + forwardDelta !== currentBalance) {
+      for (let rowIndex = previous.index + 1; rowIndex <= current.index; rowIndex += 1) {
+        forwardMismatches.push(ordered[rowIndex]!.sourceLine ?? rowIndex + 1)
+      }
+    }
+    if (currentBalance + reverseDelta !== previousBalance) {
+      for (let rowIndex = previous.index; rowIndex < current.index; rowIndex += 1) {
+        reverseMismatches.push(ordered[rowIndex]!.sourceLine ?? rowIndex + 1)
+      }
+    }
+  }
+
+  let physicalOrderIsForward: boolean | null = null
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previousDate = ordered[index - 1]?.occurredOn
+    const currentDate = ordered[index]?.occurredOn
+    if (!previousDate || !currentDate || previousDate === currentDate) continue
+    physicalOrderIsForward = previousDate < currentDate
+    break
+  }
+  const mismatchSourceLines = physicalOrderIsForward === true
+    ? forwardMismatches
+    : physicalOrderIsForward === false
+      ? reverseMismatches
+      : forwardMismatches.length <= reverseMismatches.length
+        ? forwardMismatches
+        : reverseMismatches
+  return {
+    status: mismatchSourceLines.length === 0 ? 'matched' as const : 'mismatch' as const,
+    checkedRows,
+    mismatchSourceLines: [...new Set(mismatchSourceLines)],
   }
 }
 

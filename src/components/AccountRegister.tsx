@@ -24,7 +24,7 @@ import {
 } from '../lib/accountRegisterReview'
 import { api } from '../lib/api'
 import { isValidCalendarDate } from '../lib/date'
-import { parseSignedAmount } from '../lib/money'
+import { formatSignedAmountInput, parseSignedAmount } from '../lib/money'
 import { calculateReconciliationDifference } from '../lib/reconciliation'
 import type { SupportedCurrency } from '../lib/currency'
 import type {
@@ -48,6 +48,7 @@ type AccountRegisterProps = {
   loading: boolean
   saving: boolean
   reconcileInitially: boolean
+  initialStatementBalanceMinor?: number | null
   onClose: () => void
   onDateRangeChange: (dateFrom: string, dateTo: string) => void
   onEditTransaction: (transaction: Transaction) => void
@@ -73,6 +74,7 @@ export function AccountRegister({
   loading,
   saving,
   reconcileInitially,
+  initialStatementBalanceMinor = null,
   onClose,
   onDateRangeChange,
   onEditTransaction,
@@ -82,7 +84,11 @@ export function AccountRegister({
   const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const [reconciling, setReconciling] = useState(reconcileInitially)
   const [showUnclearedOnly, setShowUnclearedOnly] = useState(reconcileInitially)
-  const [statementValue, setStatementValue] = useState('')
+  const [statementValue, setStatementValue] = useState(() => (
+    initialStatementBalanceMinor === null
+      ? ''
+      : formatSignedAmountInput(initialStatementBalanceMinor, locale)
+  ))
   const [rangeDraft, setRangeDraft] = useState({ dateFrom, dateTo })
   const [updatingEntryId, setUpdatingEntryId] = useState<string | null>(null)
   const [exportState, setExportState] = useState<'idle' | 'preparing' | 'ready' | 'error'>('idle')

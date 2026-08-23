@@ -58,7 +58,7 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
     return (
       <div className="status-banner status-error" role="alert">
         <AlertTriangle aria-hidden="true" />
-        <span>{t('savedRefreshFailed')}</span>
+        <span>{t('moneyDataLoadFailed')}</span>
         <button type="button" onClick={onRetry}>
           <RefreshCw aria-hidden="true" />
           {t('refresh')}

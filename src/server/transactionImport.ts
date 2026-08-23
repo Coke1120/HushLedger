@@ -253,7 +253,7 @@ export async function commitTransactionImport(
       ?,
       ?,
       ?,
-      'unreviewed'
+      ?
     RETURNING id
   `)
   const insertImportKey = database.prepare(`
@@ -293,7 +293,7 @@ export async function commitTransactionImport(
     UPDATE transactions
     SET
       cleared = 1,
-      import_review_status = 'unreviewed',
+      import_review_status = ?,
       updated_at = CASE
         WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
           THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -310,7 +310,10 @@ export async function commitTransactionImport(
         kind: 'matched' as const,
         statements: [
           bindRow(insertMatchedImportKey, row),
-          clearMatchedTransaction.bind(row.importKey),
+          clearMatchedTransaction.bind(
+            row.initialReviewStatus ?? 'unreviewed',
+            row.importKey,
+          ),
         ],
       }
     }
@@ -332,6 +335,7 @@ export async function commitTransactionImport(
           row.cleared ? 1 : 0,
           row.payee,
           row.note,
+          row.initialReviewStatus ?? 'unreviewed',
         ),
         insertImportKey.bind(row.importKey, row.id),
       ],

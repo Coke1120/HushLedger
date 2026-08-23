@@ -836,6 +836,15 @@ export async function updateTransaction(
   })
   if (referenceError) return { kind: 'reference_invalid', code: referenceError }
 
+  const materialEdit = input.type !== existing.type ||
+    input.amountMinor !== existing.amountMinor ||
+    input.currency !== existing.currency ||
+    input.accountId !== existing.accountId ||
+    input.categoryId !== existing.categoryId ||
+    input.occurredOn !== existing.occurredOn ||
+    input.payee !== existing.payee ||
+    input.note !== existing.note
+
   const updated = await database.prepare(`
     UPDATE transactions
     SET
@@ -848,6 +857,10 @@ export async function updateTransaction(
       cleared = ?,
       payee = ?,
       note = ?,
+      import_review_status = CASE
+        WHEN import_review_status IS NOT NULL AND ? = 1 THEN 'unreviewed'
+        ELSE import_review_status
+      END,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
     WHERE id = ? AND updated_at = ?
       AND EXISTS (
@@ -875,6 +888,7 @@ export async function updateTransaction(
       input.cleared ? 1 : 0,
       input.payee,
       input.note,
+      materialEdit ? 1 : 0,
       id,
       input.updatedAt,
       input.accountId,
@@ -991,6 +1005,10 @@ export async function setTransactionsCategory(
     )
     UPDATE transactions
     SET
+      import_review_status = CASE
+        WHEN import_review_status IS NOT NULL AND category_id <> ? THEN 'unreviewed'
+        ELSE import_review_status
+      END,
       category_id = ?,
       updated_at = CASE
         WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
@@ -1015,7 +1033,7 @@ export async function setTransactionsCategory(
         INNER JOIN target ON target.type = current.type
       )
     RETURNING id
-  `).bind(desired, input.categoryId, input.categoryId)
+  `).bind(desired, input.categoryId, input.categoryId, input.categoryId)
   const [guardResult, updateResult] = await database.batch([guard, update])
   const guardRow = guardResult.results[0] as TransactionCategoryGuardRow | undefined
   if (!guardRow) throw new Error('Bulk transaction category guard returned no row')

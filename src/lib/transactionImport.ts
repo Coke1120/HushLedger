@@ -16,6 +16,7 @@ export const transactionImportRowSchema = transactionInputSchema
     sourceRow: z.number().int().positive().max(1_000_000),
     importKey: transactionImportKeySchema,
     include: z.boolean(),
+    initialReviewStatus: z.enum(['unreviewed', 'needs_follow_up']).optional(),
   })
   .strict()
 

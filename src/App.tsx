@@ -99,6 +99,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     from: string
     to: string
   } | null>(null)
+  const [registerStatementBalance, setRegisterStatementBalance] = useState<{
+    month: string
+    minor: number
+  } | null>(null)
   const [categoryFilterId, setCategoryFilterId] = useState<number | null>(null)
   const [payeeFilter, setPayeeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -139,6 +143,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [settingsMutationInProgress, setSettingsMutationInProgress] = useState(false)
   const [ledgerBackupDue, setLedgerBackupDue] = useState<boolean | null>(null)
   const mainRef = useRef<HTMLElement>(null)
+  const transactionsPanelRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiStatementImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiCopilotButtonRef = useRef<HTMLButtonElement>(null)
@@ -195,7 +200,9 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     || recurringMutationInProgress
   const ledgerMutationInProgress = otherLedgerMutationInProgress || settingsMutationInProgress
   const ledgerInteractionLocked = ledgerRestoreInProgress || ledgerMutationInProgress
-  const transactionEntryDisabled = ledgerInteractionLocked || data.source === 'loading'
+  const transactionEntryDisabled = ledgerInteractionLocked
+    || data.source !== 'live'
+    || !data.online
   const currentAiSettingsRowOverride = aiSettingsRowOverride
     && !aiSettingsRowOverrideIsSuperseded(
       aiSettingsRowOverride,
@@ -475,7 +482,15 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     changeView('transactions')
   }, [changeView])
 
-  const openAccountRegister = useCallback((accountId: number, mode: 'review' | 'reconcile') => {
+  const openAccountRegister = useCallback((
+    accountId: number,
+    mode: 'review' | 'reconcile',
+    statement?: {
+      dateFrom: string
+      dateTo: string
+      closingBalanceMinor: number
+    },
+  ) => {
     if (!data.accounts.some((account) => account.id === accountId)) return
     setSearch('')
     setAmountFilterMinor(null)
@@ -486,7 +501,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setImportReviewFilter('all')
     setDuplicatesOnly(false)
     setPayeeFilter(null)
-    setRegisterDateRange(null)
+    setRegisterDateRange(statement
+      ? { month, from: statement.dateFrom, to: statement.dateTo }
+      : null)
+    setRegisterStatementBalance(statement
+      ? { month, minor: statement.closingBalanceMinor }
+      : null)
     if (data.source === 'live' && data.online) {
       setAccountFilterId(null)
       setRegisterAccountId(accountId)
@@ -499,7 +519,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setTransactionSort('date_desc')
     setImportMode(null)
     changeView('transactions')
-  }, [changeView, data.accounts, data.online, data.source])
+  }, [changeView, data.accounts, data.online, data.source, month])
 
   const openAccountTransactions = useCallback((accountId: number) => {
     openAccountRegister(accountId, 'review')
@@ -509,12 +529,22 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     openAccountRegister(accountId, 'reconcile')
   }, [openAccountRegister])
 
+  const openImportedStatementReconciliation = useCallback((statement: {
+    accountId: number
+    dateFrom: string
+    dateTo: string
+    closingBalanceMinor: number
+  }) => {
+    openAccountRegister(statement.accountId, 'reconcile', statement)
+  }, [openAccountRegister])
+
   const closeAccountRegister = useCallback(() => {
     if (ledgerInteractionLocked) return
     setAccountFilterId(registerAccountId)
     setRegisterAccountId(null)
     setRegisterMode('review')
     setRegisterDateRange(null)
+    setRegisterStatementBalance(null)
   }, [ledgerInteractionLocked, registerAccountId])
 
   const changeRegisterDateRange = useCallback((from: string, to: string) => {
@@ -640,6 +670,17 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     setImportMode(null)
     setRegisterAccountId(null)
   }, [])
+
+  const openImportedTransactionReview = useCallback((
+    reviewStatus: 'unreviewed' | 'needs_follow_up',
+  ) => {
+    resetTransactionFilters()
+    setImportMode(null)
+    setTransactionDateScope('all')
+    setImportReviewFilter(reviewStatus)
+    changeView('transactions')
+    requestAnimationFrame(() => transactionsPanelRef.current?.focus())
+  }, [changeView, resetTransactionFilters])
 
   const applyAiCopilotAction = useCallback((action: AiCopilotAction) => {
     if (ledgerInteractionLocked) return
@@ -932,6 +973,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
 
           <section
             className="transactions-panel"
+            ref={transactionsPanelRef}
+            tabIndex={-1}
             aria-labelledby={registerAccountId === null ? 'transactions-title' : undefined}
             aria-label={registerAccountId !== null ? t('accountRegisterList') : undefined}
           >
@@ -1091,6 +1134,8 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onClose={closeImport}
                 onConfigure={() => openSettings('connections')}
                 onImported={() => data.refresh('error')}
+                onReviewImports={openImportedTransactionReview}
+                onReconcile={openImportedStatementReconciliation}
                 onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}
@@ -1110,6 +1155,9 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 loading={loading}
                 saving={ledgerInteractionLocked}
                 reconcileInitially={registerMode === 'reconcile'}
+                initialStatementBalanceMinor={registerStatementBalance?.month === month
+                  ? registerStatementBalance.minor
+                  : null}
                 onClose={closeAccountRegister}
                 onDateRangeChange={changeRegisterDateRange}
                 onEditTransaction={openTransaction}

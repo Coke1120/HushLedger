@@ -29,6 +29,10 @@ import { isValidCalendarDate } from '../lib/date'
 import { parseAmount } from '../lib/money'
 import type { Account, Category, TransactionType } from '../lib/schema'
 import {
+  statementTransferImportInputSchema,
+  statementTransferImportResponseSchema,
+} from '../lib/statementTransferImport'
+import {
   transactionImportCommitResultSchema,
   transactionImportPreviewResultSchema,
   type TransactionImportPreviewResult,
@@ -38,6 +42,15 @@ import {
 
 type EditableBankImportDraft = Omit<BankImportDraft, 'amountMinor'> & {
   amountMinor: number | null
+}
+
+type CompletedImportActions = {
+  accountId: number
+  closingBalanceMinor: number | null
+  dateFrom: string | null
+  latestEntryDate: string | null
+  hasUnreviewed: boolean
+  hasFollowUp: boolean
 }
 
 type BankImportPanelProps = {
@@ -52,6 +65,13 @@ type BankImportPanelProps = {
   onClose: () => void
   onConfigure: () => void
   onImported: () => Promise<unknown>
+  onReviewImports: (status: 'unreviewed' | 'needs_follow_up') => void
+  onReconcile: (statement: {
+    accountId: number
+    closingBalanceMinor: number
+    dateFrom: string
+    dateTo: string
+  }) => void
   onMutationStateChange: (mutating: boolean) => void
 }
 
@@ -67,6 +87,8 @@ export function BankImportPanel({
   onClose,
   onConfigure,
   onImported,
+  onReviewImports,
+  onReconcile,
   onMutationStateChange,
 }: BankImportPanelProps) {
   const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
@@ -85,6 +107,12 @@ export function BankImportPanel({
   const [analyzing, setAnalyzing] = useState(false)
   const [previewing, setPreviewing] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [transferringDraftId, setTransferringDraftId] = useState<string | null>(null)
+  const [counterpartyAccountIds, setCounterpartyAccountIds] = useState<Record<string, number>>({})
+  const [createdTransferKeys, setCreatedTransferKeys] = useState<Set<string>>(() => new Set())
+  const [transferErrors, setTransferErrors] = useState<Record<string, string>>({})
+  const [completedImport, setCompletedImport] = useState<CompletedImportActions | null>(null)
+  const [statementCloseDate, setStatementCloseDate] = useState('')
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const requestIdRef = useRef(0)
@@ -97,15 +125,26 @@ export function BankImportPanel({
     && settings.baseUrl.trim() === persistedSettings.baseUrl
     && settings.model.trim() === persistedSettings.model
   const configured = transientProvider.success || canUseStoredProvider
+  const mutating = importing || transferringDraftId !== null
+  const transferBusy = analyzing || previewing || mutating
   const statementBytes = new TextEncoder().encode(statementText.trim()).byteLength
   const verification = useMemo(
     () => recalculateVerification(verificationEvidence, drafts),
     [drafts, verificationEvidence],
   )
+  const effectiveDrafts = useMemo(
+    () => effectiveBankImportDrafts(drafts, verification),
+    [drafts, verification],
+  )
   const previewStatusByKey = useMemo(
     () => new Map(preview?.rows.map((row) => [row.importKey, row.status]) ?? []),
     [preview],
   )
+  const validStatementCloseDate = completedImport?.dateFrom !== null
+    && completedImport?.dateFrom !== undefined
+    && completedImport.latestEntryDate !== null
+    && isValidCalendarDate(statementCloseDate)
+    && statementCloseDate >= completedImport.latestEntryDate
 
   useEffect(() => () => {
     requestIdRef.current += 1
@@ -123,9 +162,15 @@ export function BankImportPanel({
       setVerificationEvidence(null)
       setPreview(null)
       setSelectedKeys(new Set())
+      setCounterpartyAccountIds({})
+      setCreatedTransferKeys(new Set())
+      setTransferErrors({})
+      setCompletedImport(null)
+      setStatementCloseDate('')
       setAnalyzing(false)
       setPreviewing(false)
       setImporting(false)
+      setTransferringDraftId(null)
       onMutationStateChange(false)
       setStatus('')
       setError('')
@@ -140,6 +185,7 @@ export function BankImportPanel({
     setAnalyzing(false)
     setPreviewing(false)
     setImporting(false)
+    setTransferringDraftId(null)
     onMutationStateChange(false)
   }
 
@@ -149,6 +195,11 @@ export function BankImportPanel({
     setVerificationEvidence(null)
     setPreview(null)
     setSelectedKeys(new Set())
+    setCounterpartyAccountIds({})
+    setCreatedTransferKeys(new Set())
+    setTransferErrors({})
+    setCompletedImport(null)
+    setStatementCloseDate('')
     setStatus('')
     setError('')
   }
@@ -157,6 +208,7 @@ export function BankImportPanel({
     cancelPendingRequest()
     setPreview(null)
     setSelectedKeys(new Set())
+    setTransferErrors({})
     setStatus(t('aiDraftChanged'))
     setError('')
   }
@@ -192,6 +244,11 @@ export function BankImportPanel({
     setVerificationEvidence(null)
     setPreview(null)
     setSelectedKeys(new Set())
+    setCounterpartyAccountIds({})
+    setCreatedTransferKeys(new Set())
+    setTransferErrors({})
+    setCompletedImport(null)
+    setStatementCloseDate('')
     const requestId = ++requestIdRef.current
     requestControllerRef.current?.abort()
     const controller = new AbortController()
@@ -219,6 +276,10 @@ export function BankImportPanel({
         creditTotal: parsedResult.data.verification.creditTotal,
       }
       const recalculatedVerification = recalculateVerification(evidence, parsedResult.data.drafts)
+      const parsedDrafts = effectiveBankImportDrafts(
+        parsedResult.data.drafts,
+        recalculatedVerification,
+      )
       setDrafts(parsedResult.data.drafts)
       setVerificationEvidence(evidence)
       setStatus(
@@ -228,7 +289,7 @@ export function BankImportPanel({
       )
       if (parsedResult.data.drafts.length > 0) {
         await previewDrafts(
-          parsedResult.data.drafts,
+          parsedDrafts,
           requestId,
           controller.signal,
           canAutomaticallySelectBankImport(recalculatedVerification),
@@ -284,7 +345,7 @@ export function BankImportPanel({
   }
 
   const previewDrafts = async (
-    nextDrafts = drafts,
+    nextDrafts = effectiveDrafts,
     requestId = ++requestIdRef.current,
     existingSignal?: AbortSignal,
     allowAutomaticSelection = canAutomaticallySelectBankImport(verification),
@@ -351,8 +412,8 @@ export function BankImportPanel({
       setError(t('aiOffline'))
       return
     }
-    if (!preview || selectedKeys.size === 0 || importing) return
-    const rows = importRows(drafts).map((row) => ({
+    if (!preview || selectedKeys.size === 0 || mutating) return
+    const rows = importRows(effectiveDrafts, previewStatusByKey).map((row) => ({
       ...row,
       include: selectedKeys.has(row.importKey),
     }))
@@ -365,6 +426,12 @@ export function BankImportPanel({
       return
     }
 
+    const committedDrafts = effectiveDrafts.filter((draft) => selectedKeys.has(draft.importKey))
+    const completionContext = statementCompletionContext(
+      verificationEvidence,
+      committedDrafts,
+      accountId,
+    )
     onMutationStateChange(true)
     setImporting(true)
     setError('')
@@ -385,11 +452,27 @@ export function BankImportPanel({
       if (!parsed.success) throw new Error('Invalid AI import result')
 
       const committedKeys = new Set(selectedKeys)
-      const remaining = drafts.filter((draft) => !committedKeys.has(draft.importKey))
+      const remaining = effectiveDrafts.filter((draft) => (
+        !committedKeys.has(draft.importKey) && !createdTransferKeys.has(draft.importKey)
+      ))
+      if (parsed.data.imported + parsed.data.matched > 0) {
+        setCompletedImport((current) => mergeCompletedImportActions(current, {
+          ...completionContext,
+          hasUnreviewed: committedDrafts.some((draft) => !draftNeedsFollowUp(
+              draft,
+              previewStatusByKey.get(draft.importKey),
+            )),
+          hasFollowUp: committedDrafts.some((draft) => draftNeedsFollowUp(
+              draft,
+              previewStatusByKey.get(draft.importKey),
+            )),
+        }))
+      }
       setDrafts(remaining)
       setVerificationEvidence(null)
       setPreview(null)
       setSelectedKeys(new Set())
+      setCreatedTransferKeys(new Set())
       if (remaining.length === 0) setStatementText('')
       setStatus(t('aiImportSuccess', {
         imported: parsed.data.imported,
@@ -418,12 +501,87 @@ export function BankImportPanel({
     }
   }
 
+  const createStatementTransfer = async (
+    draft: EditableBankImportDraft,
+    compatibleAccounts: Account[],
+  ) => {
+    const counterpartyAccountId = counterpartyAccountIds[draft.id]
+      ?? (compatibleAccounts.length === 1 ? compatibleAccounts[0]!.id : 0)
+    if (
+      !available
+      || transferBusy
+      || draft.amountMinor === null
+      || !isValidCalendarDate(draft.occurredOn)
+      || counterpartyAccountId === 0
+      || transferDraftHasBlockingWarning(draft)
+      || previewStatusByKey.get(draft.importKey) !== 'new'
+    ) return
+
+    setTransferErrors((current) => ({ ...current, [draft.id]: '' }))
+    setTransferringDraftId(draft.id)
+    onMutationStateChange(true)
+    const requestId = ++requestIdRef.current
+    requestControllerRef.current?.abort()
+    const controller = new AbortController()
+    requestControllerRef.current = controller
+    const completionContext = statementCompletionContext(
+      verificationEvidence,
+      [draft],
+      accountId,
+    )
+    try {
+      const request = statementTransferImportInputSchema.parse({
+        importKey: draft.importKey,
+        statementAccountId: draft.accountId,
+        counterpartyAccountId,
+        amountMinor: draft.amountMinor,
+        occurredOn: draft.occurredOn,
+        direction: draft.type === 'expense' ? 'outflow' : 'inflow',
+        note: draft.payee,
+      })
+      const response = await api<unknown>('/api/imports/statement-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+        signal: controller.signal,
+      })
+      if (requestId !== requestIdRef.current) return
+      const parsed = statementTransferImportResponseSchema.safeParse(response)
+      if (!parsed.success) throw new Error('Invalid statement transfer result')
+      setCreatedTransferKeys((current) => new Set(current).add(draft.importKey))
+      setCompletedImport((current) => mergeCompletedImportActions(current, completionContext))
+      setStatus(t(
+        parsed.data.kind === 'created'
+          ? 'aiTransferCreated'
+          : parsed.data.kind === 'matched'
+            ? 'aiTransferMatched'
+            : 'aiTransferAlreadyImported',
+      ))
+      await onImported()
+    } catch (caught) {
+      if (controller.signal.aborted || requestId !== requestIdRef.current) return
+      setTransferErrors((current) => ({
+        ...current,
+        [draft.id]: caught instanceof ApiError
+          && caught.code === 'STATEMENT_TRANSFER_POSSIBLE_DUPLICATE'
+          ? t('aiTransferPossibleDuplicate')
+          : renderMessage(t, messageForError(caught, 'errorAiTransferFailed')),
+      }))
+    } finally {
+      onMutationStateChange(false)
+      if (requestId === requestIdRef.current) {
+        requestControllerRef.current = null
+        setTransferringDraftId(null)
+      }
+    }
+  }
+
   return (
     <section
       id="bank-import-panel"
       className="bank-import-panel"
       aria-labelledby="bank-import-title"
-      aria-busy={analyzing || previewing || importing}
+      aria-busy={analyzing || previewing || mutating}
       ref={panelRef}
       tabIndex={-1}
     >
@@ -432,7 +590,7 @@ export function BankImportPanel({
           <h3 id="bank-import-title">{t('aiImportTitle')}</h3>
           <p>{t('aiImportHelp')}</p>
         </div>
-        <button className="icon-button" type="button" onClick={onClose} disabled={importing} aria-label={t('aiCloseImport')}>
+        <button className="icon-button" type="button" onClick={onClose} disabled={mutating} aria-label={t('aiCloseImport')}>
           <X aria-hidden="true" />
         </button>
       </div>
@@ -452,7 +610,7 @@ export function BankImportPanel({
             <span>{t('aiTargetAccount')}</span>
             <select
               value={accountId}
-              disabled={analyzing || previewing || importing}
+              disabled={analyzing || previewing || mutating}
               onChange={(event) => {
                 setAccountId(Number(event.target.value))
                 invalidateDrafts()
@@ -473,7 +631,7 @@ export function BankImportPanel({
               <span>{t('aiDateOrder')}</span>
               <select
                 value={dateOrder}
-                disabled={analyzing || previewing || importing}
+                disabled={analyzing || previewing || mutating}
                 onChange={(event) => {
                   setDateOrder(event.target.value as AiDateOrder)
                   invalidateDrafts()
@@ -492,7 +650,7 @@ export function BankImportPanel({
           <span className="ai-statement-input-wrap">
             <textarea
               value={statementText}
-              disabled={analyzing || previewing || importing}
+              disabled={analyzing || previewing || mutating}
               onChange={(event) => {
                 setStatementText(event.target.value)
                 invalidateDrafts()
@@ -535,7 +693,7 @@ export function BankImportPanel({
           disabled={
             analyzing ||
             previewing ||
-            importing ||
+            mutating ||
             !configured ||
             !available ||
             !selectedAccount ||
@@ -561,12 +719,12 @@ export function BankImportPanel({
           {verification ? (
             <BankStatementVerificationSummary
               verification={verification}
-              currency={drafts[0]!.currency}
+              currency={effectiveDrafts[0]!.currency}
             />
           ) : null}
 
           <div className="ai-draft-list">
-            {drafts.map((draft) => {
+            {effectiveDrafts.map((draft) => {
               const matchingCategories = categories.filter(
                 (category) => category.isActive && category.type === draft.type,
               )
@@ -577,6 +735,18 @@ export function BankImportPanel({
                 importStatus === 'match_ready' ||
                 importStatus === 'possible_duplicate'
               const possibleTransfer = draft.flags.includes('POSSIBLE_TRANSFER')
+              const transferBlocked = possibleTransfer && (
+                transferDraftHasBlockingWarning(draft)
+                || importStatus !== 'new'
+              )
+              const transferCreated = createdTransferKeys.has(draft.importKey)
+              const compatibleTransferAccounts = activeAccounts.filter((account) => (
+                account.id !== draft.accountId && account.currency === draft.currency
+              ))
+              const counterpartyAccountId = counterpartyAccountIds[draft.id]
+                ?? (compatibleTransferAccounts.length === 1
+                  ? compatibleTransferAccounts[0]!.id
+                  : 0)
               const needsReview = hasSafetyWarning(draft) ||
                 !validDate ||
                 !validAmount ||
@@ -595,15 +765,17 @@ export function BankImportPanel({
                         <input
                           type="checkbox"
                           checked={selected}
-                          disabled={!selectable || possibleTransfer || importing}
+                          disabled={!selectable || possibleTransfer || mutating}
                           onChange={(event) => toggleDraft(draft.importKey, event.target.checked)}
                           aria-label={t('aiSelectDraft', { line: draft.sourceLine })}
                           aria-describedby={possibleTransfer ? `${draft.id}-warnings` : undefined}
                         />
                         <span>{t('aiSourceLine', { line: draft.sourceLine })}</span>
                       </label>
-                      <span className={`csv-import-status is-${importStatus ?? 'needs_review'}`}>
-                        {importStatus
+                      <span className={`csv-import-status is-${transferCreated ? 'match' : importStatus ?? 'needs_review'}`}>
+                        {transferCreated
+                          ? t('aiTransferCreatedStatus')
+                          : importStatus
                           ? t(importStatusMessageKey(importStatus))
                           : t('aiStatusNeedsReview')}
                       </span>
@@ -630,8 +802,81 @@ export function BankImportPanel({
                       </ul>
                     ) : null}
                   </div>
-                  <AiDraftDetails
-                    initiallyOpen={needsReview}
+                  {possibleTransfer ? (
+                    <div className="ai-statement-transfer" aria-labelledby={`${draft.id}-transfer-title`}>
+                      <div>
+                        <strong id={`${draft.id}-transfer-title`}>{t('aiTransferTitle')}</strong>
+                        <small id={`${draft.id}-transfer-direction`}>
+                          {t(draft.type === 'expense'
+                            ? 'aiTransferDirectionOutflow'
+                            : 'aiTransferDirectionInflow')}
+                        </small>
+                        {transferBlocked ? (
+                          <small className="ai-transfer-blocked" id={`${draft.id}-transfer-blocked`}>
+                            {t('aiTransferBlockedWarning')}
+                          </small>
+                        ) : null}
+                      </div>
+                      {transferCreated ? (
+                        <p role="status">{t('aiTransferCreatedStatus')}</p>
+                      ) : (
+                        <>
+                          <label>
+                            <span>{t('aiTransferCounterAccount')}</span>
+                            <select
+                              value={counterpartyAccountId}
+                              disabled={transferBusy || compatibleTransferAccounts.length === 0}
+                              onChange={(event) => setCounterpartyAccountIds((current) => ({
+                                ...current,
+                                [draft.id]: Number(event.target.value),
+                              }))}
+                              aria-describedby={`${draft.id}-transfer-direction${compatibleTransferAccounts.length === 0 ? ` ${draft.id}-transfer-unavailable` : ''}${transferBlocked ? ` ${draft.id}-transfer-blocked` : ''}`}
+                            >
+                              <option value={0} disabled>{t('aiTransferChooseCounterAccount')}</option>
+                              {compatibleTransferAccounts.map((account) => (
+                                <option value={account.id} key={account.id}>
+                                  {localizeEntityName(account.name, account.localizationKey)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            className="button button-secondary"
+                            type="button"
+                            disabled={
+                              transferBusy
+                              || !available
+                              || counterpartyAccountId === 0
+                              || !validDate
+                              || !validAmount
+                              || transferBlocked
+                            }
+                            onClick={() => void createStatementTransfer(
+                              draft,
+                              compatibleTransferAccounts,
+                            )}
+                          >
+                            {transferringDraftId === draft.id
+                              ? <LoaderCircle className="spin" aria-hidden="true" />
+                              : null}
+                            {transferringDraftId === draft.id
+                              ? t('aiTransferCreating')
+                              : t('aiTransferCreate')}
+                          </button>
+                          {compatibleTransferAccounts.length === 0 ? (
+                            <small id={`${draft.id}-transfer-unavailable`}>
+                              {t('aiTransferNoCompatibleAccount')}
+                            </small>
+                          ) : null}
+                        </>
+                      )}
+                      {transferErrors[draft.id] ? (
+                        <p className="form-error" role="alert">{transferErrors[draft.id]}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {!transferCreated ? <AiDraftDetails
+                    initiallyOpen={needsReview && (!possibleTransfer || transferBlocked)}
                     label={`${t(needsReview ? 'aiReviewDraftDetails' : 'aiEditDraftDetails')} · ${t('aiSourceLine', { line: draft.sourceLine })}`}
                   >
                     <div className="ai-draft-fields">
@@ -640,7 +885,7 @@ export function BankImportPanel({
                       <input
                         type="date"
                         value={draft.occurredOn}
-                        disabled={importing}
+                        disabled={mutating}
                         onChange={(event) => updateDraft(draft.id, { occurredOn: event.target.value })}
                         aria-invalid={!validDate}
                         aria-describedby={!validDate ? `${draft.id}-date-error` : undefined}
@@ -655,7 +900,7 @@ export function BankImportPanel({
                       <span>{t('transactionType')}</span>
                       <select
                         value={draft.type}
-                        disabled={importing}
+                        disabled={mutating}
                         onChange={(event) => updateDraftType(draft, event.target.value as TransactionType)}
                       >
                         <option value="expense">{t('expense')}</option>
@@ -667,7 +912,7 @@ export function BankImportPanel({
                       <input
                         type={privacyMode ? 'password' : 'text'}
                         value={draft.amountText}
-                        disabled={importing}
+                        disabled={mutating}
                         onChange={(event) => updateDraftAmount(draft, event.target.value)}
                         inputMode="decimal"
                         maxLength={32}
@@ -685,7 +930,7 @@ export function BankImportPanel({
                       <span>{t('payee')}</span>
                       <input
                         value={draft.payee}
-                        disabled={importing}
+                        disabled={mutating}
                         onChange={(event) => updateDraft(draft.id, { payee: event.target.value })}
                         maxLength={80}
                       />
@@ -694,7 +939,7 @@ export function BankImportPanel({
                       <span>{t('category')}</span>
                       <select
                         value={draft.categoryId ?? ''}
-                        disabled={importing}
+                        disabled={mutating}
                         onChange={(event) => updateDraft(draft.id, {
                           categoryId: event.target.value ? Number(event.target.value) : null,
                         })}
@@ -711,13 +956,13 @@ export function BankImportPanel({
                       className="icon-button ai-remove-draft"
                       type="button"
                       onClick={() => removeDraft(draft.id)}
-                      disabled={importing}
+                      disabled={mutating}
                       aria-label={t('aiRemoveDraft')}
                     >
                       <Trash2 aria-hidden="true" />
                     </button>
                     </div>
-                  </AiDraftDetails>
+                  </AiDraftDetails> : null}
                 </article>
               )
             })}
@@ -746,7 +991,7 @@ export function BankImportPanel({
                 className="button button-primary"
                 type="button"
                 onClick={() => void commitDrafts()}
-                disabled={!available || importing || previewing || selectedKeys.size === 0}
+                disabled={!available || mutating || previewing || selectedKeys.size === 0}
               >
                 {importing ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {importing ? t('aiImporting') : t('aiImportSelected')}
@@ -756,7 +1001,7 @@ export function BankImportPanel({
                 className="button button-secondary"
                 type="button"
                 onClick={() => void previewDrafts()}
-                disabled={!available || previewing || importing}
+                disabled={!available || previewing || mutating}
               >
                 {previewing ? <LoaderCircle className="spin" aria-hidden="true" /> : null}
                 {previewing ? t('aiPreviewing') : t('aiPreviewDrafts')}
@@ -764,6 +1009,78 @@ export function BankImportPanel({
             )}
           </div>
         </div>
+      ) : null}
+      {completedImport ? (
+        <section className="ai-import-next" aria-labelledby="ai-import-next-title">
+          <div>
+            <h4 id="ai-import-next-title">{t('aiImportNextTitle')}</h4>
+            <p>{t('aiImportNextHelp')}</p>
+          </div>
+          <div className="ai-import-next-actions">
+            {completedImport.hasFollowUp ? (
+              <button
+                className="button button-primary"
+                type="button"
+                disabled={mutating}
+                onClick={() => onReviewImports('needs_follow_up')}
+              >
+                {t('aiReviewFollowUps')}
+              </button>
+            ) : null}
+            {completedImport.hasUnreviewed ? (
+              <button
+                className="button button-secondary"
+                type="button"
+                disabled={mutating}
+                onClick={() => onReviewImports('unreviewed')}
+              >
+                {t('aiReviewUnreviewedImports')}
+              </button>
+            ) : null}
+            {completedImport.closingBalanceMinor !== null
+              && completedImport.dateFrom !== null
+              && completedImport.latestEntryDate !== null ? (
+                <div className="ai-import-reconcile-action">
+                  <label>
+                    <span>{t('statementClosesOn')}</span>
+                    <input
+                      type="date"
+                      value={statementCloseDate}
+                      min={completedImport.latestEntryDate}
+                      disabled={mutating}
+                      required
+                      aria-invalid={statementCloseDate.length > 0 && !validStatementCloseDate}
+                      aria-describedby={statementCloseDate.length > 0 && !validStatementCloseDate
+                        ? 'ai-reconcile-close-date-help ai-reconcile-close-date-error'
+                        : 'ai-reconcile-close-date-help'}
+                      onChange={(event) => setStatementCloseDate(event.target.value)}
+                    />
+                    <small id="ai-reconcile-close-date-help">
+                      {t('aiReconcileCloseDateHelp')}
+                    </small>
+                    {statementCloseDate.length > 0 && !validStatementCloseDate ? (
+                      <small className="field-error" id="ai-reconcile-close-date-error">
+                        {t('aiReconcileCloseDateInvalid')}
+                      </small>
+                    ) : null}
+                  </label>
+                  <button
+                    className="button button-secondary"
+                    type="button"
+                    disabled={mutating || !validStatementCloseDate}
+                    onClick={() => onReconcile({
+                      accountId: completedImport.accountId,
+                      closingBalanceMinor: completedImport.closingBalanceMinor as number,
+                      dateFrom: completedImport.dateFrom as string,
+                      dateTo: statementCloseDate,
+                    })}
+                  >
+                    {t('aiReconcileImportedAccount')}
+                  </button>
+                </div>
+              ) : null}
+          </div>
+        </section>
       ) : null}
     </section>
   )
@@ -778,6 +1095,7 @@ function aiFlagMessageKey(flag: BankImportDraft['flags'][number]) {
     case 'POSSIBLE_DUPLICATE': return 'aiFlagPossibleDuplicate'
     case 'POSSIBLE_TRANSFER': return 'aiFlagPossibleTransfer'
     case 'NEEDS_REVIEW': return 'aiFlagNeedsReview'
+    case 'RUNNING_BALANCE_MISMATCH': return 'aiFlagRunningBalanceMismatch'
   }
 }
 
@@ -823,6 +1141,20 @@ export function BankStatementVerificationSummary({
           <dd>{formatMoney(verification.parsedNetMinor, currency)}</dd>
         </div>
       </dl>
+      <p className={`ai-verification-running is-${verification.runningBalanceStatus}`}>
+        {t(
+          verification.runningBalanceStatus === 'matched'
+            ? 'aiRunningBalanceMatched'
+            : verification.runningBalanceStatus === 'mismatch'
+              ? 'aiRunningBalanceMismatch'
+              : 'aiRunningBalanceUnavailable',
+          {
+            count: verification.runningBalanceStatus === 'mismatch'
+              ? verification.runningBalanceMismatchSourceLines.length
+              : verification.runningBalanceCheckedRows,
+          },
+        )}
+      </p>
       {verification.status === 'mismatch' ? (
         <ul className="ai-verification-differences">
           {differences
@@ -840,7 +1172,10 @@ export function BankStatementVerificationSummary({
   )
 }
 
-function importRows(drafts: readonly EditableBankImportDraft[]): TransactionImportRow[] {
+function importRows(
+  drafts: readonly EditableBankImportDraft[],
+  previewStatusByKey?: ReadonlyMap<string, TransactionImportRowStatus>,
+): TransactionImportRow[] {
   return drafts.flatMap((draft) => {
     if (
       !isValidCalendarDate(draft.occurredOn) ||
@@ -864,6 +1199,10 @@ function importRows(drafts: readonly EditableBankImportDraft[]): TransactionImpo
       cleared: true,
       payee: draft.payee,
       note: '',
+      initialReviewStatus: draftNeedsFollowUp(
+        draft,
+        previewStatusByKey?.get(draft.importKey),
+      ) ? 'needs_follow_up' : undefined,
     })
     return parsed.success ? [parsed.data] : []
   })
@@ -893,6 +1232,19 @@ function hasSafetyWarning(draft: Pick<BankImportDraft, 'flags'>) {
   return draft.flags.some((flag) => flag !== 'UNCERTAIN_CATEGORY')
 }
 
+function draftNeedsFollowUp(
+  draft: Pick<BankImportDraft, 'flags'>,
+  previewStatus?: TransactionImportRowStatus,
+) {
+  return draft.flags.length > 0 || previewStatus === 'possible_duplicate'
+}
+
+function transferDraftHasBlockingWarning(draft: Pick<BankImportDraft, 'flags'>) {
+  return draft.flags.some((flag) => (
+    flag !== 'POSSIBLE_TRANSFER' && flag !== 'UNCERTAIN_CATEGORY'
+  ))
+}
+
 function recalculateVerification(
   evidence: BankStatementVerificationEvidence | null,
   drafts: readonly EditableBankImportDraft[],
@@ -904,10 +1256,73 @@ function recalculateVerification(
       drafts.map((draft) => ({
         type: draft.type,
         amountMinor: draft.amountMinor as number,
+        sourceLine: draft.sourceLine,
+        occurredOn: draft.occurredOn,
+        runningBalance: draft.runningBalance,
       })),
     )
   } catch {
     return null
+  }
+}
+
+function effectiveBankImportDrafts(
+  drafts: readonly EditableBankImportDraft[],
+  verification: BankStatementVerification | null,
+) {
+  if (!verification) return drafts
+  const mismatchSourceLines = new Set(
+    verification.runningBalanceMismatchSourceLines,
+  )
+  return drafts.map((draft) => {
+    const flags: BankImportDraft['flags'] = draft.flags.filter(
+      (flag) => flag !== 'RUNNING_BALANCE_MISMATCH',
+    )
+    if (mismatchSourceLines.has(draft.sourceLine)) flags.push('RUNNING_BALANCE_MISMATCH')
+    return flags.length === draft.flags.length
+      && flags.every((flag, index) => flag === draft.flags[index])
+      ? draft
+      : { ...draft, flags }
+  })
+}
+
+function statementCompletionContext(
+  evidence: BankStatementVerificationEvidence | null,
+  drafts: readonly EditableBankImportDraft[],
+  accountId: number,
+): CompletedImportActions {
+  const dates = drafts
+    .map((draft) => draft.occurredOn)
+    .filter(isValidCalendarDate)
+    .sort()
+  return {
+    accountId,
+    closingBalanceMinor: evidence?.closingBalance?.amountMinor ?? null,
+    dateFrom: dates[0] ?? null,
+    latestEntryDate: dates.at(-1) ?? null,
+    hasUnreviewed: false,
+    hasFollowUp: false,
+  }
+}
+
+function mergeCompletedImportActions(
+  current: CompletedImportActions | null,
+  next: CompletedImportActions,
+): CompletedImportActions {
+  if (!current) return next
+  const starts = [current.dateFrom, next.dateFrom]
+    .filter((date): date is string => date !== null)
+    .sort()
+  const ends = [current.latestEntryDate, next.latestEntryDate]
+    .filter((date): date is string => date !== null)
+    .sort()
+  return {
+    ...next,
+    closingBalanceMinor: next.closingBalanceMinor ?? current.closingBalanceMinor,
+    dateFrom: starts[0] ?? null,
+    latestEntryDate: ends.at(-1) ?? null,
+    hasUnreviewed: current.hasUnreviewed || next.hasUnreviewed,
+    hasFollowUp: current.hasFollowUp || next.hasFollowUp,
   }
 }
 

@@ -125,7 +125,11 @@ function statementOutput(
     debitTotal: null,
     creditTotal: null,
     ...evidence,
-    rows,
+    rows: rows.map((row) => ({
+      reference: null,
+      runningBalance: null,
+      ...(row as Record<string, unknown>),
+    })),
   }
 }
 
@@ -308,8 +312,8 @@ describe('AI provider adapter', () => {
               flags: [],
             },
           ], {
-            openingBalance: { sourceLine: 1, amountText: '-1000.00' },
-            closingBalance: { sourceLine: 4, amountText: '-1150.00' },
+            openingBalance: { sourceLine: 1, amountText: '1000.00' },
+            closingBalance: { sourceLine: 4, amountText: '1150.00' },
             debitTotal: { sourceLine: 5, amountText: '200.00' },
             creditTotal: { sourceLine: 6, amountText: '50.00' },
           }))
@@ -322,13 +326,13 @@ describe('AI provider adapter', () => {
       openingBalance: {
         sourceLine: 1,
         sourceText: 'Opening balance HK$1,000.00 amount due',
-        amountText: '-1000.00',
+        amountText: '1000.00',
         amountMinor: -100_000,
       },
       closingBalance: {
         sourceLine: 4,
         sourceText: 'Closing balance HK$1,150.00 amount due',
-        amountText: '-1150.00',
+        amountText: '1150.00',
         amountMinor: -115_000,
       },
       debitTotal: {
@@ -349,6 +353,9 @@ describe('AI provider adapter', () => {
       balanceDifferenceMinor: 0,
       debitDifferenceMinor: 0,
       creditDifferenceMinor: 0,
+      runningBalanceStatus: 'unavailable',
+      runningBalanceCheckedRows: 0,
+      runningBalanceMismatchSourceLines: [],
     })
     const body = JSON.parse(capturedBody) as {
       messages: Array<{ role: string; content: string }>
@@ -358,6 +365,8 @@ describe('AI provider adapter', () => {
     assert.match(body.messages[0]?.content ?? '', /posted or settled transactions only/)
     assert.match(body.messages[0]?.content ?? '', /must include POSSIBLE_TRANSFER/)
     assert.match(body.messages[0]?.content ?? '', /row\.sourceLine.*exact transaction amount/)
+    assert.match(body.messages[0]?.content ?? '', /explicitly labeled bank reference/)
+    assert.match(body.messages[0]?.content ?? '', /running balances.*HushLedger ledger sign/)
   })
 
   it('returns each deterministic statement mismatch difference', async () => {
@@ -416,6 +425,226 @@ describe('AI provider adapter', () => {
     assert.equal(result.verification.balanceDifferenceMinor, 1_000)
     assert.equal(result.verification.debitDifferenceMinor, 500)
     assert.equal(result.verification.creditDifferenceMinor, -100)
+  })
+
+  it('normalizes an explicit credit-card credit balance to a positive ledger balance', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        accountType: 'credit_card',
+        payeeSuggestions: [],
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: 'Closing credit balance HKD 25.00 CR',
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([], {
+          closingBalance: { sourceLine: 1, amountText: '-25.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.closingBalance?.amountMinor, 2_500)
+  })
+
+  it('does not treat generic subtotals as opening and closing balance evidence', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          'Invoice subtotal 100.00',
+          '11/07/2026 Merchant 10.00 DR',
+          'Invoice subtotal 90.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 2,
+          occurredOn: '2026-07-11',
+          direction: 'expense',
+          amountText: '10.00',
+          currency: 'HKD',
+          description: 'Merchant',
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }], {
+          openingBalance: { sourceLine: 1, amountText: '100.00' },
+          closingBalance: { sourceLine: 3, amountText: '90.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.openingBalance, null)
+    assert.equal(result.verification.closingBalance, null)
+  })
+
+  it('does not treat a page balance carried forward as the statement opening balance', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          'Balance carried forward 100.00',
+          '11/07/2026 Merchant 10.00 DR',
+          'Closing balance 90.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 2,
+          occurredOn: '2026-07-11',
+          direction: 'expense',
+          amountText: '10.00',
+          currency: 'HKD',
+          description: 'Merchant',
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }], {
+          openingBalance: { sourceLine: 1, amountText: '100.00' },
+          closingBalance: { sourceLine: 3, amountText: '90.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.openingBalance, null)
+    assert.equal(result.verification.closingBalance?.amountMinor, 9_000)
+  })
+
+  it('does not use a labeled mid-page balance as whole-statement evidence', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          '10/07/2026 First merchant 5.00 DR',
+          'Previous balance 100.00',
+          '11/07/2026 Second merchant 5.00 DR',
+          'Closing balance 90.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([
+          {
+            sourceLine: 1,
+            occurredOn: '2026-07-10',
+            direction: 'expense',
+            amountText: '5.00',
+            currency: 'HKD',
+            description: 'First merchant',
+            suggestedCategoryName: '餐飲',
+            confidence: 1,
+            flags: [],
+          },
+          {
+            sourceLine: 3,
+            occurredOn: '2026-07-11',
+            direction: 'expense',
+            amountText: '5.00',
+            currency: 'HKD',
+            description: 'Second merchant',
+            suggestedCategoryName: '餐飲',
+            confidence: 1,
+            flags: [],
+          },
+        ], {
+          openingBalance: { sourceLine: 2, amountText: '100.00' },
+          closingBalance: { sourceLine: 4, amountText: '90.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.openingBalance, null)
+    assert.equal(result.verification.closingBalance?.amountMinor, 9_000)
+  })
+
+  it('does not treat an ambiguous total payments label as credit-total evidence', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: '10/07/2026 Bill payment 20.00 DR\nTotal payments 20.00',
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 1,
+          occurredOn: '2026-07-10',
+          direction: 'expense',
+          amountText: '20.00',
+          currency: 'HKD',
+          description: 'Bill payment',
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }], {
+          creditTotal: { sourceLine: 2, amountText: '20.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.creditTotal, null)
+    assert.equal(result.verification.creditDifferenceMinor, null)
+  })
+
+  it('binds an aggregate label and sign to the same numeric occurrence', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: 'Opening balance -100.00 adjustment 100.00\n10/07/2026 Merchant 10.00 DR',
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 2,
+          occurredOn: '2026-07-10',
+          direction: 'expense',
+          amountText: '10.00',
+          currency: 'HKD',
+          description: 'Merchant',
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }], {
+          openingBalance: { sourceLine: 1, amountText: '100.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.openingBalance, null)
   })
 
   it('rejects internally consistent evidence amounts absent from their cited lines', async () => {
@@ -748,6 +977,350 @@ describe('AI provider adapter', () => {
 
     assert.equal(first.drafts[0]?.importKey, repeated.drafts[0]?.importKey)
     assert.notEqual(first.drafts[0]?.importKey, otherStatement.drafts[0]?.importKey)
+  })
+
+  it('uses a normalized source-backed reference across overlapping statements', async () => {
+    const parse = (
+      accountId: number,
+      statementText: string,
+      sourceLine: number,
+      referenceText: string,
+    ) => parseBankStatement(
+      {
+        provider,
+        accountId,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText,
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine,
+          occurredOn: '2026-07-11',
+          direction: 'expense',
+          amountText: '10.00',
+          currency: 'HKD',
+          description: 'Merchant',
+          reference: { sourceLine, referenceText },
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }])),
+      },
+    )
+
+    const first = await parse(2, '2026-07-11 Merchant 10.00 DR Ref ABC-123456', 1, 'ABC-123456')
+    const overlap = await parse(
+      2,
+      'Previous page overlap\n2026-07-11 Merchant 10.00 DR Ref abc 123456',
+      2,
+      'abc 123456',
+    )
+    const otherAccount = await parse(
+      3,
+      '2026-07-11 Merchant 10.00 DR Ref ABC123456',
+      1,
+      'ABC123456',
+    )
+
+    assert.equal(first.drafts[0]?.bankReference, 'ABC123456')
+    assert.equal(first.drafts[0]?.importKey, overlap.drafts[0]?.importKey)
+    assert.notEqual(first.drafts[0]?.importKey, otherAccount.drafts[0]?.importKey)
+  })
+
+  it('keeps repeated reference keys bound to normalized transaction facts', async () => {
+    const row = (
+      sourceLine: number,
+      occurredOn: string,
+      amountText: string,
+      referenceText: string,
+      description: string,
+    ) => ({
+      sourceLine,
+      occurredOn,
+      direction: 'expense',
+      amountText,
+      currency: 'HKD',
+      description,
+      reference: { sourceLine, referenceText },
+      suggestedCategoryName: '餐飲',
+      confidence: 1,
+      flags: [],
+    })
+    const parse = (statementText: string, rows: readonly unknown[]) => parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText,
+        categories,
+      },
+      { ...policy, fetcher: async () => completion(statementOutput(rows)) },
+    )
+    const rows = [
+      row(1, '2026-07-11', '10.00', 'BATCH-123456', 'First merchant'),
+      row(2, '2026-07-11', '10.00', 'BATCH-123456', 'Second merchant'),
+    ]
+    const full = await parse([
+      '2026-07-11 First merchant 10.00 DR Ref BATCH-123456',
+      '2026-07-11 Second merchant 10.00 DR Ref BATCH-123456',
+    ].join('\n'), rows)
+    const reversed = await parse([
+      '2026-07-11 First merchant 10.00 DR Ref BATCH-123456',
+      '2026-07-11 Second merchant 10.00 DR Ref BATCH-123456',
+    ].join('\n'), [...rows].reverse())
+    const overlap = await parse(
+      'Overlap\n2026-07-11 Second merchant 10.00 DR Ref batch 123456',
+      [row(2, '2026-07-11', '10.00', 'batch 123456', 'Second merchant')],
+    )
+
+    for (const draft of full.drafts) {
+      assert.equal(
+        draft.importKey,
+        reversed.drafts.find((candidate) => candidate.payee === draft.payee)?.importKey,
+      )
+    }
+    assert.equal(
+      full.drafts.find((draft) => draft.payee === 'Second merchant')?.importKey,
+      overlap.drafts[0]?.importKey,
+    )
+  })
+
+  it('rejects date, amount, and unrelated-line reference evidence but ignores unlabeled text', async () => {
+    const parse = (
+      statementText: string,
+      amountText: string,
+      reference: { sourceLine: number; referenceText: string },
+    ) => parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText,
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 1,
+          occurredOn: '2026-07-11',
+          direction: 'expense',
+          amountText,
+          currency: 'HKD',
+          description: 'Merchant',
+          reference,
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }])),
+      },
+    )
+
+    await assert.rejects(
+      parse('2026-07-11 Merchant 10.00 DR Ref 2026-07-11', '10.00', {
+        sourceLine: 1,
+        referenceText: '2026-07-11',
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+    await assert.rejects(
+      parse('2026-07-11 Merchant 1234.56 DR Ref 1234.56', '1234.56', {
+        sourceLine: 1,
+        referenceText: '1234.56',
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+    await assert.rejects(
+      parse('2026-07-11 Merchant 10.00 DR\nRef OTHER999', '10.00', {
+        sourceLine: 2,
+        referenceText: 'OTHER999',
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+
+    const unlabeled = await parse(
+      '2026-07-11 Merchant 10.00 DR SAFE123456',
+      '10.00',
+      { sourceLine: 1, referenceText: 'SAFE123456' },
+    )
+    assert.equal(unlabeled.drafts[0]?.bankReference, null)
+  })
+
+  it('ignores unrelated or ambiguous running amounts and rejects another row', async () => {
+    const parse = (
+      statementText: string,
+      runningBalance: { sourceLine: number; amountText: string },
+    ) => parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText,
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          sourceLine: 1,
+          occurredOn: '2026-07-11',
+          direction: 'expense',
+          amountText: '10.00',
+          currency: 'HKD',
+          description: 'Merchant',
+          runningBalance,
+          suggestedCategoryName: '餐飲',
+          confidence: 1,
+          flags: [],
+        }])),
+      },
+    )
+
+    const subtotal = await parse(
+      '2026-07-11 Merchant 10.00 DR Invoice subtotal 110.00',
+      { sourceLine: 1, amountText: '110.00' },
+    )
+    assert.equal(subtotal.drafts[0]?.runningBalance, null)
+    assert.equal(subtotal.verification.runningBalanceStatus, 'unavailable')
+
+    const sameOccurrence = await parse(
+      '2026-07-11 Balance 10.00',
+      { sourceLine: 1, amountText: '10.00' },
+    )
+    assert.equal(sameOccurrence.drafts[0]?.runningBalance, null)
+
+    await assert.rejects(
+      parse('2026-07-11 Merchant 10.00 DR\nBalance 100.00', {
+        sourceLine: 2,
+        amountText: '100.00',
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+  })
+
+  it('rejects an unbacked reference and flags the exact running-balance mismatch row', async () => {
+    const input = {
+      provider,
+      accountId: 2,
+      ...statementParseContext,
+      currency: 'HKD' as const,
+      dateOrder: 'YMD' as const,
+      statementText: [
+        '2026-07-11 Deposit 10.00 CR Balance HKD 110.00 Ref ABC123456',
+        '2026-07-12 Merchant 20.00 DR Balance HKD 89.00 Ref DEF123456',
+      ].join('\n'),
+      categories,
+    }
+    const rows = [
+      {
+        sourceLine: 1,
+        occurredOn: '2026-07-11',
+        direction: 'income',
+        amountText: '10.00',
+        currency: 'HKD',
+        description: 'Deposit',
+        reference: { sourceLine: 1, referenceText: 'ABC123456' },
+        runningBalance: { sourceLine: 1, amountText: '110.00' },
+        suggestedCategoryName: '其他收入',
+        confidence: 1,
+        flags: [],
+      },
+      {
+        sourceLine: 2,
+        occurredOn: '2026-07-12',
+        direction: 'expense',
+        amountText: '20.00',
+        currency: 'HKD',
+        description: 'Merchant',
+        reference: { sourceLine: 2, referenceText: 'DEF123456' },
+        runningBalance: { sourceLine: 2, amountText: '89.00' },
+        suggestedCategoryName: '餐飲',
+        confidence: 1,
+        flags: [],
+      },
+    ]
+    const result = await parseBankStatement(input, {
+      ...policy,
+      fetcher: async () => completion(statementOutput(rows)),
+    })
+
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.runningBalanceStatus, 'mismatch')
+    assert.deepEqual(result.verification.runningBalanceMismatchSourceLines, [2])
+    assert.equal(result.drafts[0]?.flags.includes('RUNNING_BALANCE_MISMATCH'), false)
+    assert.equal(result.drafts[1]?.flags.includes('RUNNING_BALANCE_MISMATCH'), true)
+
+    await assert.rejects(
+      parseBankStatement(input, {
+        ...policy,
+        fetcher: async () => completion(statementOutput([{
+          ...rows[0],
+          reference: { sourceLine: 1, referenceText: 'MISSING999' },
+        }])),
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+  })
+
+  it('checks reverse-ordered credit-card running balances with ledger signs', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        accountType: 'credit_card',
+        payeeSuggestions: [],
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText: [
+          '2026-07-12 Restaurant 20.00 DR Amount due 110.00',
+          '2026-07-11 Payment 10.00 CR Amount due 90.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([
+          {
+            sourceLine: 1,
+            occurredOn: '2026-07-12',
+            direction: 'expense',
+            amountText: '20.00',
+            currency: 'HKD',
+            description: 'Restaurant',
+            runningBalance: { sourceLine: 1, amountText: '110.00' },
+            suggestedCategoryName: '餐飲',
+            confidence: 1,
+            flags: [],
+          },
+          {
+            sourceLine: 2,
+            occurredOn: '2026-07-11',
+            direction: 'income',
+            amountText: '10.00',
+            currency: 'HKD',
+            description: 'Payment',
+            runningBalance: { sourceLine: 2, amountText: '90.00' },
+            suggestedCategoryName: '其他收入',
+            confidence: 1,
+            flags: [],
+          },
+        ])),
+      },
+    )
+
+    assert.equal(result.verification.runningBalanceStatus, 'matched')
+    assert.deepEqual(result.drafts.map((draft) => draft.runningBalance?.amountMinor), [
+      -11_000,
+      -9_000,
+    ])
   })
 
   it('rejects a provider credential reflected in parsed statement output', async () => {

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { SupportedCurrency } from '../lib/currency'
+import { SUPPORTED_CURRENCIES, type SupportedCurrency } from '../lib/currency'
 import {
   AI_NON_NEGATIVE_DECIMAL_PATTERN,
   AI_POSITIVE_DECIMAL_PATTERN,
@@ -111,6 +111,10 @@ const chatCompletionSchema = z
   .passthrough()
 
 const MIN_API_KEY_SUBSTRING_LENGTH = 8
+const statementCurrencyCodePattern = new RegExp(
+  `\\b(?:${SUPPORTED_CURRENCIES.join('|')})\\b`,
+  'gi',
+)
 const transferLikeLanguagePatterns = [
   /\btransfer\b/iu,
   /\b(?:credit\s+)?card\s+repayment\b|\brepayment\s+(?:to\s+)?(?:credit\s+)?card\b|\bpay(?:ment)?\s+to\s+(?:my\s+)?(?:credit\s+)?card\b/iu,
@@ -147,6 +151,21 @@ const statementSourceAmountJsonSchema = (pattern: string) => ({
   ],
 } as const)
 
+const statementReferenceJsonSchema = {
+  anyOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['sourceLine', 'referenceText'],
+      properties: {
+        sourceLine: { type: 'integer', minimum: 1 },
+        referenceText: { type: 'string', minLength: 1, maxLength: 80 },
+      },
+    },
+    { type: 'null' },
+  ],
+} as const
+
 const completionJsonSchema = (currency: SupportedCurrency) => ({
   type: 'object',
   additionalProperties: false,
@@ -175,6 +194,8 @@ const completionJsonSchema = (currency: SupportedCurrency) => ({
           'amountText',
           'currency',
           'description',
+          'reference',
+          'runningBalance',
           'suggestedCategoryName',
           'confidence',
           'flags',
@@ -191,6 +212,8 @@ const completionJsonSchema = (currency: SupportedCurrency) => ({
           },
           currency: { type: 'string', enum: [currency] },
           description: { type: 'string', maxLength: 80 },
+          reference: statementReferenceJsonSchema,
+          runningBalance: statementSourceAmountJsonSchema(AI_SIGNED_DECIMAL_PATTERN),
           suggestedCategoryName: {
             anyOf: [
               { type: 'string', minLength: 1, maxLength: 80 },
@@ -491,6 +514,20 @@ async function normalizeDrafts(
     )
     const category = rememberedCategory ?? suggestedCategory ?? fallbackCategory
     const flags = [...new Set(row.flags)]
+    const bankReference = normalizeStatementReference(
+      row.reference,
+      row.sourceLine,
+      lines,
+      row.occurredOn,
+      amountMinor,
+    )
+    const runningBalance = normalizeRowRunningBalance(
+      row.runningBalance,
+      row.sourceLine,
+      lines,
+      amountMinor,
+      input.accountType,
+    )
     const referenceText = `${sourceText}\n${row.description}`.normalize('NFKC')
     if (
       matchesLanguage(transferLikeLanguagePatterns, referenceText) &&
@@ -515,13 +552,23 @@ async function normalizeDrafts(
       flags.push('UNCERTAIN_CATEGORY')
     }
 
-    const identity = JSON.stringify([
-      input.accountId,
-      statementDigest,
-      row.sourceLine,
-      sourceText,
-      amountMinor,
-    ])
+    const identity = bankReference
+      ? JSON.stringify([
+          input.accountId,
+          'bank-reference',
+          bankReference,
+          row.occurredOn,
+          row.direction,
+          amountMinor,
+          normalizeReferenceText(sourceText),
+        ])
+      : JSON.stringify([
+          input.accountId,
+          statementDigest,
+          row.sourceLine,
+          sourceText,
+          amountMinor,
+        ])
     const occurrence = (occurrences.get(identity) ?? 0) + 1
     occurrences.set(identity, occurrence)
 
@@ -530,6 +577,8 @@ async function normalizeDrafts(
       importKey: await statementImportKey(identity, occurrence),
       sourceLine: row.sourceLine,
       sourceText: sourceText.trim().slice(0, 240),
+      bankReference,
+      runningBalance,
       occurredOn: row.occurredOn,
       type: row.direction,
       amountText: row.amountText,
@@ -558,44 +607,189 @@ function normalizeStatementVerification(
 ): BankStatementVerification {
   const lines = statementText.split(/\r?\n/)
   const normalizeBalanceSign = accountType === 'credit_card'
-  const openingBalance = normalizeStatementSourceAmount(
+  const firstTransactionLine = drafts.length > 0
+    ? Math.min(...drafts.map((draft) => draft.sourceLine))
+    : null
+  const lastTransactionLine = drafts.length > 0
+    ? Math.max(...drafts.map((draft) => draft.sourceLine))
+    : null
+  const normalizedOpeningBalance = normalizeStatementSourceAmount(
     output.openingBalance,
     lines,
     normalizeBalanceSign,
+    normalizeBalanceSign,
+    'opening',
   )
-  const closingBalance = normalizeStatementSourceAmount(
+  const normalizedClosingBalance = normalizeStatementSourceAmount(
     output.closingBalance,
     lines,
     normalizeBalanceSign,
+    normalizeBalanceSign,
+    'closing',
   )
-  const debitTotal = normalizeStatementSourceAmount(output.debitTotal, lines, true)
-  const creditTotal = normalizeStatementSourceAmount(output.creditTotal, lines, true)
+  const openingBalance = normalizedOpeningBalance
+    && (firstTransactionLine === null || normalizedOpeningBalance.sourceLine <= firstTransactionLine)
+    ? normalizedOpeningBalance
+    : null
+  const closingBalance = normalizedClosingBalance
+    && (lastTransactionLine === null || normalizedClosingBalance.sourceLine >= lastTransactionLine)
+    ? normalizedClosingBalance
+    : null
+  const debitTotal = normalizeStatementSourceAmount(
+    output.debitTotal,
+    lines,
+    true,
+    false,
+    'debitTotal',
+  )
+  const creditTotal = normalizeStatementSourceAmount(
+    output.creditTotal,
+    lines,
+    true,
+    false,
+    'creditTotal',
+  )
 
   try {
-    return calculateBankStatementVerification({
+    const verification = calculateBankStatementVerification({
       openingBalance,
       closingBalance,
       debitTotal,
       creditTotal,
     }, drafts)
+    const mismatchLines = new Set(verification.runningBalanceMismatchSourceLines)
+    for (const draft of drafts) {
+      if (
+        mismatchLines.has(draft.sourceLine)
+        && !draft.flags.includes('RUNNING_BALANCE_MISMATCH')
+      ) {
+        draft.flags.push('RUNNING_BALANCE_MISMATCH')
+      }
+    }
+    return verification
   } catch {
     throw new AiProviderError('RESPONSE_INVALID')
   }
+}
+
+function normalizeStatementReference(
+  value: AiModelOutput['rows'][number]['reference'],
+  rowSourceLine: number,
+  lines: readonly string[],
+  occurredOn: string,
+  amountMinor: number,
+) {
+  if (!value) return null
+  if (value.sourceLine !== rowSourceLine) throw new AiProviderError('RESPONSE_INVALID')
+  const sourceText = lines[value.sourceLine - 1]?.normalize('NFKC')
+  if (!sourceText) throw new AiProviderError('RESPONSE_INVALID')
+
+  const tokens = value.referenceText.normalize('NFKC').match(/[\p{L}\p{N}]+/gu) ?? []
+  const bankReference = tokens.join('').toUpperCase()
+  if (bankReference.length < 6 || bankReference.length > 80) {
+    throw new AiProviderError('RESPONSE_INVALID')
+  }
+  const [year, month, day] = occurredOn.split('-')
+  const dateReferences = new Set([
+    `${year}${month}${day}`,
+    `${day}${month}${year}`,
+    `${month}${day}${year}`,
+    `${year?.slice(-2)}${month}${day}`,
+    `${day}${month}${year?.slice(-2)}`,
+    `${month}${day}${year?.slice(-2)}`,
+  ])
+  const amountReferences = new Set(
+    statementAmountSourceForms(amountMinor).map(normalizeReferenceText),
+  )
+  if (dateReferences.has(bankReference) || amountReferences.has(bankReference)) {
+    throw new AiProviderError('RESPONSE_INVALID')
+  }
+  const sourcePattern = tokens
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^\\p{L}\\p{N}]*')
+  const matches = sourceText.matchAll(
+    new RegExp(`(?<![\\p{L}\\p{N}])${sourcePattern}(?![\\p{L}\\p{N}])`, 'giu'),
+  )
+  let sourceBacked = false
+  for (const match of matches) {
+    sourceBacked = true
+    const before = sourceText.slice(Math.max(0, (match.index ?? 0) - 48), match.index)
+    if (statementReferenceLabelPattern.test(before)) return bankReference
+  }
+  if (!sourceBacked) throw new AiProviderError('RESPONSE_INVALID')
+  return null
+}
+
+function normalizeReferenceText(value: string) {
+  return (value.normalize('NFKC').match(/[\p{L}\p{N}]+/gu) ?? []).join('').toUpperCase()
+}
+
+const statementReferenceLabelPattern = /(?:\b(?:transaction\s+)?(?:ref(?:erence)?|transaction\s*(?:id|number|no\.?))|(?:參考|交易)(?:編號|號碼|號)|(?:参照|取引)番号|(?:n(?:uméro|o)\s+de\s+)?réf(?:érence)?\.?)\s*(?:no\.?|number)?\s*[:#：.-]?\s*$/iu
+const statementRunningBalanceLabelPattern = /(?:\b(?:running\s+|available\s+)?bal(?:ance)?|\bamount\s+due|\boutstanding(?:\s+balance)?|餘額|結餘|残高|\bsolde)\s*[:：-]?\s*$/iu
+const creditCardPositiveBalanceBeforePattern = /(?:\bcredit\s+balance\b|\boverpayment(?:\s+balance)?\b|\bin\s+credit\b|貸方(?:結餘|餘額)|溢繳|過払い|\bsolde\s+créditeur\b|\btrop-perçu\b)\s*[:：-]?\s*$/iu
+const creditCardPositiveBalanceAfterPattern = /^\s*[:：-]?\s*(?:\bcredit\s+balance\b|\boverpayment\b|\bin\s+credit\b|貸方(?:結餘|餘額)|溢繳|過払い|\bsolde\s+créditeur\b|\btrop-perçu\b)/iu
+
+function normalizeRowRunningBalance(
+  value: AiModelOutput['rows'][number]['runningBalance'],
+  rowSourceLine: number,
+  lines: readonly string[],
+  transactionAmountMinor: number,
+  accountType: AccountType,
+) {
+  if (!value) return null
+  if (value.sourceLine !== rowSourceLine) throw new AiProviderError('RESPONSE_INVALID')
+  const normalized = normalizeStatementSourceAmount(
+    value,
+    lines,
+    accountType === 'credit_card',
+    accountType === 'credit_card',
+  )
+  if (!normalized) return null
+  const matches = statementSourceAmountMatches(normalized.sourceText, normalized.amountMinor)
+  const labeledMatches = matches.filter(({ before }) => (
+    statementRunningBalanceLabelPattern.test(before)
+  )).filter(({ sourceIsNegative }) => (
+    accountType === 'credit_card' || (normalized.amountMinor < 0) === sourceIsNegative
+  ))
+  if (labeledMatches.length === 0) return null
+  if (
+    Math.abs(normalized.amountMinor) === transactionAmountMinor
+    && matches.length < 2
+  ) {
+    return null
+  }
+  return normalized
 }
 
 function normalizeStatementSourceAmount(
   value: AiModelOutput['openingBalance'],
   lines: readonly string[],
   allowSignNormalization: boolean,
+  normalizeCreditCardBalance = false,
+  evidenceKind?: keyof typeof statementEvidenceLabelPatterns,
 ): BankStatementSourceAmount | null {
   if (!value) return null
   const sourceText = lines[value.sourceLine - 1]?.trim()
   if (!sourceText) throw new AiProviderError('RESPONSE_INVALID')
 
   try {
-    const amountMinor = parseSignedAmount(value.amountText, 'en')
+    let amountMinor = parseSignedAmount(value.amountText, 'en')
     if (!statementSourceBacksAmount(sourceText, amountMinor, allowSignNormalization)) {
       throw new AiProviderError('RESPONSE_INVALID')
+    }
+    if (
+      evidenceKind
+      && !statementSourceHasEvidenceLabel(
+        sourceText,
+        amountMinor,
+        evidenceKind,
+        allowSignNormalization,
+      )
+    ) {
+      return null
+    }
+    if (normalizeCreditCardBalance) {
+      amountMinor = normalizeCreditCardBalanceSign(amountMinor, sourceText)
     }
     return {
       sourceLine: value.sourceLine,
@@ -609,15 +803,50 @@ function normalizeStatementSourceAmount(
   }
 }
 
+const statementEvidenceLabelPatterns = {
+  opening: String.raw`\b(?:opening|beginning|previous)(?:\s+credit)?\s+balance\b|\bbalance\s+brought\s+forward\b|期初(?:結餘|餘額)|上期(?:結餘|餘額)|承前(?:結餘|餘額)|期首残高|前月残高|繰越残高|\bsolde\s+(?:d['’]ouverture|initial|précédent)\b`,
+  closing: String.raw`\b(?:closing|ending|new|statement)(?:\s+credit)?\s+balance\b|期末(?:結餘|餘額)|結單(?:結餘|餘額)|本期(?:結餘|餘額)|期末残高|新残高|\b(?:solde\s+(?:de\s+clôture|final)|nouveau\s+solde)\b`,
+  debitTotal: String.raw`\b(?:total\s+(?:debits?|charges?|withdrawals?)|(?:debits?|charges?|withdrawals?)\s+total)\b|(?:借方|扣賬|支出|提款)總額|(?:借方|支出|引出)合計|\btotal\s+des\s+(?:débits|frais|retraits)\b`,
+  creditTotal: String.raw`\b(?:total\s+(?:credits?|deposits?)|(?:credits?|deposits?)\s+total)\b|(?:貸方|入賬|存款)總額|(?:貸方|入金)合計|\btotal\s+des\s+(?:crédits|dépôts)\b`,
+} as const
+
+function statementSourceHasEvidenceLabel(
+  sourceText: string,
+  amountMinor: number,
+  evidenceKind: keyof typeof statementEvidenceLabelPatterns,
+  allowSignNormalization: boolean,
+) {
+  const label = statementEvidenceLabelPatterns[evidenceKind]
+  const beforePattern = new RegExp(`(?:${label})\\s*[:：-]?\\s*$`, 'iu')
+  const afterPattern = new RegExp(`^\\s*[:：-]?\\s*(?:${label})`, 'iu')
+  return statementSourceAmountMatches(sourceText, amountMinor).some(({ before, after, sourceIsNegative }) => (
+    (allowSignNormalization || (amountMinor < 0) === sourceIsNegative)
+    && (beforePattern.test(before) || afterPattern.test(after))
+  ))
+}
+
 function statementSourceBacksAmount(
   sourceText: string,
   amountMinor: number,
   allowSignNormalization: boolean,
 ) {
+  return statementSourceAmountMatches(sourceText, amountMinor).some(({ sourceIsNegative }) => (
+    allowSignNormalization || (amountMinor < 0) === sourceIsNegative
+  ))
+}
+
+function statementSourceAmountMatches(sourceText: string, amountMinor: number) {
   const source = sourceText
-    .replace(/\b[A-Z]{3}\b|HK\$|[$€£¥￥]/gi, ' ')
+    .replace(statementCurrencyCodePattern, ' ')
+    .replace(/HK\$|[$€£¥￥]/gi, ' ')
     .replace(/\s+/g, ' ')
-  const negativeWords = /\b(?:dr|od|negative|overdraft|overdrawn)\b/i
+  const negativeWords = /\b(?:negative|overdraft|overdrawn)\b/i
+  const matches = new Map<string, {
+    before: string
+    after: string
+    immediateContext: string
+    sourceIsNegative: boolean
+  }>()
 
   for (const amountText of statementAmountSourceForms(amountMinor)) {
     const escapedAmount = amountText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -632,15 +861,38 @@ function statementSourceBacksAmount(
       if (/\d[ ,.'’]$/.test(source.slice(Math.max(0, amountStart - 2), amountStart))) continue
       if (/^[ ,.'’]\d/.test(source.slice(amountEnd, amountEnd + 2))) continue
 
-      if (allowSignNormalization) return true
-      const context = `${source.slice(Math.max(0, amountStart - 24), amountStart)} ${source.slice(amountEnd, amountEnd + 24)}`
+      const before = source.slice(Math.max(0, amountStart - 48), amountStart)
+      const after = source.slice(amountEnd, amountEnd + 48)
+      const context = `${before} ${after}`
+      const immediateContext = `${source.slice(Math.max(0, amountStart - 4), amountStart)} ${source.slice(amountEnd, amountEnd + 4)}`
       const sourceIsNegative = match[2] === '-' || match[2] === '−'
         || (match[1] === '(' && match[4] === ')')
+        || /\b(?:dr|od)\b/i.test(immediateContext)
         || negativeWords.test(context)
-      if ((amountMinor < 0) === sourceIsNegative) return true
+      matches.set(`${amountStart}:${amountEnd}`, {
+        before,
+        after,
+        immediateContext,
+        sourceIsNegative,
+      })
     }
   }
-  return false
+  return [...matches.values()]
+}
+
+function normalizeCreditCardBalanceSign(amountMinor: number, sourceText: string) {
+  if (amountMinor === 0) return 0
+  const matches = statementSourceAmountMatches(sourceText, amountMinor)
+  const balanceMatches = matches.filter(({ before }) => (
+    statementRunningBalanceLabelPattern.test(before)
+  ))
+  const candidates = balanceMatches.length > 0 ? balanceMatches : matches
+  const creditBalance = candidates.some(({ before, after, immediateContext }) => (
+    creditCardPositiveBalanceBeforePattern.test(before)
+    || creditCardPositiveBalanceAfterPattern.test(after)
+    || /\bcr\b/i.test(immediateContext)
+  ))
+  return Math.abs(amountMinor) * (creditBalance ? 1 : -1)
 }
 
 function statementAmountSourceForms(amountMinor: number) {
@@ -693,13 +945,16 @@ function bankStatementSystemPrompt(
     'Extract only real transaction rows into rows; never turn headings, balances, totals, or summary lines into transactions.',
     'Extract posted or settled transactions only; ignore pending, processing, or authorization-only rows.',
     'Every posted own-account transfer, credit-card payment, or other transfer-like row must include POSSIBLE_TRANSFER in flags.',
-    'Return each explicitly stated opening balance, closing balance, debit total, and credit total in its matching field, or null when that value is not explicitly present.',
+    'Return each explicitly labeled opening balance, closing balance, debit total, and credit total in its matching field, or null when that label and value are not present together.',
     'Every non-null balance or total must use the 1-based physical source line where that exact value appears.',
+    'For each transaction, return reference only for an explicitly labeled bank reference on that same physical row, or null when absent.',
+    'Reference referenceText must be at least 6 letters or digits and contain only the printed reference value; never use a date, amount, description, or row number.',
+    'For each transaction, return runningBalance only for an explicitly labeled balance on that same physical row, or null when absent.',
     'Use canonical decimal amountText only: period separator, at most two fraction digits, no symbol, grouping, leading plus, or arithmetic expression.',
     'Opening and closing balance amountText may be negative; debitTotal and creditTotal must be nonnegative.',
     `The selected HushLedger account type is ${accountType}.`,
     accountType === 'credit_card'
-      ? 'For credit_card balances, use HushLedger ledger sign: card debt or amount due is negative; an overpayment or credit balance is positive.'
+      ? 'For credit_card statement and running balances, use HushLedger ledger sign: card debt or amount due is negative; an overpayment or credit balance is positive.'
       : 'Use HushLedger ledger sign for balances: assets are positive and overdrafts are negative.',
     `Interpret ambiguous numeric dates using ${dateOrder} order and emit valid YYYY-MM-DD dates.`,
     'Use 1-based physical line numbers from the statement for sourceLine.',

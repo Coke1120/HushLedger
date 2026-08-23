@@ -15,6 +15,7 @@ import {
 } from './BankImportPanel'
 
 const panelSource = readFileSync(new URL('./BankImportPanel.tsx', import.meta.url), 'utf8')
+const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8')
 
 const context: I18nContextValue = {
   locale: 'en',
@@ -44,6 +45,9 @@ const verification: BankStatementVerification = {
   balanceDifferenceMinor: 0,
   debitDifferenceMinor: 0,
   creditDifferenceMinor: null,
+  runningBalanceStatus: 'matched',
+  runningBalanceCheckedRows: 2,
+  runningBalanceMismatchSourceLines: [],
 }
 
 function renderVerification(value: BankStatementVerification) {
@@ -103,6 +107,13 @@ describe('bank statement fast-path selection', () => {
     assert.match(mismatch, /Balance difference \(statement minus calculated\)/)
     assert.doesNotMatch(mismatch, /Debit-total difference/)
     assert.match(unavailable, /too little balance or total data/)
+    assert.match(matched, /Running balances match across 2 checked transactions/)
+    assert.match(renderVerification({
+      ...verification,
+      status: 'mismatch',
+      runningBalanceStatus: 'mismatch',
+      runningBalanceMismatchSourceLines: [4],
+    }), /1 transactions break the statement running-balance chain/)
   })
 
   it('clears stale preview state and requires exact preview key order before commit', () => {
@@ -179,5 +190,92 @@ describe('bank statement fast-path selection', () => {
       /useEffect\(\(\) => \{\s*if \(initiallyOpen && detailsRef\.current\) detailsRef\.current\.open = true\s*\}, \[initiallyOpen\]\)/,
     )
     assert.doesNotMatch(detailsSource, /setOpen\(initiallyOpen\)/)
+  })
+
+  it('routes warning rows to follow-up and possible transfers through the dedicated endpoint', () => {
+    const rowSource = panelSource.slice(
+      panelSource.indexOf('function importRows'),
+      panelSource.indexOf('function importStatusMessageKey'),
+    )
+    const transferSource = panelSource.slice(
+      panelSource.indexOf('const createStatementTransfer'),
+      panelSource.indexOf('return (', panelSource.indexOf('const createStatementTransfer')),
+    )
+
+    assert.match(
+      rowSource,
+      /initialReviewStatus: draftNeedsFollowUp\([^]*\) \? 'needs_follow_up' : undefined/,
+    )
+    assert.match(transferSource, /statementTransferImportInputSchema\.parse/)
+    assert.match(transferSource, /draft\.type === 'expense' \? 'outflow' : 'inflow'/)
+    assert.match(transferSource, /'\/api\/imports\/statement-transfer'/)
+    assert.match(transferSource, /parsed\.data\.kind === 'matched'/)
+    assert.match(transferSource, /STATEMENT_TRANSFER_POSSIBLE_DUPLICATE/)
+    assert.match(transferSource, /transferDraftHasBlockingWarning\(draft\)/)
+    assert.match(transferSource, /\|\| transferBusy/)
+    assert.match(transferSource, /previewStatusByKey\.get\(draft\.importKey\) !== 'new'/)
+    assert.match(panelSource, /disabled=\{transferBusy \|\| compatibleTransferAccounts\.length === 0\}/)
+  })
+
+  it('re-derives running-balance warnings after edits and uses them throughout import', () => {
+    const helperSource = panelSource.slice(
+      panelSource.indexOf('function effectiveBankImportDrafts'),
+      panelSource.indexOf('function statementCompletionContext'),
+    )
+    const commitSource = panelSource.slice(
+      panelSource.indexOf('const commitDrafts ='),
+      panelSource.indexOf('const createStatementTransfer'),
+    )
+
+    assert.match(helperSource, /if \(!verification\) return drafts/)
+    assert.match(helperSource, /flag !== 'RUNNING_BALANCE_MISMATCH'/)
+    assert.match(helperSource, /mismatchSourceLines\.has\(draft\.sourceLine\)/)
+    assert.match(panelSource, /nextDrafts = effectiveDrafts/)
+    assert.match(panelSource, /effectiveDrafts\.map\(\(draft\) =>/)
+    assert.match(commitSource, /importRows\(effectiveDrafts, previewStatusByKey\)/)
+    assert.match(commitSource, /committedDrafts\.some\(\(draft\) => draftNeedsFollowUp/)
+    assert.match(
+      panelSource,
+      /return draft\.flags\.length > 0 \|\| previewStatus === 'possible_duplicate'/,
+    )
+    assert.match(
+      panelSource,
+      /flag !== 'POSSIBLE_TRANSFER' && flag !== 'UNCERTAIN_CATEGORY'/,
+    )
+  })
+
+  it('closes statement import before focusing the durable review queue', () => {
+    const reviewSource = appSource.slice(
+      appSource.indexOf('const openImportedTransactionReview'),
+      appSource.indexOf('const applyAiCopilotAction'),
+    )
+
+    assert.match(reviewSource, /setImportMode\(null\)/)
+    assert.match(reviewSource, /setImportReviewFilter\(reviewStatus\)/)
+    assert.match(reviewSource, /transactionsPanelRef\.current\?\.focus\(\)/)
+  })
+
+  it('requires the printed statement close date to cover every handled draft', () => {
+    const completionSource = panelSource.slice(
+      panelSource.indexOf('{completedImport ?'),
+      panelSource.indexOf('function aiFlagMessageKey'),
+    )
+    const contextSource = panelSource.slice(
+      panelSource.indexOf('function statementCompletionContext'),
+      panelSource.indexOf('function canAutomaticallySelectBankImport'),
+    )
+
+    assert.match(completionSource, /value=\{statementCloseDate\}/)
+    assert.match(completionSource, /disabled=\{mutating \|\| !validStatementCloseDate\}/)
+    assert.match(completionSource, /dateTo: statementCloseDate/)
+    assert.match(completionSource, /min=\{completedImport\.latestEntryDate\}/)
+    assert.match(
+      panelSource,
+      /statementCloseDate >= completedImport\.latestEntryDate/,
+    )
+    assert.match(contextSource, /dateFrom: dates\[0\] \?\? null/)
+    assert.match(contextSource, /latestEntryDate: dates\.at\(-1\) \?\? null/)
+    assert.match(contextSource, /function mergeCompletedImportActions/)
+    assert.doesNotMatch(contextSource, /dateTo:/)
   })
 })
