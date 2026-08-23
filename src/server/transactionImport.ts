@@ -154,13 +154,42 @@ export async function previewTransactionImport(
   const results = await database.batch(
     rows.map((row) => bindRow(statement, row)),
   )
+  const seenExactRows = new Set<string>()
+  const seenAiSourceRows = new Set<string>()
   const previewRows = results.map((result, index) => {
     const classification = result.results[0] as ClassificationRow | undefined
     if (!classification) throw new Error('Transaction import classification returned no row')
+    const row = rows[index]
+    const exactFingerprint = JSON.stringify([
+      row.type,
+      row.amountMinor,
+      row.currency,
+      row.accountId,
+      row.categoryId,
+      row.occurredOn,
+      row.payee,
+      row.note,
+    ])
+    const aiSourceFingerprint = row.importKey.startsWith('ai:statement:')
+      ? JSON.stringify([
+          row.sourceRow,
+          row.accountId,
+          row.amountMinor,
+          row.currency,
+        ])
+      : null
+    const repeatedInBatch = seenExactRows.has(exactFingerprint) || (
+      aiSourceFingerprint !== null && seenAiSourceRows.has(aiSourceFingerprint)
+    )
+    seenExactRows.add(exactFingerprint)
+    if (aiSourceFingerprint !== null) seenAiSourceRows.add(aiSourceFingerprint)
+    const databaseStatus = classify(classification, row.cleared)
     return {
-      sourceRow: rows[index].sourceRow,
-      importKey: rows[index].importKey,
-      status: classify(classification, rows[index].cleared),
+      sourceRow: row.sourceRow,
+      importKey: row.importKey,
+      status: repeatedInBatch && (databaseStatus === 'new' || databaseStatus === 'match_ready')
+        ? 'possible_duplicate' as const
+        : databaseStatus,
     }
   })
 

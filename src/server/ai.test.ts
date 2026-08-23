@@ -31,6 +31,30 @@ const categories: Category[] = [
     monthlyPlanMinor: null,
     updatedAt: '2026-07-11T10:30:00.000Z',
   },
+  {
+    id: 4,
+    name: '其他收入',
+    type: 'income',
+    icon: 'circle-dollar-sign',
+    color: '#000000',
+    isActive: true,
+    sortOrder: 2,
+    localizationKey: 'category.other_income',
+    monthlyPlanMinor: null,
+    updatedAt: '2026-07-11T10:30:00.000Z',
+  },
+  {
+    id: 10,
+    name: '其他支出',
+    type: 'expense',
+    icon: 'circle-ellipsis',
+    color: '#000000',
+    isActive: true,
+    sortOrder: 3,
+    localizationKey: 'category.other_expense',
+    monthlyPlanMinor: null,
+    updatedAt: '2026-07-11T10:30:00.000Z',
+  },
 ]
 
 const policy = {
@@ -84,6 +108,25 @@ function completion(content: unknown) {
   return Response.json({
     choices: [{ message: { content: JSON.stringify(content), refusal: null } }],
   })
+}
+
+const statementParseContext = {
+  accountType: 'bank' as const,
+  payeeSuggestions: [],
+}
+
+function statementOutput(
+  rows: readonly unknown[],
+  evidence: Record<string, unknown> = {},
+) {
+  return {
+    openingBalance: null,
+    closingBalance: null,
+    debitTotal: null,
+    creditTotal: null,
+    ...evidence,
+    rows,
+  }
 }
 
 describe('AI provider URL policy', () => {
@@ -167,10 +210,11 @@ describe('AI provider adapter', () => {
 
   it('parses strict output and derives amount and category IDs on the server', async () => {
     let capturedBody = ''
-    const drafts = await parseBankStatement(
+    const result = await parseBankStatement(
       {
         provider,
         accountId: 2,
+        ...statementParseContext,
         currency: 'HKD',
         dateOrder: 'DMY',
         statementText: 'Date Description Amount\n11/07/2026 Example merchant 123.45 DR',
@@ -180,8 +224,7 @@ describe('AI provider adapter', () => {
         ...policy,
         fetcher: async (_input, init) => {
           capturedBody = String(init?.body)
-          return completion({
-            rows: [{
+          return completion(statementOutput([{
               sourceLine: 2,
               occurredOn: '2026-07-11',
               direction: 'expense',
@@ -191,12 +234,12 @@ describe('AI provider adapter', () => {
               suggestedCategoryName: '餐飲',
               confidence: 0.95,
               flags: [],
-            }],
-          })
+          }]))
         },
       },
     )
 
+    const { drafts } = result
     assert.equal(drafts.length, 1)
     assert.equal(drafts[0]?.amountMinor, 12_345)
     assert.equal(drafts[0]?.accountId, 2)
@@ -213,6 +256,397 @@ describe('AI provider adapter', () => {
     assert.equal(body.max_completion_tokens, 4_096)
     assert.equal(body.max_tokens, undefined)
     assert.equal(body.response_format?.json_schema?.strict, true)
+    assert.equal(result.verification.status, 'unavailable')
+    assert.equal(result.verification.parsedExpenseMinor, 12_345)
+  })
+
+  it('reconciles credit-card ledger balances and stated totals exactly', async () => {
+    let capturedBody = ''
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        accountType: 'credit_card',
+        payeeSuggestions: [],
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          'Opening balance HK$1,000.00 amount due',
+          '11/07/2026 Restaurant 200.00 DR',
+          '12/07/2026 Payment 50.00 CR',
+          'Closing balance HK$1,150.00 amount due',
+          'Total debits 200.00',
+          'Total credits 50.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async (_input, init) => {
+          capturedBody = String(init?.body)
+          return completion(statementOutput([
+            {
+              sourceLine: 2,
+              occurredOn: '2026-07-11',
+              direction: 'expense',
+              amountText: '200.00',
+              currency: 'HKD',
+              description: 'Restaurant',
+              suggestedCategoryName: '餐飲',
+              confidence: 0.99,
+              flags: [],
+            },
+            {
+              sourceLine: 3,
+              occurredOn: '2026-07-12',
+              direction: 'income',
+              amountText: '50.00',
+              currency: 'HKD',
+              description: 'Payment',
+              suggestedCategoryName: null,
+              confidence: 0.99,
+              flags: [],
+            },
+          ], {
+            openingBalance: { sourceLine: 1, amountText: '-1000.00' },
+            closingBalance: { sourceLine: 4, amountText: '-1150.00' },
+            debitTotal: { sourceLine: 5, amountText: '200.00' },
+            creditTotal: { sourceLine: 6, amountText: '50.00' },
+          }))
+        },
+      },
+    )
+
+    assert.deepEqual(result.verification, {
+      status: 'matched',
+      openingBalance: {
+        sourceLine: 1,
+        sourceText: 'Opening balance HK$1,000.00 amount due',
+        amountText: '-1000.00',
+        amountMinor: -100_000,
+      },
+      closingBalance: {
+        sourceLine: 4,
+        sourceText: 'Closing balance HK$1,150.00 amount due',
+        amountText: '-1150.00',
+        amountMinor: -115_000,
+      },
+      debitTotal: {
+        sourceLine: 5,
+        sourceText: 'Total debits 200.00',
+        amountText: '200.00',
+        amountMinor: 20_000,
+      },
+      creditTotal: {
+        sourceLine: 6,
+        sourceText: 'Total credits 50.00',
+        amountText: '50.00',
+        amountMinor: 5_000,
+      },
+      parsedIncomeMinor: 5_000,
+      parsedExpenseMinor: 20_000,
+      parsedNetMinor: -15_000,
+      balanceDifferenceMinor: 0,
+      debitDifferenceMinor: 0,
+      creditDifferenceMinor: 0,
+    })
+    const body = JSON.parse(capturedBody) as {
+      messages: Array<{ role: string; content: string }>
+    }
+    assert.match(body.messages[0]?.content ?? '', /credit_card/)
+    assert.match(body.messages[0]?.content ?? '', /amount due is negative/)
+    assert.match(body.messages[0]?.content ?? '', /posted or settled transactions only/)
+    assert.match(body.messages[0]?.content ?? '', /must include POSSIBLE_TRANSFER/)
+    assert.match(body.messages[0]?.content ?? '', /row\.sourceLine.*exact transaction amount/)
+  })
+
+  it('returns each deterministic statement mismatch difference', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          'Opening balance -1000.00',
+          '11/07/2026 Restaurant 200.00 DR',
+          '12/07/2026 Deposit 50.00 CR',
+          'Closing balance -1140.00',
+          'Total debits 205.00',
+          'Total credits 49.00',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([
+          {
+            sourceLine: 2,
+            occurredOn: '2026-07-11',
+            direction: 'expense',
+            amountText: '200.00',
+            currency: 'HKD',
+            description: 'Restaurant',
+            suggestedCategoryName: '餐飲',
+            confidence: 0.99,
+            flags: [],
+          },
+          {
+            sourceLine: 3,
+            occurredOn: '2026-07-12',
+            direction: 'income',
+            amountText: '50.00',
+            currency: 'HKD',
+            description: 'Deposit',
+            suggestedCategoryName: '其他收入',
+            confidence: 0.99,
+            flags: [],
+          },
+        ], {
+          openingBalance: { sourceLine: 1, amountText: '-1000.00' },
+          closingBalance: { sourceLine: 4, amountText: '-1140.00' },
+          debitTotal: { sourceLine: 5, amountText: '205.00' },
+          creditTotal: { sourceLine: 6, amountText: '49.00' },
+        })),
+      },
+    )
+
+    assert.equal(result.verification.status, 'mismatch')
+    assert.equal(result.verification.balanceDifferenceMinor, 1_000)
+    assert.equal(result.verification.debitDifferenceMinor, 500)
+    assert.equal(result.verification.creditDifferenceMinor, -100)
+  })
+
+  it('rejects internally consistent evidence amounts absent from their cited lines', async () => {
+    await assert.rejects(
+      parseBankStatement(
+        {
+          provider,
+          accountId: 2,
+          ...statementParseContext,
+          currency: 'HKD',
+          dateOrder: 'DMY',
+          statementText: [
+            'Opening balance 100.00',
+            '11/07/2026 Merchant 10.00 DR',
+            'Closing balance 80.00',
+          ].join('\n'),
+          categories,
+        },
+        {
+          ...policy,
+          fetcher: async () => completion(statementOutput([{
+            sourceLine: 2,
+            occurredOn: '2026-07-11',
+            direction: 'expense',
+            amountText: '10.00',
+            currency: 'HKD',
+            description: 'Merchant',
+            suggestedCategoryName: '餐飲',
+            confidence: 0.99,
+            flags: [],
+          }], {
+            openingBalance: { sourceLine: 1, amountText: '100.00' },
+            closingBalance: { sourceLine: 3, amountText: '90.00' },
+          })),
+        },
+      ),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+  })
+
+  it('rejects a transaction amount absent from its cited source line', async () => {
+    await assert.rejects(
+      parseBankStatement(
+        {
+          provider,
+          accountId: 2,
+          ...statementParseContext,
+          currency: 'HKD',
+          dateOrder: 'DMY',
+          statementText: '11/07/2026 Merchant 12.00 DR',
+          categories,
+        },
+        {
+          ...policy,
+          fetcher: async () => completion(statementOutput([{
+            sourceLine: 1,
+            occurredOn: '2026-07-11',
+            direction: 'expense',
+            amountText: '13.00',
+            currency: 'HKD',
+            description: 'Merchant',
+            suggestedCategoryName: '餐飲',
+            confidence: 0.99,
+            flags: [],
+          }])),
+        },
+      ),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
+  })
+
+  it('adds transfer warnings from clear supported-locale language only', async () => {
+    const descriptions = [
+      'Transfer to savings',
+      '轉帳至儲蓄戶口',
+      '普通預金へ振替',
+      'Virement vers épargne',
+      'Credit card repayment',
+      'Card payment Coffee Shop',
+    ]
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: descriptions
+          .map((description, index) => (
+            `${String(index + 11).padStart(2, '0')}/07/2026 ${description} ${(index + 1) * 100}.00 DR`
+          ))
+          .join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput(descriptions.map((description, index) => ({
+          sourceLine: index + 1,
+          occurredOn: `2026-07-${String(index + 11).padStart(2, '0')}`,
+          direction: 'expense',
+          amountText: `${(index + 1) * 100}.00`,
+          currency: 'HKD',
+          description,
+          suggestedCategoryName: '餐飲',
+          confidence: 0.99,
+          flags: index === 0 ? ['NEEDS_REVIEW'] : [],
+        })))),
+      },
+    )
+
+    assert.deepEqual(result.drafts[0]?.flags, ['NEEDS_REVIEW', 'POSSIBLE_TRANSFER'])
+    for (const draft of result.drafts.slice(1, 5)) {
+      assert.equal(draft.flags.includes('POSSIBLE_TRANSFER'), true)
+    }
+    assert.equal(result.drafts[5]?.flags.includes('POSSIBLE_TRANSFER'), false)
+  })
+
+  it('adds review warnings for clear pending and statement-summary language only', async () => {
+    const rows = [
+      { line: 'PENDING 11/07/2026 Merchant 100.00 DR', date: '2026-07-11', description: 'Merchant', amountText: '100.00' },
+      { line: '12/07/2026 待處理 Merchant 200.00 DR', date: '2026-07-12', description: '待處理 Merchant', amountText: '200.00' },
+      { line: '13/07/2026 処理中 Merchant 300.00 DR', date: '2026-07-13', description: '処理中 Merchant', amountText: '300.00' },
+      { line: '14/07/2026 En attente Merchant 400.00 DR', date: '2026-07-14', description: 'En attente Merchant', amountText: '400.00' },
+      { line: '15/07/2026 POSTED Merchant 500.00 DR', date: '2026-07-15', description: 'POSTED Merchant', amountText: '500.00' },
+      { line: '31/07/2026 Closing balance 100.00', date: '2026-07-31', description: 'Closing balance', amountText: '100.00' },
+      { line: '31/07/2026 期末結餘 200.00', date: '2026-07-31', description: '期末結餘', amountText: '200.00' },
+      { line: '31/07/2026 期末残高 300.00', date: '2026-07-31', description: '期末残高', amountText: '300.00' },
+      { line: '31/07/2026 Solde final 400.00', date: '2026-07-31', description: 'Solde final', amountText: '400.00' },
+      { line: '31/07/2026 Running balance 500.00', date: '2026-07-31', description: 'Running balance', amountText: '500.00' },
+    ]
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: rows.map(({ line }) => line).join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput(rows.map((row, index) => ({
+          sourceLine: index + 1,
+          occurredOn: row.date,
+          direction: 'expense',
+          amountText: row.amountText,
+          currency: 'HKD',
+          description: row.description,
+          suggestedCategoryName: '餐飲',
+          confidence: 0.99,
+          flags: index === 0 ? ['UNCERTAIN_DATE'] : [],
+        })))),
+      },
+    )
+
+    assert.deepEqual(result.drafts[0]?.flags, ['UNCERTAIN_DATE', 'NEEDS_REVIEW'])
+    for (const draft of [...result.drafts.slice(1, 4), ...result.drafts.slice(5, 9)]) {
+      assert.equal(draft.flags.includes('NEEDS_REVIEW'), true)
+    }
+    assert.equal(result.drafts[4]?.flags.includes('NEEDS_REVIEW'), false)
+    assert.equal(result.drafts[9]?.flags.includes('NEEDS_REVIEW'), false)
+  })
+
+  it('uses payee memory, then the AI category, then localized Other', async () => {
+    const result = await parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        payeeSuggestions: [{
+          payee: 'remembered merchant',
+          type: 'expense',
+          accountId: 99,
+          categoryId: 3,
+          lastUsedOn: '2026-07-10',
+          useCount: 2,
+        }],
+        currency: 'HKD',
+        dateOrder: 'DMY',
+        statementText: [
+          '11/07/2026 Remembered Merchant 10.00 DR',
+          '12/07/2026 AI Merchant 20.00 DR',
+          '13/07/2026 Unknown credit 30.00 CR',
+        ].join('\n'),
+        categories,
+      },
+      {
+        ...policy,
+        fetcher: async () => completion(statementOutput([
+          {
+            sourceLine: 1,
+            occurredOn: '2026-07-11',
+            direction: 'expense',
+            amountText: '10.00',
+            currency: 'HKD',
+            description: 'Remembered Merchant',
+            suggestedCategoryName: '其他支出',
+            confidence: 0.9,
+            flags: [],
+          },
+          {
+            sourceLine: 2,
+            occurredOn: '2026-07-12',
+            direction: 'expense',
+            amountText: '20.00',
+            currency: 'HKD',
+            description: 'AI Merchant',
+            suggestedCategoryName: '餐飲',
+            confidence: 0.9,
+            flags: [],
+          },
+          {
+            sourceLine: 3,
+            occurredOn: '2026-07-13',
+            direction: 'income',
+            amountText: '30.00',
+            currency: 'HKD',
+            description: 'Unknown credit',
+            suggestedCategoryName: null,
+            confidence: 0.7,
+            flags: [],
+          },
+        ])),
+      },
+    )
+
+    assert.deepEqual(result.drafts.map((draft) => draft.categoryId), [3, 3, 4])
+    assert.equal(result.drafts[0]?.flags.includes('UNCERTAIN_CATEGORY'), false)
+    assert.equal(result.drafts[1]?.flags.includes('UNCERTAIN_CATEGORY'), false)
+    assert.equal(result.drafts[2]?.flags.includes('UNCERTAIN_CATEGORY'), true)
   })
 
   it('keeps source keys stable while separating multiple drafts from one line', async () => {
@@ -243,20 +677,77 @@ describe('AI provider adapter', () => {
     const input = {
       provider,
       accountId: 2,
+      ...statementParseContext,
       currency: 'HKD' as const,
       dateOrder: 'DMY' as const,
-      statementText: '11/07/2026 Combined purchase 30.00 DR',
+      statementText: '11/07/2026 First 10.00 Second 20.00 DR',
       categories,
     }
-    const options = { ...policy, fetcher: async () => completion({ rows }) }
+    const options = { ...policy, fetcher: async () => completion(statementOutput(rows)) }
 
     const first = await parseBankStatement(input, options)
     const repeated = await parseBankStatement(input, options)
+    const reversed = await parseBankStatement(input, {
+      ...policy,
+      fetcher: async () => completion(statementOutput([...rows].reverse())),
+    })
+    const alternateSpelling = await parseBankStatement(input, {
+      ...policy,
+      fetcher: async () => completion(statementOutput(rows.map((row, index) => ({
+        ...row,
+        amountText: index === 0 ? '10' : '20.0',
+      })))),
+    })
 
-    assert.equal(first[0]?.importKey, repeated[0]?.importKey)
-    assert.equal(first[1]?.importKey, repeated[1]?.importKey)
-    assert.notEqual(first[0]?.importKey, first[1]?.importKey)
-    assert.notEqual(first[0]?.id, repeated[0]?.id)
+    assert.equal(first.drafts[0]?.importKey, repeated.drafts[0]?.importKey)
+    assert.equal(first.drafts[1]?.importKey, repeated.drafts[1]?.importKey)
+    assert.notEqual(first.drafts[0]?.importKey, first.drafts[1]?.importKey)
+    assert.notEqual(first.drafts[0]?.id, repeated.drafts[0]?.id)
+    for (const draft of first.drafts) {
+      assert.equal(
+        draft.importKey,
+        reversed.drafts.find((candidate) => candidate.amountMinor === draft.amountMinor)?.importKey,
+      )
+      assert.equal(
+        draft.importKey,
+        alternateSpelling.drafts.find(
+          (candidate) => candidate.amountMinor === draft.amountMinor,
+        )?.importKey,
+      )
+    }
+  })
+
+  it('binds import keys to the full pasted statement, not an amount line alone', async () => {
+    const row = {
+      sourceLine: 2,
+      occurredOn: '2026-07-11',
+      direction: 'expense',
+      amountText: '100.00',
+      currency: 'HKD',
+      description: 'Merchant',
+      suggestedCategoryName: '餐飲',
+      confidence: 0.99,
+      flags: [],
+    }
+    const parse = (statementText: string) => parseBankStatement(
+      {
+        provider,
+        accountId: 2,
+        ...statementParseContext,
+        currency: 'HKD',
+        dateOrder: 'YMD',
+        statementText,
+        categories,
+      },
+      { ...policy, fetcher: async () => completion(statementOutput([row])) },
+    )
+
+    const first = await parse('2026-07-11 Merchant A\n100.00 DR')
+    const repeated = await parse('2026-07-11 Merchant A\n100.00 DR')
+    const otherStatement = await parse('2026-07-12 Merchant B\n100.00 DR')
+
+    assert.equal(first.drafts[0]?.importKey, repeated.drafts[0]?.importKey)
+    assert.notEqual(first.drafts[0]?.importKey, otherStatement.drafts[0]?.importKey)
   })
 
   it('rejects a provider credential reflected in parsed statement output', async () => {
@@ -265,6 +756,7 @@ describe('AI provider adapter', () => {
         {
           provider,
           accountId: 2,
+          ...statementParseContext,
           currency: 'HKD',
           dateOrder: 'DMY',
           statementText: 'Merchant 12.00',
@@ -272,8 +764,7 @@ describe('AI provider adapter', () => {
         },
         {
           ...policy,
-          fetcher: async () => completion({
-            rows: [{
+          fetcher: async () => completion(statementOutput([{
               sourceLine: 1,
               occurredOn: '2026-07-11',
               direction: 'expense',
@@ -283,8 +774,7 @@ describe('AI provider adapter', () => {
               suggestedCategoryName: null,
               confidence: 0.5,
               flags: [],
-            }],
-          }),
+          }])),
         },
       ),
       (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
@@ -297,7 +787,40 @@ describe('AI provider adapter', () => {
         sourceLine: 1,
         occurredOn: '2026-07-11',
         direction: 'expense',
+        amountText: '10+2',
+        currency: 'HKD',
+        description: 'Merchant',
+        suggestedCategoryName: null,
+        confidence: 0.5,
+        flags: [],
+      },
+      {
+        sourceLine: 1,
+        occurredOn: '2026-07-11',
+        direction: 'expense',
         amountText: '1,234.50',
+        currency: 'HKD',
+        description: 'Merchant',
+        suggestedCategoryName: null,
+        confidence: 0.5,
+        flags: [],
+      },
+      {
+        sourceLine: 1,
+        occurredOn: '2026-07-11',
+        direction: 'expense',
+        amountText: '90071992547409.92',
+        currency: 'HKD',
+        description: 'Merchant',
+        suggestedCategoryName: null,
+        confidence: 0.5,
+        flags: [],
+      },
+      {
+        sourceLine: 2,
+        occurredOn: '2026-07-11',
+        direction: 'expense',
+        amountText: '12.00',
         currency: 'HKD',
         description: 'Merchant',
         suggestedCategoryName: null,
@@ -324,16 +847,63 @@ describe('AI provider adapter', () => {
           {
             provider,
             accountId: 2,
+            ...statementParseContext,
             currency: 'HKD',
             dateOrder: 'DMY',
             statementText: 'Merchant 12.00',
             categories,
           },
-          { ...policy, fetcher: async () => completion({ rows: [row] }) },
+          { ...policy, fetcher: async () => completion(statementOutput([row])) },
         ),
         (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
       )
     }
+  })
+
+  it('rejects unbacked, blank, overflowing, and arithmetically unsafe evidence', async () => {
+    const input = {
+      provider,
+      accountId: 2,
+      ...statementParseContext,
+      currency: 'HKD' as const,
+      dateOrder: 'DMY' as const,
+      statementText: 'Opening balance 1.00\n ',
+      categories,
+    }
+    const invalidEvidence = [
+      { openingBalance: { sourceLine: 3, amountText: '1.00' } },
+      { openingBalance: { sourceLine: 2, amountText: '1.00' } },
+      { openingBalance: { sourceLine: 1, amountText: '90071992547409.92' } },
+    ]
+
+    for (const evidence of invalidEvidence) {
+      await assert.rejects(
+        parseBankStatement(input, {
+          ...policy,
+          fetcher: async () => completion(statementOutput([], evidence)),
+        }),
+        (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+      )
+    }
+
+    const unsafeRows = [0, 1].map(() => ({
+      sourceLine: 1,
+      occurredOn: '2026-07-11',
+      direction: 'income',
+      amountText: '90071992547409.91',
+      currency: 'HKD',
+      description: 'Maximum safe amount',
+      suggestedCategoryName: '其他收入',
+      confidence: 1,
+      flags: [],
+    }))
+    await assert.rejects(
+      parseBankStatement(input, {
+        ...policy,
+        fetcher: async () => completion(statementOutput(unsafeRows)),
+      }),
+      (error) => error instanceof AiProviderError && error.code === 'RESPONSE_INVALID',
+    )
   })
 
   it('caps declared and streamed provider responses', async () => {

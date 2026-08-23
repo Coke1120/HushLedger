@@ -86,7 +86,7 @@ if (!childRun) {
     })
   })
 } else {
-  const { commitTransactionImport } = await import('./transactionImport')
+  const { commitTransactionImport, previewTransactionImport } = await import('./transactionImport')
   const {
     createTransaction,
     deleteTransaction,
@@ -205,6 +205,8 @@ if (!childRun) {
   const manualId = '10000000-0000-4000-8000-000000000001'
   const importedId = '10000000-0000-4000-8000-000000000002'
   const secondImportedId = '10000000-0000-4000-8000-000000000003'
+  const thirdImportedId = '10000000-0000-4000-8000-000000000004'
+  const fourthImportedId = '10000000-0000-4000-8000-000000000005'
   const futureVersion = '2099-01-01T00:00:00.000Z'
 
   function insertTransaction(
@@ -326,6 +328,127 @@ if (!childRun) {
   })
 
   describe('transaction import review provenance', () => {
+    it('requires explicit inclusion for later same-economic rows in one batch', async () => {
+      const database = new TestDatabase()
+      try {
+        const rows: TransactionImportRow[] = [importedId, secondImportedId].map((id, index) => ({
+          id,
+          type: 'expense',
+          amountMinor: 2500,
+          currency: 'HKD',
+          accountId: 1,
+          categoryId: 1,
+          occurredOn: '2026-07-14',
+          cleared: true,
+          payee: 'Repeated statement charge',
+          note: '',
+          sourceRow: index + 1,
+          importKey: `csv:hushledger:id:${id}`,
+          include: true,
+        }))
+
+        const preview = await previewTransactionImport(database as unknown as D1Database, rows)
+        assert.deepEqual(preview.rows.map((row) => row.status), ['new', 'possible_duplicate'])
+        assert.equal(preview.rows.filter(
+          (row) => row.status === 'new' || row.status === 'match_ready',
+        ).length, 1)
+
+        const outcome = await commitTransactionImport(database as unknown as D1Database, rows)
+        assert.equal(outcome.kind, 'committed')
+        if (outcome.kind === 'committed') {
+          assert.equal(outcome.result.imported, 2)
+          assert.deepEqual(
+            outcome.result.rows.map((row) => row.status),
+            ['new', 'possible_duplicate'],
+          )
+        }
+      } finally {
+        database.close()
+      }
+    })
+
+    it('uses stable statement source fields only for drifted AI siblings', async () => {
+      const database = new TestDatabase()
+      try {
+        database.raw.exec(`
+          INSERT INTO categories VALUES (2, 'Income', NULL, 'wallet', '#654321', 'income', 1)
+        `)
+        const aiRows: TransactionImportRow[] = [
+          {
+            id: importedId,
+            type: 'expense',
+            amountMinor: 2500,
+            currency: 'HKD',
+            accountId: 1,
+            categoryId: 1,
+            occurredOn: '2026-07-14',
+            cleared: true,
+            payee: 'Merchant name',
+            note: '',
+            sourceRow: 7,
+            importKey: `ai:statement:row:${'a'.repeat(64)}`,
+            include: true,
+          },
+          {
+            id: secondImportedId,
+            type: 'income',
+            amountMinor: 2500,
+            currency: 'HKD',
+            accountId: 1,
+            categoryId: 2,
+            occurredOn: '2026-07-15',
+            cleared: true,
+            payee: 'Merchant Name Limited',
+            note: 'AI wording drift',
+            sourceRow: 7,
+            importKey: `ai:statement:row:${'b'.repeat(64)}`,
+            include: true,
+          },
+        ]
+
+        const aiPreview = await previewTransactionImport(
+          database as unknown as D1Database,
+          aiRows,
+        )
+        assert.deepEqual(aiPreview.rows.map((row) => row.status), ['new', 'possible_duplicate'])
+        const outcome = await commitTransactionImport(database as unknown as D1Database, aiRows)
+        assert.equal(outcome.kind, 'committed')
+        if (outcome.kind === 'committed') {
+          assert.equal(outcome.result.imported, 2)
+          assert.deepEqual(
+            outcome.result.rows.map((row) => row.status),
+            ['new', 'possible_duplicate'],
+          )
+        }
+
+        const csvRows: TransactionImportRow[] = [
+          {
+            ...aiRows[0],
+            id: thirdImportedId,
+            amountMinor: 3000,
+            payee: 'First legitimate CSV row',
+            sourceRow: 8,
+            importKey: `csv:hushledger:id:${thirdImportedId}`,
+          },
+          {
+            ...aiRows[1],
+            id: fourthImportedId,
+            amountMinor: 3000,
+            payee: 'Second legitimate CSV row',
+            sourceRow: 8,
+            importKey: `csv:hushledger:id:${fourthImportedId}`,
+          },
+        ]
+        const csvPreview = await previewTransactionImport(
+          database as unknown as D1Database,
+          csvRows,
+        )
+        assert.deepEqual(csvPreview.rows.map((row) => row.status), ['new', 'new'])
+      } finally {
+        database.close()
+      }
+    })
+
     it('marks both new and matched statement rows as unreviewed', async () => {
       const database = new TestDatabase()
       try {

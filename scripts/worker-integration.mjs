@@ -289,6 +289,10 @@ async function startFakeAiProvider(port, { categoryName, occurredOn }) {
           choices: [{
             message: {
               content: JSON.stringify({
+                openingBalance: null,
+                closingBalance: null,
+                debitTotal: null,
+                creditTotal: null,
                 rows: [{
                   sourceLine: 1,
                   occurredOn,
@@ -7727,6 +7731,19 @@ async function verifyNextAiDrafts() {
   assert.equal(parsed.payload.data.drafts[0].categoryId, category.id)
   assert.equal(parsed.payload.data.drafts[0].payee, 'Integration merchant')
   assert.match(parsed.payload.data.drafts[0].importKey, /^ai:statement:row:[0-9a-f]{64}$/)
+  assert.deepEqual(parsed.payload.data.verification, {
+    status: 'unavailable',
+    openingBalance: null,
+    closingBalance: null,
+    debitTotal: null,
+    creditTotal: null,
+    parsedIncomeMinor: 0,
+    parsedExpenseMinor: 1_234,
+    parsedNetMinor: -1_234,
+    balanceDifferenceMinor: null,
+    debitDifferenceMinor: null,
+    creditDifferenceMinor: null,
+  })
 
   const afterTransactions = await api(baseUrl, `/api/transactions?month=${month}`)
   assert.equal(afterTransactions.response.status, 200)

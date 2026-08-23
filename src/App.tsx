@@ -124,7 +124,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [recurringDraftKind, setRecurringDraftKind] = useState<'manual' | 'ai' | null>(null)
   const [recurringRuleFocusId, setRecurringRuleFocusId] = useState<string | null>(null)
   const [recurringTransferRuleFocusId, setRecurringTransferRuleFocusId] = useState<string | null>(null)
-  const [importMode, setImportMode] = useState<'csv' | 'copilot' | 'ai' | null>(null)
+  const [importMode, setImportMode] = useState<'csv' | 'copilot' | 'statement' | null>(null)
   const [aiCopilotActionStale, setAiCopilotActionStale] = useState(false)
   const [aiSettingsDraft, setAiSettingsDraft] = useState<AiSettingsDraft | null>(null)
   const [aiSettingsRowOverride, setAiSettingsRowOverride] = useState<
@@ -140,6 +140,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const [ledgerBackupDue, setLedgerBackupDue] = useState<boolean | null>(null)
   const mainRef = useRef<HTMLElement>(null)
   const csvImportButtonRef = useRef<HTMLButtonElement>(null)
+  const aiStatementImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiCopilotButtonRef = useRef<HTMLButtonElement>(null)
   const importPanelRef = useRef<HTMLElement>(null)
   const transactionLoadStatusRef = useRef<HTMLParagraphElement>(null)
@@ -389,7 +390,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     changeView('recurring')
   }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
-  const openImport = useCallback((mode: 'csv' | 'copilot' | 'ai') => {
+  const openImport = useCallback((mode: 'csv' | 'copilot' | 'statement') => {
     if (ledgerInteractionLocked) return
     setAiCopilotActionStale(false)
     setRegisterAccountId(null)
@@ -399,12 +400,14 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [ledgerInteractionLocked])
 
   const closeImport = useCallback(() => {
-    const button = importMode === 'csv' ? csvImportButtonRef : aiCopilotButtonRef
+    const button = importMode === 'csv'
+      ? csvImportButtonRef
+      : importMode === 'statement'
+        ? aiStatementImportButtonRef
+        : aiCopilotButtonRef
     setImportMode(null)
     requestAnimationFrame(() => button.current?.focus())
   }, [importMode])
-
-  const returnToAiCopilot = useCallback(() => setImportMode('copilot'), [])
 
   const changeTransactionFilter = useCallback((nextFilter: TransactionFilter) => {
     setFilter(nextFilter)
@@ -673,7 +676,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     }
 
     if (action.type === 'open_ai_import') {
-      openImport('ai')
+      openImport('statement')
       return
     }
 
@@ -984,10 +987,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 onCategoryFilterChange={setCategoryFilterId}
                 onClearReferenceFilters={clearReferenceFilters}
                 onCsvImport={() => openImport('csv')}
+                onAiStatementImport={() => openImport('statement')}
                 onAiCopilot={() => openImport('copilot')}
                 csvImportOpen={importMode === 'csv'}
+                aiStatementImportOpen={importMode === 'statement'}
                 aiCopilotOpen={importMode === 'copilot'}
                 csvImportButtonRef={csvImportButtonRef}
+                aiStatementImportButtonRef={aiStatementImportButtonRef}
                 aiCopilotButtonRef={aiCopilotButtonRef}
               />
               {view === 'overview' && overviewTransactionFiltersActive ? (
@@ -1066,14 +1072,14 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                   panelRef={importPanelRef}
                   onClose={closeImport}
                   onConfigure={() => openSettings('connections')}
-                  onOpenAiImport={() => openImport('ai')}
+                  onOpenAiImport={() => openImport('statement')}
                   onAction={applyAiCopilotAction}
                 />
               </>
             ) : null}
-            {registerAccountId === null && view === 'transactions' && importMode === 'ai' ? (
+            {registerAccountId === null && view === 'transactions' && importMode === 'statement' ? (
               <BankImportPanel
-                key={`ai-import-${data.ledgerSettings.updatedAt}`}
+                key={`statement-import-${data.ledgerSettings.updatedAt}`}
                 settings={aiSettings}
                 persistedSettings={aiSettingsRow}
                 settingsConflict={aiSettingsConflict}
@@ -1082,7 +1088,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
                 categories={data.categories}
                 available={data.source === 'live' && data.online}
                 panelRef={importPanelRef}
-                onClose={returnToAiCopilot}
+                onClose={closeImport}
                 onConfigure={() => openSettings('connections')}
                 onImported={() => data.refresh('error')}
                 onMutationStateChange={setImportMutationInProgress}

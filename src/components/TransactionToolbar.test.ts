@@ -13,6 +13,7 @@ function renderToolbar(
   options: {
     amountFilterMinor?: number | null
     aiCopilotOpen?: boolean
+    aiStatementImportOpen?: boolean
     duplicatesOnly?: boolean
     importReviewFilter?: 'all' | 'unreviewed' | 'needs_follow_up' | 'reviewed'
     payeeFilter?: string | null
@@ -22,6 +23,7 @@ function renderToolbar(
   const {
     amountFilterMinor = null,
     aiCopilotOpen = false,
+    aiStatementImportOpen = false,
     duplicatesOnly = false,
     importReviewFilter = 'all',
     payeeFilter = null,
@@ -84,10 +86,13 @@ function renderToolbar(
       onCategoryFilterChange: noop,
       onClearReferenceFilters: noop,
       onCsvImport: noop,
+      onAiStatementImport: noop,
       onAiCopilot: noop,
       csvImportOpen: false,
+      aiStatementImportOpen,
       aiCopilotOpen,
       csvImportButtonRef: createRef<HTMLButtonElement>(),
+      aiStatementImportButtonRef: createRef<HTMLButtonElement>(),
       aiCopilotButtonRef: createRef<HTMLButtonElement>(),
     }),
   ))
@@ -135,6 +140,7 @@ describe('calm transaction toolbar disclosures', () => {
     const reviewMarkup = renderToolbar(null, { duplicatesOnly: true })
     const moreMarkup = renderToolbar(null, { amountFilterMinor: 12_345 })
     const actionsMarkup = renderToolbar(null, { aiCopilotOpen: true })
+    const statementMarkup = renderToolbar(null, { aiStatementImportOpen: true })
 
     assert.match(reviewMarkup, /transaction-review-disclosure is-active" open=""/)
     assert.match(reviewMarkup, /transaction-duplicate-filter is-active[^>]*aria-pressed="true"/)
@@ -142,13 +148,16 @@ describe('calm transaction toolbar disclosures', () => {
     assert.match(moreMarkup, /class="transaction-amount-filter"/)
     assert.match(actionsMarkup, /transaction-actions-disclosure is-active" open=""/)
     assert.match(actionsMarkup, /id="ai-copilot-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="ai-copilot-panel"/)
+    assert.match(statementMarkup, /transaction-actions-disclosure is-active" open=""/)
+    assert.match(statementMarkup, /id="ai-statement-import-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="bank-import-panel"/)
   })
 
   it('releases the Actions disclosure after export reaches a terminal state', () => {
-    assert.equal(transactionActionsDisclosureActive(false, false, 'preparing'), true)
-    assert.equal(transactionActionsDisclosureActive(false, false, 'ready'), false)
-    assert.equal(transactionActionsDisclosureActive(false, false, 'error'), false)
-    assert.equal(transactionActionsDisclosureActive(true, false, 'ready'), true)
+    assert.equal(transactionActionsDisclosureActive(false, false, false, 'preparing'), true)
+    assert.equal(transactionActionsDisclosureActive(false, false, false, 'ready'), false)
+    assert.equal(transactionActionsDisclosureActive(false, false, false, 'error'), false)
+    assert.equal(transactionActionsDisclosureActive(true, false, false, 'ready'), true)
+    assert.equal(transactionActionsDisclosureActive(false, true, false, 'ready'), true)
   })
 
   it('keeps active payee and tag chips visible outside the disclosures', () => {

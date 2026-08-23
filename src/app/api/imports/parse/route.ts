@@ -22,7 +22,11 @@ import {
   readApiJson,
   sanitizeValidationIssues,
 } from '../../../../server/http'
-import { listAccounts, listCategories } from '../../../../server/money'
+import {
+  listAccounts,
+  listCategories,
+  listPayeeSuggestions,
+} from '../../../../server/money'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,9 +56,10 @@ export const POST = apiRoute(async (request) => {
 
   const env = await getCloudflareEnv()
   const database = env.DB
-  const [accounts, categories] = await Promise.all([
+  const [accounts, categories, payeeSuggestions] = await Promise.all([
     listAccounts(database),
     listCategories(database),
+    listPayeeSuggestions(database),
   ])
   const account = accounts.find(
     (candidate) =>
@@ -68,21 +73,23 @@ export const POST = apiRoute(async (request) => {
     const provider = await resolveProvider(parsed.data.provider, env)
     if (provider instanceof Response) return provider
 
-    const drafts = await parseBankStatement(
+    const result = await parseBankStatement(
       {
         provider,
         accountId: account.id,
+        accountType: account.type,
         currency: parsed.data.currency,
         dateOrder: parsed.data.dateOrder,
         statementText: parsed.data.statementText,
         categories,
+        payeeSuggestions,
       },
       {
         allowLoopback: isLocalDevelopmentRequest(request),
         applicationOrigin: requestOrigin(request),
       },
     )
-    return jsonSuccess({ drafts })
+    return jsonSuccess(result)
   } catch (error) {
     if (error instanceof AiSettingsCryptoError) {
       return jsonError(

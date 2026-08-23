@@ -1,4 +1,14 @@
-import { AlertTriangle, ChevronDown, Download, FileUp, Flag, Search, Sparkles, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronDown,
+  ClipboardPaste,
+  Download,
+  FileUp,
+  Flag,
+  Search,
+  Sparkles,
+  X,
+} from 'lucide-react'
 import { useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import { useI18n } from '../i18n'
 import { trailingSevenDayRange, trailingTwelveMonthRange } from '../lib/date'
@@ -63,10 +73,13 @@ type TransactionToolbarProps = {
   onCategoryFilterChange: (value: number | null) => void
   onClearReferenceFilters: () => void
   onCsvImport: () => void
+  onAiStatementImport: () => void
   onAiCopilot: () => void
   csvImportOpen: boolean
+  aiStatementImportOpen: boolean
   aiCopilotOpen: boolean
   csvImportButtonRef: RefObject<HTMLButtonElement | null>
+  aiStatementImportButtonRef: RefObject<HTMLButtonElement | null>
   aiCopilotButtonRef: RefObject<HTMLButtonElement | null>
 }
 
@@ -108,10 +121,13 @@ export function TransactionToolbar({
   onCategoryFilterChange,
   onClearReferenceFilters,
   onCsvImport,
+  onAiStatementImport,
   onAiCopilot,
   csvImportOpen,
+  aiStatementImportOpen,
   aiCopilotOpen,
   csvImportButtonRef,
+  aiStatementImportButtonRef,
   aiCopilotButtonRef,
 }: TransactionToolbarProps) {
   const { locale, localizeEntityName, t } = useI18n()
@@ -205,6 +221,7 @@ export function TransactionToolbar({
   )
   const actionsActive = transactionActionsDisclosureActive(
     csvImportOpen,
+    aiStatementImportOpen,
     aiCopilotOpen,
     exportState,
   )
@@ -506,6 +523,20 @@ export function TransactionToolbar({
           >
             <FileUp aria-hidden="true" />
             {t('csvImport')}
+          </button>
+          <button
+            id="ai-statement-import-trigger"
+            className="button button-secondary ai-statement-import-button"
+            type="button"
+            onClick={onAiStatementImport}
+            aria-expanded={aiStatementImportOpen}
+            aria-controls="bank-import-panel"
+            ref={aiStatementImportButtonRef}
+            disabled={!canImport}
+            title={!canImport ? t('aiOffline') : undefined}
+          >
+            <ClipboardPaste aria-hidden="true" />
+            {t('aiStatementImportAction')}
           </button>
           <button
             id="ai-copilot-trigger"

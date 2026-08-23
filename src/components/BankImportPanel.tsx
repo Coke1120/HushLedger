@@ -1,18 +1,30 @@
 import { LoaderCircle, ShieldCheck, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { messageForError, renderMessage, useI18n, type MessageKey } from '../i18n'
 import {
   MAX_AI_STATEMENT_BYTES,
+  autoSelectedBankImportKeys,
+  calculateBankStatementVerification,
   aiImportRequestSchema,
   aiImportRowSchema,
   aiProviderSettingsSchema,
-  bankImportDraftsSchema,
+  bankStatementParseResultSchema,
   type AiDateOrder,
   type AiProviderSettings,
   type AiProviderSettingsRow,
   type BankImportDraft,
+  type BankStatementVerification,
+  type BankStatementVerificationEvidence,
 } from '../lib/ai'
-import { api } from '../lib/api'
+import { ApiError, api } from '../lib/api'
 import { isValidCalendarDate } from '../lib/date'
 import { parseAmount } from '../lib/money'
 import type { Account, Category, TransactionType } from '../lib/schema'
@@ -57,13 +69,17 @@ export function BankImportPanel({
   onImported,
   onMutationStateChange,
 }: BankImportPanelProps) {
-  const { locale, localizeEntityName, privacyMode, t } = useI18n()
+  const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const activeAccounts = accounts.filter((account) => account.isActive)
-  const [accountId, setAccountId] = useState(activeAccounts[0]?.id ?? 0)
+  const [accountId, setAccountId] = useState(
+    activeAccounts.length === 1 ? activeAccounts[0]?.id ?? 0 : 0,
+  )
   const selectedAccount = activeAccounts.find((account) => account.id === accountId)
-  const [dateOrder, setDateOrder] = useState<AiDateOrder>('DMY')
+  const [dateOrder, setDateOrder] = useState<AiDateOrder>(() => defaultDateOrder(locale))
   const [statementText, setStatementText] = useState('')
   const [drafts, setDrafts] = useState<EditableBankImportDraft[]>([])
+  const [verificationEvidence, setVerificationEvidence] =
+    useState<BankStatementVerificationEvidence | null>(null)
   const [preview, setPreview] = useState<TransactionImportPreviewResult | null>(null)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set())
   const [analyzing, setAnalyzing] = useState(false)
@@ -82,6 +98,10 @@ export function BankImportPanel({
     && settings.model.trim() === persistedSettings.model
   const configured = transientProvider.success || canUseStoredProvider
   const statementBytes = new TextEncoder().encode(statementText.trim()).byteLength
+  const verification = useMemo(
+    () => recalculateVerification(verificationEvidence, drafts),
+    [drafts, verificationEvidence],
+  )
   const previewStatusByKey = useMemo(
     () => new Map(preview?.rows.map((row) => [row.importKey, row.status]) ?? []),
     [preview],
@@ -100,6 +120,7 @@ export function BankImportPanel({
       requestControllerRef.current?.abort()
       requestControllerRef.current = null
       setDrafts([])
+      setVerificationEvidence(null)
       setPreview(null)
       setSelectedKeys(new Set())
       setAnalyzing(false)
@@ -125,6 +146,7 @@ export function BankImportPanel({
   const invalidateDrafts = () => {
     cancelPendingRequest()
     setDrafts([])
+    setVerificationEvidence(null)
     setPreview(null)
     setSelectedKeys(new Set())
     setStatus('')
@@ -167,12 +189,15 @@ export function BankImportPanel({
 
     setAnalyzing(true)
     setDrafts([])
+    setVerificationEvidence(null)
+    setPreview(null)
+    setSelectedKeys(new Set())
     const requestId = ++requestIdRef.current
     requestControllerRef.current?.abort()
     const controller = new AbortController()
     requestControllerRef.current = controller
     try {
-      const result = await api<{ drafts: unknown }>('/api/imports/parse', {
+      const result = await api<unknown>('/api/imports/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -185,16 +210,29 @@ export function BankImportPanel({
         signal: controller.signal,
       })
       if (requestId !== requestIdRef.current) return
-      const parsedDrafts = bankImportDraftsSchema.safeParse(result.drafts)
-      if (!parsedDrafts.success) throw new Error('Invalid draft response')
-      setDrafts(parsedDrafts.data)
+      const parsedResult = bankStatementParseResultSchema.safeParse(result)
+      if (!parsedResult.success) throw new Error('Invalid draft response')
+      const evidence: BankStatementVerificationEvidence = {
+        openingBalance: parsedResult.data.verification.openingBalance,
+        closingBalance: parsedResult.data.verification.closingBalance,
+        debitTotal: parsedResult.data.verification.debitTotal,
+        creditTotal: parsedResult.data.verification.creditTotal,
+      }
+      const recalculatedVerification = recalculateVerification(evidence, parsedResult.data.drafts)
+      setDrafts(parsedResult.data.drafts)
+      setVerificationEvidence(evidence)
       setStatus(
-        parsedDrafts.data.length > 0
-          ? t('aiDraftCount', { count: parsedDrafts.data.length })
+        parsedResult.data.drafts.length > 0
+          ? t('aiDraftCount', { count: parsedResult.data.drafts.length })
           : t('aiNoDrafts'),
       )
-      if (parsedDrafts.data.length > 0) {
-        await previewDrafts(parsedDrafts.data, requestId, controller.signal)
+      if (parsedResult.data.drafts.length > 0) {
+        await previewDrafts(
+          parsedResult.data.drafts,
+          requestId,
+          controller.signal,
+          canAutomaticallySelectBankImport(recalculatedVerification),
+        )
       }
     } catch (caught) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
@@ -209,7 +247,9 @@ export function BankImportPanel({
 
   const updateDraft = (id: string, patch: Partial<EditableBankImportDraft>) => {
     invalidatePreview()
-    setDrafts((current) => current.map((draft) => draft.id === id ? { ...draft, ...patch } : draft))
+    setDrafts((current) => current.map(
+      (draft) => draft.id === id ? { ...draft, ...patch } : draft,
+    ))
   }
 
   const updateDraftType = (draft: EditableBankImportDraft, type: TransactionType) => {
@@ -247,7 +287,10 @@ export function BankImportPanel({
     nextDrafts = drafts,
     requestId = ++requestIdRef.current,
     existingSignal?: AbortSignal,
+    allowAutomaticSelection = canAutomaticallySelectBankImport(verification),
   ) => {
+    setPreview(null)
+    setSelectedKeys(new Set())
     if (!available) {
       cancelPendingRequest()
       setError(t('aiOffline'))
@@ -281,15 +324,17 @@ export function BankImportPanel({
       const parsed = transactionImportPreviewResultSchema.safeParse(response)
       if (!parsed.success) throw new Error('Invalid AI import preview')
       setPreview(parsed.data)
-      setSelectedKeys(new Set(
-        parsed.data.rows
-          .filter((row) => row.status === 'new' || row.status === 'match_ready')
-          .map((row) => row.importKey),
+      setSelectedKeys(autoSelectedBankImportKeys(
+        nextDrafts,
+        parsed.data.rows,
+        allowAutomaticSelection,
       ))
       setStatus(t('aiPreviewReady'))
       return true
     } catch (caught) {
       if (signal?.aborted || requestId !== requestIdRef.current) return false
+      setPreview(null)
+      setSelectedKeys(new Set())
       setError(renderMessage(t, messageForError(caught, 'errorAiPreviewFailed')))
       return false
     } finally {
@@ -311,7 +356,10 @@ export function BankImportPanel({
       ...row,
       include: selectedKeys.has(row.importKey),
     }))
-    if (rows.length !== preview.rows.length) {
+    if (
+      rows.length !== preview.rows.length
+      || rows.some((row, index) => row.importKey !== preview.rows[index]?.importKey)
+    ) {
       invalidatePreview()
       setError(t('errorAiPreviewFailed'))
       return
@@ -339,6 +387,7 @@ export function BankImportPanel({
       const committedKeys = new Set(selectedKeys)
       const remaining = drafts.filter((draft) => !committedKeys.has(draft.importKey))
       setDrafts(remaining)
+      setVerificationEvidence(null)
       setPreview(null)
       setSelectedKeys(new Set())
       if (remaining.length === 0) setStatementText('')
@@ -350,6 +399,15 @@ export function BankImportPanel({
       await onImported()
     } catch (caught) {
       if (controller.signal.aborted || requestId !== requestIdRef.current) return
+      if (
+        caught instanceof ApiError
+        && (caught.code === 'AI_IMPORT_BLOCKED' || caught.code === 'AI_IMPORT_STALE')
+      ) {
+        setPreview(null)
+        setSelectedKeys(new Set())
+        setStatus(t('aiPreviewRequired'))
+        return
+      }
       setError(renderMessage(t, messageForError(caught, 'errorAiImportFailed')))
     } finally {
       onMutationStateChange(false)
@@ -365,6 +423,7 @@ export function BankImportPanel({
       id="bank-import-panel"
       className="bank-import-panel"
       aria-labelledby="bank-import-title"
+      aria-busy={analyzing || previewing || importing}
       ref={panelRef}
       tabIndex={-1}
     >
@@ -400,6 +459,7 @@ export function BankImportPanel({
               }}
               required
             >
+              <option value={0} disabled>{t('aiChooseAccount')}</option>
               {activeAccounts.map((account) => (
                 <option value={account.id} key={account.id}>
                   {localizeEntityName(account.name, account.localizationKey)}
@@ -407,21 +467,24 @@ export function BankImportPanel({
               ))}
             </select>
           </label>
-          <label>
-            <span>{t('aiDateOrder')}</span>
-            <select
-              value={dateOrder}
-              disabled={analyzing || previewing || importing}
-              onChange={(event) => {
-                setDateOrder(event.target.value as AiDateOrder)
-                invalidateDrafts()
-              }}
-            >
-              <option value="DMY">{t('aiDateOrderDmy')}</option>
-              <option value="MDY">{t('aiDateOrderMdy')}</option>
-              <option value="YMD">{t('aiDateOrderYmd')}</option>
-            </select>
-          </label>
+          <details className="ai-import-advanced">
+            <summary>{t('aiAdvancedOptions')}</summary>
+            <label>
+              <span>{t('aiDateOrder')}</span>
+              <select
+                value={dateOrder}
+                disabled={analyzing || previewing || importing}
+                onChange={(event) => {
+                  setDateOrder(event.target.value as AiDateOrder)
+                  invalidateDrafts()
+                }}
+              >
+                <option value="DMY">{t('aiDateOrderDmy')}</option>
+                <option value="MDY">{t('aiDateOrderMdy')}</option>
+                <option value="YMD">{t('aiDateOrderYmd')}</option>
+              </select>
+            </label>
+          </details>
         </div>
 
         <label>
@@ -440,7 +503,8 @@ export function BankImportPanel({
               spellCheck={false}
               autoCorrect="off"
               autoCapitalize="none"
-              aria-describedby="ai-statement-help"
+              aria-describedby="ai-statement-help ai-privacy-warning"
+              aria-invalid={statementBytes > MAX_AI_STATEMENT_BYTES}
               required
             />
             {privacyMode && statementText ? (
@@ -450,12 +514,14 @@ export function BankImportPanel({
             ) : null}
           </span>
           <small id="ai-statement-help">{t('aiStatementHelp')}</small>
-          <small className="ai-byte-count" aria-live="polite">
+          <small
+            className={`ai-byte-count${statementBytes > MAX_AI_STATEMENT_BYTES ? ' is-error' : ''}`}
+          >
             {t('aiStatementBytes', { count: statementBytes, limit: MAX_AI_STATEMENT_BYTES })}
           </small>
         </label>
 
-        <div className="ai-provider-warning">
+        <div className="ai-provider-warning" id="ai-privacy-warning">
           <ShieldCheck aria-hidden="true" />
           <span>{t('aiPrivacyWarning')}</span>
         </div>
@@ -472,6 +538,7 @@ export function BankImportPanel({
             importing ||
             !configured ||
             !available ||
+            !selectedAccount ||
             !statementText.trim() ||
             statementBytes > MAX_AI_STATEMENT_BYTES
           }
@@ -491,6 +558,13 @@ export function BankImportPanel({
             <span>{t('aiDraftOnly')}</span>
           </div>
 
+          {verification ? (
+            <BankStatementVerificationSummary
+              verification={verification}
+              currency={drafts[0]!.currency}
+            />
+          ) : null}
+
           <div className="ai-draft-list">
             {drafts.map((draft) => {
               const matchingCategories = categories.filter(
@@ -502,11 +576,18 @@ export function BankImportPanel({
               const selectable = importStatus === 'new' ||
                 importStatus === 'match_ready' ||
                 importStatus === 'possible_duplicate'
+              const possibleTransfer = draft.flags.includes('POSSIBLE_TRANSFER')
+              const needsReview = hasSafetyWarning(draft) ||
+                !validDate ||
+                !validAmount ||
+                draft.categoryId === null ||
+                (importStatus !== undefined && importStatus !== 'new' && importStatus !== 'match_ready')
               const selected = selectedKeys.has(draft.importKey)
               return (
                 <article
                   className={`ai-draft-row${selected ? ' is-selected' : ''}`}
                   key={draft.id}
+                  aria-labelledby={`${draft.id}-summary`}
                 >
                   <div className="ai-draft-source">
                     <div className="ai-draft-selection">
@@ -514,9 +595,10 @@ export function BankImportPanel({
                         <input
                           type="checkbox"
                           checked={selected}
-                          disabled={!selectable || importing}
+                          disabled={!selectable || possibleTransfer || importing}
                           onChange={(event) => toggleDraft(draft.importKey, event.target.checked)}
                           aria-label={t('aiSelectDraft', { line: draft.sourceLine })}
+                          aria-describedby={possibleTransfer ? `${draft.id}-warnings` : undefined}
                         />
                         <span>{t('aiSourceLine', { line: draft.sourceLine })}</span>
                       </label>
@@ -528,15 +610,31 @@ export function BankImportPanel({
                     </div>
                     <q>{privacyMode ? t('sensitiveTextHidden') : draft.sourceText}</q>
                     <small>{t('aiConfidence', { percent: Math.round(draft.confidence * 100) })}</small>
+                    <p className="ai-draft-compact" id={`${draft.id}-summary`}>
+                      <span>{validDate ? formatDate(draft.occurredOn) : draft.occurredOn}</span>
+                      <strong>{draft.payee || '—'}</strong>
+                      <span>{t(draft.type)} · {draft.amountMinor === null
+                        ? privacyMode ? t('sensitiveTextHidden') : draft.amountText
+                        : formatMoney(draft.amountMinor, draft.currency)}
+                      </span>
+                    </p>
                     {draft.flags.length > 0 ? (
-                      <ul className="ai-draft-flags" aria-label={t('aiWarnings')}>
+                      <ul
+                        className="ai-draft-flags"
+                        id={`${draft.id}-warnings`}
+                        aria-label={t('aiWarnings')}
+                      >
                         {draft.flags.map((flag) => (
                           <li key={flag}>{t(aiFlagMessageKey(flag))}</li>
                         ))}
                       </ul>
                     ) : null}
                   </div>
-                  <div className="ai-draft-fields">
+                  <AiDraftDetails
+                    initiallyOpen={needsReview}
+                    label={`${t(needsReview ? 'aiReviewDraftDetails' : 'aiEditDraftDetails')} · ${t('aiSourceLine', { line: draft.sourceLine })}`}
+                  >
+                    <div className="ai-draft-fields">
                     <label>
                       <span>{t('date')}</span>
                       <input
@@ -618,7 +716,8 @@ export function BankImportPanel({
                     >
                       <Trash2 aria-hidden="true" />
                     </button>
-                  </div>
+                    </div>
+                  </AiDraftDetails>
                 </article>
               )
             })}
@@ -682,6 +781,65 @@ function aiFlagMessageKey(flag: BankImportDraft['flags'][number]) {
   }
 }
 
+export function BankStatementVerificationSummary({
+  currency,
+  verification,
+}: {
+  currency: BankImportDraft['currency']
+  verification: BankStatementVerification
+}) {
+  const { formatMoney, t } = useI18n()
+  const statusMessage: MessageKey = verification.status === 'matched'
+    ? 'aiVerificationMatched'
+    : verification.status === 'mismatch'
+      ? 'aiVerificationMismatch'
+      : 'aiVerificationUnavailable'
+  const differences: Array<{ label: MessageKey; value: number | null }> = [
+    { label: 'aiVerificationBalanceDifference', value: verification.balanceDifferenceMinor },
+    { label: 'aiVerificationDebitDifference', value: verification.debitDifferenceMinor },
+    { label: 'aiVerificationCreditDifference', value: verification.creditDifferenceMinor },
+  ]
+
+  return (
+    <section
+      className={`ai-verification is-${verification.status}`}
+      aria-labelledby="ai-verification-title"
+    >
+      <div className="ai-verification-status" role="status" aria-live="polite" aria-atomic="true">
+        <strong id="ai-verification-title">{t('aiVerificationTitle')}</strong>
+        <span>{t(statusMessage)}</span>
+      </div>
+      <dl className="ai-verification-totals">
+        <div>
+          <dt>{t('aiVerificationParsedIncome')}</dt>
+          <dd>{formatMoney(verification.parsedIncomeMinor, currency)}</dd>
+        </div>
+        <div>
+          <dt>{t('aiVerificationParsedExpense')}</dt>
+          <dd>{formatMoney(verification.parsedExpenseMinor, currency)}</dd>
+        </div>
+        <div>
+          <dt>{t('aiVerificationParsedNet')}</dt>
+          <dd>{formatMoney(verification.parsedNetMinor, currency)}</dd>
+        </div>
+      </dl>
+      {verification.status === 'mismatch' ? (
+        <ul className="ai-verification-differences">
+          {differences
+            .filter((difference): difference is { label: MessageKey; value: number } =>
+              difference.value !== null && difference.value !== 0)
+            .map((difference) => (
+              <li key={difference.label}>
+                <span>{t(difference.label)}</span>
+                <strong>{formatMoney(difference.value, currency)}</strong>
+              </li>
+            ))}
+        </ul>
+      ) : null}
+    </section>
+  )
+}
+
 function importRows(drafts: readonly EditableBankImportDraft[]): TransactionImportRow[] {
   return drafts.flatMap((draft) => {
     if (
@@ -723,4 +881,68 @@ function importStatusMessageKey(status: TransactionImportRowStatus): MessageKey 
     case 'category_invalid': return 'csvStatusCategoryInvalid'
     case 'category_mismatch': return 'csvStatusCategoryMismatch'
   }
+}
+
+function defaultDateOrder(locale: string): AiDateOrder {
+  if (locale.toLowerCase().startsWith('ja')) return 'YMD'
+  if (locale.toLowerCase().startsWith('en-us')) return 'MDY'
+  return 'DMY'
+}
+
+function hasSafetyWarning(draft: Pick<BankImportDraft, 'flags'>) {
+  return draft.flags.some((flag) => flag !== 'UNCERTAIN_CATEGORY')
+}
+
+function recalculateVerification(
+  evidence: BankStatementVerificationEvidence | null,
+  drafts: readonly EditableBankImportDraft[],
+) {
+  if (!evidence || drafts.some((draft) => draft.amountMinor === null)) return null
+  try {
+    return calculateBankStatementVerification(
+      evidence,
+      drafts.map((draft) => ({
+        type: draft.type,
+        amountMinor: draft.amountMinor as number,
+      })),
+    )
+  } catch {
+    return null
+  }
+}
+
+function canAutomaticallySelectBankImport(verification: BankStatementVerification | null) {
+  return verification?.status === 'matched' || (
+    verification?.status === 'unavailable'
+    && verification.balanceDifferenceMinor === null
+    && verification.debitDifferenceMinor === null
+    && verification.creditDifferenceMinor === null
+  )
+}
+
+function AiDraftDetails({
+  children,
+  initiallyOpen,
+  label,
+}: {
+  children: ReactNode
+  initiallyOpen: boolean
+  label: string
+}) {
+  const [open, setOpen] = useState(initiallyOpen)
+  const detailsRef = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (initiallyOpen && detailsRef.current) detailsRef.current.open = true
+  }, [initiallyOpen])
+  return (
+    <details
+      className="ai-draft-details"
+      ref={detailsRef}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>{label}</summary>
+      {children}
+    </details>
+  )
 }

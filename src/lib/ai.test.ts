@@ -7,6 +7,8 @@ import {
   aiParseRequestSchema,
   aiProviderSettingsSchema,
   bankImportDraftSchema,
+  bankStatementParseResultSchema,
+  calculateBankStatementVerification,
 } from './ai'
 
 const provider = {
@@ -25,6 +27,14 @@ const modelRow = {
   suggestedCategoryName: '餐飲',
   confidence: 0.92,
   flags: [],
+}
+
+const modelOutput = {
+  openingBalance: null,
+  closingBalance: null,
+  debitTotal: null,
+  creditTotal: null,
+  rows: [modelRow],
 }
 
 describe('AI import schemas', () => {
@@ -60,20 +70,105 @@ describe('AI import schemas', () => {
   }
 
   it('accepts strict model output but rejects database IDs and invalid dates', () => {
-    assert.equal(aiModelOutputSchema.safeParse({ rows: [modelRow] }).success, true)
+    assert.equal(aiModelOutputSchema.safeParse(modelOutput).success, true)
     assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
       rows: [{ ...modelRow, amountMinor: 12_345 }],
     }).success, false)
     assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
       rows: [{ ...modelRow, occurredOn: '2026-02-30' }],
     }).success, false)
   })
 
+  it('requires literal canonical amounts and nullable source-backed statement totals', () => {
+    assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
+      openingBalance: { sourceLine: 1, amountText: '-120.50' },
+      closingBalance: { sourceLine: 3, amountText: '0.00' },
+      debitTotal: { sourceLine: 4, amountText: '123.45' },
+      creditTotal: { sourceLine: 5, amountText: '0' },
+    }).success, true)
+
+    for (const amountText of ['100+20', '01.00', '-1.00', '0', '1,000.00']) {
+      assert.equal(aiModelOutputSchema.safeParse({
+        ...modelOutput,
+        rows: [{ ...modelRow, amountText }],
+      }).success, false)
+    }
+    assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
+      debitTotal: { sourceLine: 4, amountText: '-1.00' },
+    }).success, false)
+    assert.equal(aiModelOutputSchema.safeParse({ rows: [modelRow] }).success, false)
+  })
+
+  it('recalculates statement verification from the current transaction entries', () => {
+    const evidence = {
+      openingBalance: {
+        sourceLine: 1,
+        sourceText: 'Opening 100.00',
+        amountText: '100.00',
+        amountMinor: 10_000,
+      },
+      closingBalance: {
+        sourceLine: 3,
+        sourceText: 'Closing 80.00',
+        amountText: '80.00',
+        amountMinor: 8_000,
+      },
+      debitTotal: {
+        sourceLine: 4,
+        sourceText: 'Debits 20.00',
+        amountText: '20.00',
+        amountMinor: 2_000,
+      },
+      creditTotal: null,
+    }
+
+    const matched = calculateBankStatementVerification(
+      evidence,
+      [{ type: 'expense', amountMinor: 2_000 }],
+    )
+    assert.equal(matched.status, 'matched')
+    const edited = calculateBankStatementVerification(
+      matched,
+      [{ type: 'expense', amountMinor: 2_100 }],
+    )
+    assert.equal(edited.status, 'mismatch')
+    assert.equal(edited.balanceDifferenceMinor, 100)
+    assert.equal(edited.debitDifferenceMinor, -100)
+  })
+
+  it('does not call a matching one-sided statement total fully matched', () => {
+    const evidence = {
+      openingBalance: null,
+      closingBalance: null,
+      debitTotal: {
+        sourceLine: 1,
+        sourceText: 'Debits 20.00',
+        amountText: '20.00',
+        amountMinor: 2_000,
+      },
+      creditTotal: null,
+    }
+    assert.equal(calculateBankStatementVerification(
+      evidence,
+      [{ type: 'expense', amountMinor: 2_000 }],
+    ).status, 'unavailable')
+    assert.equal(calculateBankStatementVerification(
+      evidence,
+      [{ type: 'expense', amountMinor: 2_100 }],
+    ).status, 'mismatch')
+  })
+
   it('caps model rows and requires known warning flags', () => {
     assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
       rows: Array.from({ length: MAX_AI_DRAFT_ROWS + 1 }, () => modelRow),
     }).success, false)
     assert.equal(aiModelOutputSchema.safeParse({
+      ...modelOutput,
       rows: [{ ...modelRow, flags: ['FOLLOW_STATEMENT_INSTRUCTIONS'] }],
     }).success, false)
   })
@@ -97,6 +192,22 @@ describe('AI import schemas', () => {
     }
     assert.equal(bankImportDraftSchema.safeParse(draft).success, true)
     assert.equal(bankImportDraftSchema.safeParse({ ...draft, apiKey: 'secret' }).success, false)
+    assert.equal(bankStatementParseResultSchema.safeParse({
+      drafts: [draft],
+      verification: {
+        status: 'unavailable',
+        openingBalance: null,
+        closingBalance: null,
+        debitTotal: null,
+        creditTotal: null,
+        parsedIncomeMinor: 0,
+        parsedExpenseMinor: 12_345,
+        parsedNetMinor: -12_345,
+        balanceDifferenceMinor: null,
+        debitDifferenceMinor: null,
+        creditDifferenceMinor: null,
+      },
+    }).success, true)
     assert.equal(aiImportRequestSchema.safeParse({
       mode: 'preview',
       rows: [{

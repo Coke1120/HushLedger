@@ -6138,6 +6138,37 @@ button.account-register-row:focus-visible {
   gap: 14px;
 }
 
+.ai-import-advanced {
+  align-self: end;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.ai-import-advanced > summary,
+.ai-draft-details > summary {
+  min-height: 44px;
+  padding: 11px 13px;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-import-advanced > summary:focus-visible,
+.ai-draft-details > summary:focus-visible {
+  outline: 3px solid rgb(47 126 112 / 28%);
+  outline-offset: 2px;
+}
+
+.ai-import-advanced > label {
+  padding: 0 12px 12px;
+}
+
+.ai-byte-count.is-error {
+  color: var(--error);
+  font-weight: 700;
+}
+
 .ai-provider-warning {
   display: flex;
   gap: 9px;
@@ -6176,6 +6207,89 @@ button.account-register-row:focus-visible {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+}
+
+.ai-verification {
+  padding: 14px;
+  margin-top: 16px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.ai-verification-status {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-verification-status strong {
+  color: var(--brand-strong);
+  font-size: 14px;
+}
+
+.ai-verification.is-matched {
+  background: var(--income-soft);
+  border-color: #bcdccf;
+}
+
+.ai-verification.is-mismatch {
+  background: var(--warning-bg);
+  border-color: #eadb9d;
+}
+
+.ai-verification.is-mismatch .ai-verification-status {
+  color: var(--warning);
+}
+
+.ai-verification-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+  margin: 12px 0 0;
+  gap: 8px;
+}
+
+.ai-verification-totals > div {
+  min-width: 0;
+  padding: 9px 10px;
+  background: rgb(255 255 255 / 55%);
+  border-radius: 8px;
+}
+
+.ai-verification-totals dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ai-verification-totals dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-verification-differences {
+  display: grid;
+  padding: 10px 0 0;
+  margin: 10px 0 0;
+  gap: 6px;
+  border-top: 1px solid #eadb9d;
+  list-style: none;
+}
+
+.ai-verification-differences li {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  color: var(--warning);
+  font-size: 11px;
 }
 
 .ai-draft-list {
@@ -6234,6 +6348,23 @@ button.account-register-row:focus-visible {
   white-space: nowrap;
 }
 
+.ai-draft-compact {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.ai-draft-compact strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ai-draft-flags {
   display: flex;
   grid-column: 1 / -1;
@@ -6257,6 +6388,18 @@ button.account-register-row:focus-visible {
   grid-template-columns: 150px 130px 130px minmax(150px, 1fr) minmax(150px, 1fr) 44px;
   gap: 10px;
   align-items: end;
+}
+
+.ai-draft-details {
+  border-top: 1px solid var(--line);
+}
+
+.ai-draft-details > summary {
+  padding-inline: 0;
+}
+
+.ai-draft-details > .ai-draft-fields {
+  padding-top: 10px;
 }
 
 .ai-remove-draft {
@@ -8132,6 +8275,7 @@ button.account-register-row:focus-visible {
   }
 
   .bank-import-options,
+  .ai-verification-totals,
   .ai-draft-fields {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -8152,6 +8296,11 @@ button.account-register-row:focus-visible {
 
   .ai-draft-source q {
     white-space: normal;
+  }
+
+  .ai-draft-compact {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
   }
 
   .csv-file-picker {

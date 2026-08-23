@@ -1,11 +1,14 @@
 import { z } from 'zod'
 import { supportedCurrencySchema } from './currency'
 import { isValidCalendarDate } from './date'
+import { exactTransactionTotals } from './money'
+import { calculateReconciliationDifference } from './reconciliation'
 import { transactionTypeSchema } from './schema'
 import {
   MAX_TRANSACTION_IMPORT_ROWS,
   transactionImportKeySchema,
   transactionImportRowSchema,
+  type TransactionImportPreviewResult,
 } from './transactionImport'
 
 export const MAX_AI_STATEMENT_BYTES = 64 * 1024
@@ -15,6 +18,13 @@ export const MAX_AI_MODELS_RESPONSE_BYTES = 64 * 1024
 export const MAX_AI_COMPLETION_RESPONSE_BYTES = 256 * 1024
 export const MAX_AI_DRAFT_ROWS = 200
 export const MAX_AI_IMPORT_REQUEST_BYTES = 256 * 1024
+
+export const AI_POSITIVE_DECIMAL_PATTERN =
+  '^(?:0\\.(?:0[1-9]|[1-9]\\d?)|[1-9]\\d*(?:\\.\\d{1,2})?)$'
+export const AI_NON_NEGATIVE_DECIMAL_PATTERN =
+  '^(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?$'
+export const AI_SIGNED_DECIMAL_PATTERN =
+  '^(?:0(?:\\.\\d{1,2})?|[1-9]\\d*(?:\\.\\d{1,2})?|-(?:0\\.(?:0[1-9]|[1-9]\\d?)|[1-9]\\d*(?:\\.\\d{1,2})?))$'
 
 const boundedText = (maximum: number) => z.string().trim().min(1).max(maximum)
 const apiKeySchema = boundedText(2_048).regex(
@@ -97,8 +107,26 @@ export const aiDraftFlagSchema = z.enum([
   'NEEDS_REVIEW',
 ])
 
+const aiStatementBalanceSchema = z
+  .object({
+    sourceLine: z.number().int().positive(),
+    amountText: boundedText(32).regex(new RegExp(AI_SIGNED_DECIMAL_PATTERN)),
+  })
+  .strict()
+
+const aiStatementTotalSchema = z
+  .object({
+    sourceLine: z.number().int().positive(),
+    amountText: boundedText(32).regex(new RegExp(AI_NON_NEGATIVE_DECIMAL_PATTERN)),
+  })
+  .strict()
+
 export const aiModelOutputSchema = z
   .object({
+    openingBalance: aiStatementBalanceSchema.nullable(),
+    closingBalance: aiStatementBalanceSchema.nullable(),
+    debitTotal: aiStatementTotalSchema.nullable(),
+    creditTotal: aiStatementTotalSchema.nullable(),
     rows: z
       .array(
         z
@@ -106,7 +134,7 @@ export const aiModelOutputSchema = z
             sourceLine: z.number().int().positive(),
             occurredOn: z.string().refine(isValidCalendarDate),
             direction: transactionTypeSchema,
-            amountText: boundedText(32),
+            amountText: boundedText(32).regex(new RegExp(AI_POSITIVE_DECIMAL_PATTERN)),
             currency: supportedCurrencySchema,
             description: z.string().trim().max(80),
             suggestedCategoryName: z.string().trim().min(1).max(80).nullable(),
@@ -141,6 +169,131 @@ export const bankImportDraftSchema = z
   .strict()
 
 export const bankImportDraftsSchema = z.array(bankImportDraftSchema).max(MAX_AI_DRAFT_ROWS)
+
+export const bankStatementSourceAmountSchema = z
+  .object({
+    sourceLine: z.number().int().positive(),
+    sourceText: z.string().max(240),
+    amountText: boundedText(32),
+    amountMinor: z
+      .number()
+      .int()
+      .min(Number.MIN_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+
+export type BankStatementSourceAmount = z.infer<typeof bankStatementSourceAmountSchema>
+
+export const bankStatementVerificationSchema = z
+  .object({
+    status: z.enum(['matched', 'mismatch', 'unavailable']),
+    openingBalance: bankStatementSourceAmountSchema.nullable(),
+    closingBalance: bankStatementSourceAmountSchema.nullable(),
+    debitTotal: bankStatementSourceAmountSchema.nullable(),
+    creditTotal: bankStatementSourceAmountSchema.nullable(),
+    parsedIncomeMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    parsedExpenseMinor: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    parsedNetMinor: z
+      .number()
+      .int()
+      .min(Number.MIN_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER),
+    balanceDifferenceMinor: z
+      .number()
+      .int()
+      .min(Number.MIN_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
+    debitDifferenceMinor: z
+      .number()
+      .int()
+      .min(Number.MIN_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
+    creditDifferenceMinor: z
+      .number()
+      .int()
+      .min(Number.MIN_SAFE_INTEGER)
+      .max(Number.MAX_SAFE_INTEGER)
+      .nullable(),
+  })
+  .strict()
+
+export type BankStatementVerification = z.infer<typeof bankStatementVerificationSchema>
+export type BankStatementVerificationEvidence = Pick<
+  BankStatementVerification,
+  'openingBalance' | 'closingBalance' | 'debitTotal' | 'creditTotal'
+>
+
+export const bankStatementParseResultSchema = z
+  .object({
+    drafts: bankImportDraftsSchema,
+    verification: bankStatementVerificationSchema,
+  })
+  .strict()
+
+export type BankStatementParseResult = z.infer<typeof bankStatementParseResultSchema>
+
+export function calculateBankStatementVerification(
+  evidence: BankStatementVerificationEvidence,
+  entries: readonly { type: 'income' | 'expense'; amountMinor: number }[],
+): BankStatementVerification {
+  const parsed = exactTransactionTotals(entries)
+  const balanceDifferenceMinor = evidence.openingBalance && evidence.closingBalance
+    ? calculateReconciliationDifference(
+        evidence.closingBalance.amountMinor,
+        evidence.openingBalance.amountMinor + parsed.net,
+      )
+    : null
+  const debitDifferenceMinor = evidence.debitTotal
+    ? calculateReconciliationDifference(evidence.debitTotal.amountMinor, parsed.expense)
+    : null
+  const creditDifferenceMinor = evidence.creditTotal
+    ? calculateReconciliationDifference(evidence.creditTotal.amountMinor, parsed.income)
+    : null
+  const differences = [
+    balanceDifferenceMinor,
+    debitDifferenceMinor,
+    creditDifferenceMinor,
+  ].filter((difference): difference is number => difference !== null)
+  const hasFullCoverage = balanceDifferenceMinor !== null
+    || (debitDifferenceMinor !== null && creditDifferenceMinor !== null)
+  const status = differences.some((difference) => difference !== 0)
+    ? 'mismatch'
+    : hasFullCoverage ? 'matched' : 'unavailable'
+
+  return {
+    ...evidence,
+    status,
+    parsedIncomeMinor: parsed.income,
+    parsedExpenseMinor: parsed.expense,
+    parsedNetMinor: parsed.net,
+    balanceDifferenceMinor,
+    debitDifferenceMinor,
+    creditDifferenceMinor,
+  }
+}
+
+export function autoSelectedBankImportKeys(
+  drafts: readonly Pick<BankImportDraft, 'flags' | 'importKey'>[],
+  rows: readonly TransactionImportPreviewResult['rows'][number][],
+  allowed = true,
+) {
+  if (!allowed) return new Set<string>()
+  const safeDraftKeys = new Set(
+    drafts
+      .filter((draft) => draft.flags.every((flag) => flag === 'UNCERTAIN_CATEGORY'))
+      .map((draft) => draft.importKey),
+  )
+  return new Set(
+    rows
+      .filter((row) =>
+        safeDraftKeys.has(row.importKey)
+        && (row.status === 'new' || row.status === 'match_ready'))
+      .map((row) => row.importKey),
+  )
+}
 
 const aiImportKeySchema = transactionImportKeySchema.refine(
   (value) => /^ai:statement:row:[0-9a-f]{64}$/.test(value),
