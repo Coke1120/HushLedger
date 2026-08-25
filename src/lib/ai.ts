@@ -428,3 +428,17 @@ export type AiDateOrder = z.infer<typeof aiDateOrderSchema>
 export type AiParseRequest = z.infer<typeof aiParseRequestSchema>
 export type AiModelOutput = z.infer<typeof aiModelOutputSchema>
 export type BankImportDraft = z.infer<typeof bankImportDraftSchema>
+
+export function canUseStoredAiProvider(
+  settings: AiProviderSettings,
+  persistedSettings: AiProviderSettingsRow | null,
+  persistedSettingsAvailable: boolean,
+  settingsConflict: boolean,
+) {
+  return !settings.apiKey.trim()
+    && persistedSettingsAvailable
+    && !settingsConflict
+    && persistedSettings?.hasApiKey === true
+    && settings.baseUrl.trim() === persistedSettings.baseUrl
+    && settings.model.trim() === persistedSettings.model
+}

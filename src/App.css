@@ -7128,13 +7128,13 @@ button.account-register-row:focus-visible {
   }
 }
 
-@media (min-width: 768px) and (max-width: 960px) {
-  .add-button {
+@media (max-width: 960px) {
+  .header-ai-import-button {
     width: 44px;
     padding: 0;
   }
 
-  .add-button span {
+  .header-ai-import-button span {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -8497,6 +8497,385 @@ button.account-register-row:focus-visible {
 button:not(:disabled):not([aria-disabled='true']):active {
   transform: scale(0.97);
   transition-duration: 80ms;
+}
+
+@media (min-width: 1024px) {
+  .app-header {
+    position: sticky;
+    z-index: 30;
+    top: 0;
+    width: 100%;
+    min-height: 68px;
+    padding: 0 max(32px, calc((100% - 1440px) / 2));
+    margin: 0;
+    background: var(--surface);
+    border-bottom-color: var(--line);
+  }
+
+  .brand {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    box-shadow: none;
+  }
+
+  .brand-mark svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .brand-copy strong {
+    font-size: 20px;
+    letter-spacing: 0.02em;
+  }
+
+  .brand-copy small {
+    font-size: 11px;
+  }
+
+  .header-actions {
+    flex: 1;
+    align-self: stretch;
+    gap: 8px;
+    margin-left: 28px;
+  }
+
+  .desktop-navigation {
+    align-self: stretch;
+    gap: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .desktop-navigation button {
+    width: auto;
+    min-height: 68px;
+    padding: 0 14px;
+    border-radius: 0;
+    font-size: 13px;
+    justify-content: flex-start;
+  }
+
+  .desktop-navigation button:hover,
+  .desktop-navigation button.is-active {
+    color: var(--brand);
+    background: transparent;
+  }
+
+  .desktop-navigation button.is-active {
+    box-shadow: inset 0 -2px var(--brand);
+  }
+
+  .desktop-navigation .nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: nowrap;
+  }
+
+  .app-header .button,
+  .app-header .icon-button {
+    min-height: 44px;
+    border-radius: 7px;
+    box-shadow: none;
+  }
+
+  .app-header .icon-button {
+    width: 44px;
+  }
+
+  .app-header .privacy-toggle {
+    margin-left: auto;
+  }
+
+  .app-header .button {
+    padding: 0 14px;
+  }
+
+  .app-main {
+    width: min(1440px, calc(100% - 64px));
+    padding: 24px 0 48px;
+  }
+
+  .month-navigator {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .month-picker {
+    font-size: 20px;
+  }
+
+  .summary-grid {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .summary-card {
+    min-height: 132px;
+    padding: 20px;
+    border-radius: 8px;
+  }
+
+  .summary-card strong {
+    margin-top: 20px;
+    font-size: clamp(25px, 2vw, 32px);
+  }
+
+  .summary-meta {
+    margin-top: 8px;
+  }
+
+  .view-overview .overview-region {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.85fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .view-overview .summary-grid,
+  .view-overview .ledger-backup-reminder,
+  .view-overview .overview-monthly-review {
+    grid-column: 1 / -1;
+  }
+
+  .view-overview .summary-grid,
+  .view-overview .ledger-backup-reminder,
+  .view-overview .account-balances-panel,
+  .view-overview .emergency-fund-panel,
+  .view-overview .overview-monthly-review {
+    margin-bottom: 0;
+  }
+
+  .view-overview .account-balances-panel {
+    grid-column: 1;
+  }
+
+  .view-overview .emergency-fund-panel {
+    grid-column: 2;
+  }
+
+  .ledger-backup-reminder {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+  }
+
+  .ledger-backup-reminder-icon,
+  .category-spending-heading-icon {
+    border-radius: 8px;
+  }
+
+  .category-spending-panel {
+    padding: 20px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+  }
+
+  .overview-monthly-review,
+  .overview-review-tabs {
+    margin-bottom: 10px;
+  }
+
+  .overview-review-tabs {
+    border-radius: 8px;
+  }
+
+  .overview-review-tabs button {
+    border-radius: 6px;
+  }
+
+  .transactions-panel {
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .transactions-heading {
+    min-height: 78px;
+    padding: 16px 20px;
+    gap: 14px;
+  }
+
+  .transactions-heading h2 {
+    font-size: 21px;
+    letter-spacing: 0;
+  }
+
+  .view-transactions .transactions-heading {
+    grid-template-columns: 216px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .view-transactions .transaction-toolbar {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .view-transactions .transaction-filter-summary,
+  .view-transactions .saved-transaction-views,
+  .view-transactions .transaction-preview-filter-notice {
+    grid-column: 1 / -1;
+  }
+
+  .transaction-row {
+    min-height: 64px;
+    padding: 10px 20px;
+  }
+
+  .transaction-filter-summary,
+  .transaction-toolbar-disclosure > summary,
+  .transaction-toolbar-disclosure-panel,
+  .saved-transaction-views {
+    border-radius: 7px;
+  }
+
+  .recurring-page {
+    gap: 12px;
+  }
+
+  .recurring-hero,
+  .settings-hero {
+    padding: 18px 20px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .recurring-hero {
+    align-items: center;
+  }
+
+  .recurring-hero h2,
+  .settings-hero h2 {
+    margin-bottom: 3px;
+    color: var(--brand-strong);
+    font-size: 24px;
+    letter-spacing: -0.015em;
+  }
+
+  .recurring-hero p,
+  .settings-hero p {
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .recurring-hero .button-primary {
+    color: #ffffff;
+    background: var(--brand);
+    border-color: var(--brand);
+  }
+
+  .recurring-hero .button-secondary {
+    color: var(--brand);
+    background: transparent;
+    border-color: var(--brand);
+  }
+
+  .recurring-surface-switch,
+  .recurring-status {
+    border-radius: 8px;
+  }
+
+  .settings-page {
+    max-width: 1440px;
+    margin: 0;
+    grid-template-columns: 216px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .settings-category-navigation {
+    position: sticky;
+    top: 84px;
+    grid-column: 1;
+    grid-row: 2;
+    padding: 6px;
+    background: var(--surface);
+    border-radius: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .settings-category-button {
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    text-align: left;
+  }
+
+  .settings-category-content {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .settings-hero {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .settings-hero-icon {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    background: var(--income-soft);
+    border-radius: 8px;
+  }
+
+  .settings-hero-icon svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .settings-panel {
+    padding: 22px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .transaction-dialog {
+    border-radius: 10px;
+    box-shadow: 0 24px 70px rgb(8 35 29 / 28%);
+  }
+
+  .button-primary:hover:not(:disabled),
+  button:not(:disabled):not([aria-disabled='true']):active {
+    transform: none;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .header-actions {
+    margin-left: 16px;
+  }
+
+  .desktop-navigation button,
+  .app-header .header-ai-import-button {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .desktop-navigation .nav-label,
+  .header-ai-import-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {

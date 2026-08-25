@@ -255,6 +255,26 @@ describe('bank statement fast-path selection', () => {
     assert.match(reviewSource, /transactionsPanelRef\.current\?\.focus\(\)/)
   })
 
+  it('focuses pasted text and closes stale import panels when leaving transactions', () => {
+    const changeViewSource = appSource.slice(
+      appSource.indexOf('const changeView ='),
+      appSource.indexOf('const openSettings ='),
+    )
+    const importFocusSource = appSource.slice(
+      appSource.indexOf("if (view !== 'transactions' || !importMode) return"),
+      appSource.indexOf('useEffect(() => {', appSource.indexOf("if (view !== 'transactions' || !importMode) return") + 1),
+    )
+
+    assert.match(changeViewSource, /nextView !== 'transactions'[\s\S]*setImportMode\(null\)/)
+    assert.match(
+      importFocusSource,
+      /importMode === 'statement' && aiStatementImportConfigured[\s\S]*querySelector<HTMLTextAreaElement>\('textarea'\)/,
+    )
+    assert.match(importFocusSource, /target\?\.focus\(\)/)
+    assert.match(appSource, /returnButton\?\.isConnected && !returnButton\.disabled/)
+    assert.match(appSource, /transactionsPanelRef\.current \?\? mainRef\.current/)
+  })
+
   it('requires the printed statement close date to cover every handled draft', () => {
     const completionSource = panelSource.slice(
       panelSource.indexOf('{completedImport ?'),

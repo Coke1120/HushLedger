@@ -1,4 +1,4 @@
-import { Eye, EyeOff, House, List, Plus, Repeat, Settings } from 'lucide-react'
+import { ClipboardPaste, Eye, EyeOff, House, List, Plus, Repeat, Settings } from 'lucide-react'
 import { useI18n } from '../i18n'
 import type { AppView } from './MobileNavigation'
 
@@ -6,7 +6,10 @@ type AppHeaderProps = {
   view: AppView
   navigationDisabled: boolean
   addDisabled: boolean
+  aiStatementImportConfigured: boolean
+  aiStatementImportOpen: boolean
   onAdd: () => void
+  onAiStatementImport: (trigger: HTMLButtonElement) => void
   onViewChange: (view: AppView) => void
 }
 
@@ -19,7 +22,16 @@ function HushLedgerMark() {
   )
 }
 
-export function AppHeader({ view, navigationDisabled, addDisabled, onAdd, onViewChange }: AppHeaderProps) {
+export function AppHeader({
+  view,
+  navigationDisabled,
+  addDisabled,
+  aiStatementImportConfigured,
+  aiStatementImportOpen,
+  onAdd,
+  onAiStatementImport,
+  onViewChange,
+}: AppHeaderProps) {
   const { privacyMode, setPrivacyMode, t } = useI18n()
   const privacyLabel = t(privacyMode ? 'showAmounts' : 'hideAmounts')
 
@@ -88,13 +100,34 @@ export function AppHeader({ view, navigationDisabled, addDisabled, onAdd, onView
           {privacyMode ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
         </button>
         <button
-          className="button button-primary add-button"
+          className="button button-primary header-ai-import-button"
+          type="button"
+          onClick={(event) => onAiStatementImport(event.currentTarget)}
+          disabled={addDisabled || !aiStatementImportConfigured}
+          aria-expanded={aiStatementImportOpen}
+          aria-controls="bank-import-panel"
+          aria-describedby={!aiStatementImportConfigured
+            ? 'header-ai-import-unavailable'
+            : undefined}
+          title={!aiStatementImportConfigured ? t('aiConfigureFirst') : undefined}
+        >
+          <ClipboardPaste aria-hidden="true" />
+          <span>{t('aiStatementImportAction')}</span>
+        </button>
+        {!aiStatementImportConfigured ? (
+          <span className="sr-only" id="header-ai-import-unavailable">
+            {t('aiConfigureFirst')}
+          </span>
+        ) : null}
+        <button
+          className="icon-button add-button"
           type="button"
           onClick={onAdd}
           disabled={addDisabled}
+          aria-label={t('addTransaction')}
+          title={t('addTransaction')}
         >
           <Plus aria-hidden="true" />
-          <span>{t('addTransaction')}</span>
         </button>
       </div>
     </header>

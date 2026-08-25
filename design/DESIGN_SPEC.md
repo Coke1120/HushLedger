@@ -13,10 +13,10 @@ and current translations are authoritative.
 ## Direction
 
 Calm, personal, and trustworthy rather than enterprise-like. The desktop uses a
-simple top bar, compact month navigation, a three-part summary band, and one
-full-width transaction surface. The mobile layout puts the balance first,
-places income and expense side by side, keeps transaction dates visible, and
-uses a rounded bottom sheet for quick entry.
+full-width application toolbar, compact month navigation, a dense three-part
+summary band, wider data surfaces, and a two-column overview where space allows.
+The mobile layout puts the balance first, places income and expense side by side,
+keeps transaction dates visible, and uses a rounded bottom sheet for quick entry.
 
 No sidebar, charts, gradients, marketing hero, decorative eyebrow text, badges,
 decorative illustration, nested card grid, or remote font request.
@@ -35,7 +35,7 @@ decorative illustration, nested card grid, or remote font request.
 | Expense | `#b14b46` |
 | Focus | `#2f7e70` |
 | Spacing | `4 / 8 / 12 / 16 / 24 / 32 / 48px` |
-| Radius | `10 / 14 / 18px` |
+| Radius | `8 / 10 / 14 / 18px` |
 | Minimum target | `44px` |
 
 Typography uses a local system font stack with coverage for Traditional Chinese,
@@ -74,8 +74,9 @@ all supported languages; no locale receives extra first-viewport marketing copy.
 
 ## Responsive contract
 
-- Desktop at 1024px and above: content width up to 1120px; three summary cards;
-  table-like transaction rows.
+- Desktop at 1024px and above: content width up to 1440px; three compact summary
+  cards; table-like transaction rows; a two-column overview; and a vertical
+  settings sub-navigation.
 - Tablet from 768px: three summary cards with reduced padding; complete dates
   and amounts remain visible.
 - Mobile below 768px: 16px gutters plus safe areas; balance spans full width;

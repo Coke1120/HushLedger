@@ -12,6 +12,7 @@ import { messageForError, renderMessage, useI18n, type MessageKey } from '../i18
 import {
   MAX_AI_STATEMENT_BYTES,
   autoSelectedBankImportKeys,
+  canUseStoredAiProvider,
   calculateBankStatementVerification,
   aiImportRequestSchema,
   aiImportRowSchema,
@@ -118,12 +119,12 @@ export function BankImportPanel({
   const requestIdRef = useRef(0)
   const requestControllerRef = useRef<AbortController | null>(null)
   const transientProvider = aiProviderSettingsSchema.safeParse(settings)
-  const canUseStoredProvider = !settings.apiKey.trim()
-    && persistedSettingsAvailable
-    && !settingsConflict
-    && persistedSettings?.hasApiKey === true
-    && settings.baseUrl.trim() === persistedSettings.baseUrl
-    && settings.model.trim() === persistedSettings.model
+  const canUseStoredProvider = canUseStoredAiProvider(
+    settings,
+    persistedSettings,
+    persistedSettingsAvailable,
+    settingsConflict,
+  )
   const configured = transientProvider.success || canUseStoredProvider
   const mutating = importing || transferringDraftId !== null
   const transferBusy = analyzing || previewing || mutating

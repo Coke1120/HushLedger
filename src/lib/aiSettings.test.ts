@@ -4,6 +4,7 @@ import {
   aiModelsRequestSchema,
   aiParseRequestSchema,
   aiProviderSettingsMetadataSchema,
+  canUseStoredAiProvider,
 } from './ai'
 
 const updatedAt = '2026-07-31T08:00:00.000Z'
@@ -69,5 +70,30 @@ describe('AI provider settings schemas', () => {
     })
 
     assert.equal(parsed.success, false)
+  })
+
+  it('uses stored credentials only for current matching settings metadata', () => {
+    const persistedSettings = {
+      baseUrl: 'https://fictional-provider.example/v1',
+      model: 'fictional-model',
+      hasApiKey: true as const,
+      createdAt: updatedAt,
+      updatedAt,
+    }
+    const settings = {
+      baseUrl: persistedSettings.baseUrl,
+      apiKey: '',
+      model: persistedSettings.model,
+    }
+
+    assert.equal(canUseStoredAiProvider(settings, persistedSettings, true, false), true)
+    assert.equal(canUseStoredAiProvider(settings, persistedSettings, false, false), false)
+    assert.equal(canUseStoredAiProvider(settings, persistedSettings, true, true), false)
+    assert.equal(canUseStoredAiProvider(
+      { ...settings, model: 'different-model' },
+      persistedSettings,
+      true,
+      false,
+    ), false)
   })
 })

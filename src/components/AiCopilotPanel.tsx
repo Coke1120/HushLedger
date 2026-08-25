@@ -31,6 +31,7 @@ import {
 import type { I18nContextValue } from '../i18n/context'
 import {
   aiProviderSettingsSchema,
+  canUseStoredAiProvider,
   type AiProviderSettings,
   type AiProviderSettingsRow,
 } from '../lib/ai'
@@ -142,12 +143,12 @@ export function AiCopilotPanel({
   const replyControllerRef = useRef<AbortController | null>(null)
 
   const transientProvider = aiProviderSettingsSchema.safeParse(settings)
-  const canUseStoredProvider = !settings.apiKey.trim()
-    && persistedSettingsAvailable
-    && !settingsConflict
-    && persistedSettings?.hasApiKey === true
-    && settings.baseUrl.trim() === persistedSettings.baseUrl
-    && settings.model.trim() === persistedSettings.model
+  const canUseStoredProvider = canUseStoredAiProvider(
+    settings,
+    persistedSettings,
+    persistedSettingsAvailable,
+    settingsConflict,
+  )
   const configured = transientProvider.success || canUseStoredProvider
   const providerIdentity: AiCopilotProviderIdentity = transientProvider.success
     ? {

@@ -45,7 +45,12 @@ import { useMoneyData } from './hooks/useMoneyData'
 import { startScheduledOutlookRefreshRetries } from './hooks/scheduledOutlookRefresh'
 import { useI18n } from './i18n'
 import { inclusiveMonthRangeDates, shiftMonth } from './lib/date'
-import type { AiProviderSettings, AiProviderSettingsRow } from './lib/ai'
+import {
+  aiProviderSettingsSchema,
+  canUseStoredAiProvider,
+  type AiProviderSettings,
+  type AiProviderSettingsRow,
+} from './lib/ai'
 import type { AiCopilotAction } from './lib/aiCopilot'
 import {
   aiSettingsDraftHasConflict,
@@ -148,6 +153,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   const aiStatementImportButtonRef = useRef<HTMLButtonElement>(null)
   const aiCopilotButtonRef = useRef<HTMLButtonElement>(null)
   const importPanelRef = useRef<HTMLElement>(null)
+  const importReturnFocusRef = useRef<HTMLButtonElement | null>(null)
   const transactionLoadStatusRef = useRef<HTMLParagraphElement>(null)
   const initialViewRef = useRef(true)
   const deferredSearch = useDeferredValue(search)
@@ -220,6 +226,13 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     aiSettingsDraft,
     aiSettingsRow?.updatedAt ?? null,
   )
+  const aiStatementImportConfigured = aiProviderSettingsSchema.safeParse(aiSettings).success
+    || canUseStoredAiProvider(
+      aiSettings,
+      aiSettingsRow,
+      data.aiProviderSettingsStatus === 'ready',
+      aiSettingsConflict,
+    )
 
   const changeAiSettings = useCallback((settings: AiProviderSettings) => {
     setAiSettingsDraft((current) => updateAiSettingsDraft(
@@ -356,7 +369,11 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   )
   const changeView = useCallback((nextView: AppView) => {
     if (ledgerInteractionLocked) return
-    if (nextView !== 'transactions') setRegisterAccountId(null)
+    if (nextView !== 'transactions') {
+      setRegisterAccountId(null)
+      setImportMode(null)
+      importReturnFocusRef.current = null
+    }
     if (nextView !== 'recurring') {
       setRecurringRuleFocusId(null)
       setRecurringTransferRuleFocusId(null)
@@ -397,8 +414,19 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     changeView('recurring')
   }, [changeView, clearActionMessage, closeDialog, localizeEntityName])
 
-  const openImport = useCallback((mode: 'csv' | 'copilot' | 'statement') => {
+  const openImport = useCallback((
+    mode: 'csv' | 'copilot' | 'statement',
+    trigger?: HTMLButtonElement,
+  ) => {
     if (ledgerInteractionLocked) return
+    const fallbackButton = mode === 'csv'
+      ? csvImportButtonRef.current
+      : mode === 'statement'
+        ? aiStatementImportButtonRef.current
+        : aiCopilotButtonRef.current
+    importReturnFocusRef.current = trigger
+      ?? fallbackButton
+      ?? (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null)
     setAiCopilotActionStale(false)
     setRegisterAccountId(null)
     setView('transactions')
@@ -407,13 +435,20 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [ledgerInteractionLocked])
 
   const closeImport = useCallback(() => {
-    const button = importMode === 'csv'
-      ? csvImportButtonRef
+    const fallbackButton = importMode === 'csv'
+      ? csvImportButtonRef.current
       : importMode === 'statement'
-        ? aiStatementImportButtonRef
-        : aiCopilotButtonRef
+        ? aiStatementImportButtonRef.current
+        : aiCopilotButtonRef.current
+    const returnButton = importReturnFocusRef.current
+    const focusTarget = returnButton?.isConnected && !returnButton.disabled
+      ? returnButton
+      : fallbackButton?.isConnected && !fallbackButton.disabled
+        ? fallbackButton
+        : transactionsPanelRef.current ?? mainRef.current
+    importReturnFocusRef.current = null
     setImportMode(null)
-    requestAnimationFrame(() => button.current?.focus())
+    requestAnimationFrame(() => focusTarget?.focus())
   }, [importMode])
 
   const changeTransactionFilter = useCallback((nextFilter: TransactionFilter) => {
@@ -793,8 +828,12 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
   }, [view])
 
   useEffect(() => {
-    if (view === 'transactions' && importMode) importPanelRef.current?.focus()
-  }, [importMode, view])
+    if (view !== 'transactions' || !importMode) return
+    const target = importMode === 'statement' && aiStatementImportConfigured
+      ? importPanelRef.current?.querySelector<HTMLTextAreaElement>('textarea')
+      : importPanelRef.current
+    target?.focus()
+  }, [aiStatementImportConfigured, importMode, view])
 
   useEffect(() => {
     if (
@@ -851,7 +890,10 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
         view={view}
         navigationDisabled={ledgerInteractionLocked}
         addDisabled={transactionEntryDisabled}
+        aiStatementImportConfigured={aiStatementImportConfigured}
+        aiStatementImportOpen={view === 'transactions' && importMode === 'statement'}
         onAdd={openDialog}
+        onAiStatementImport={(trigger) => openImport('statement', trigger)}
         onViewChange={changeView}
       />
       <main
