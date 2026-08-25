@@ -342,6 +342,86 @@ export function TransactionToolbar({
         </div>
       ) : null}
       <ToolbarDisclosure
+        className="transaction-actions-disclosure"
+        id="transaction-actions"
+        label={t('transactionActions')}
+        active={actionsActive}
+      >
+        <div className="transaction-actions">
+          <button
+            id="csv-import-trigger"
+            className="button button-primary csv-import-button"
+            type="button"
+            onClick={onCsvImport}
+            aria-expanded={csvImportOpen}
+            aria-controls="csv-import-panel"
+            ref={csvImportButtonRef}
+            disabled={!canImport}
+            title={!canImport ? t('csvImportUnavailable') : undefined}
+          >
+            <FileUp aria-hidden="true" />
+            {t('csvImport')}
+          </button>
+          <button
+            id="ai-statement-import-trigger"
+            className="button button-secondary ai-statement-import-button"
+            type="button"
+            onClick={onAiStatementImport}
+            aria-expanded={aiStatementImportOpen}
+            aria-controls="bank-import-panel"
+            ref={aiStatementImportButtonRef}
+            disabled={!canImport}
+            title={!canImport ? t('aiOffline') : undefined}
+          >
+            <ClipboardPaste aria-hidden="true" />
+            {t('aiStatementImportAction')}
+          </button>
+          {canExport ? (
+            <button
+              className="button button-secondary export-button"
+              type="button"
+              onClick={() => void exportTransactions()}
+              disabled={exporting}
+              aria-describedby="transaction-export-status"
+              title={t('exportCsvHelp')}
+            >
+              <Download aria-hidden="true" />
+              {exporting ? t('exportCsvPreparing') : t('exportCsv')}
+            </button>
+          ) : (
+            <button
+              className="button button-secondary export-button"
+              type="button"
+              disabled
+              title={t('exportCsvUnavailable')}
+            >
+              <Download aria-hidden="true" />
+              {t('exportCsv')}
+            </button>
+          )}
+          <p
+            id="transaction-export-status"
+            className={`transaction-export-status${exportState === 'error' ? ' is-error' : ''}`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {exportStatus}
+          </p>
+          <button
+            id="ai-copilot-trigger"
+            className="button button-secondary ai-copilot-button"
+            type="button"
+            onClick={onAiCopilot}
+            aria-expanded={aiCopilotOpen}
+            aria-controls="ai-copilot-panel"
+            ref={aiCopilotButtonRef}
+          >
+            <Sparkles aria-hidden="true" />
+            {t('aiCopilot')}
+          </button>
+        </div>
+      </ToolbarDisclosure>
+      <ToolbarDisclosure
         className="transaction-review-disclosure"
         id="transaction-review-filters"
         label={t('transactionReviewFilters')}
@@ -470,86 +550,6 @@ export function TransactionToolbar({
               <span className="sr-only">{t('clearReferenceFilters')}</span>
             </button>
           ) : null}
-        </div>
-      </ToolbarDisclosure>
-      <ToolbarDisclosure
-        className="transaction-actions-disclosure"
-        id="transaction-actions"
-        label={t('transactionActions')}
-        active={actionsActive}
-      >
-        <div className="transaction-actions">
-          {canExport ? (
-            <button
-              className="button button-secondary export-button"
-              type="button"
-              onClick={() => void exportTransactions()}
-              disabled={exporting}
-              aria-describedby="transaction-export-status"
-              title={t('exportCsvHelp')}
-            >
-              <Download aria-hidden="true" />
-              {exporting ? t('exportCsvPreparing') : t('exportCsv')}
-            </button>
-          ) : (
-            <button
-              className="button button-secondary export-button"
-              type="button"
-              disabled
-              title={t('exportCsvUnavailable')}
-            >
-              <Download aria-hidden="true" />
-              {t('exportCsv')}
-            </button>
-          )}
-          <p
-            id="transaction-export-status"
-            className={`transaction-export-status${exportState === 'error' ? ' is-error' : ''}`}
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            {exportStatus}
-          </p>
-          <button
-            id="csv-import-trigger"
-            className="button button-secondary csv-import-button"
-            type="button"
-            onClick={onCsvImport}
-            aria-expanded={csvImportOpen}
-            aria-controls="csv-import-panel"
-            ref={csvImportButtonRef}
-            disabled={!canImport}
-            title={!canImport ? t('csvImportUnavailable') : undefined}
-          >
-            <FileUp aria-hidden="true" />
-            {t('csvImport')}
-          </button>
-          <button
-            id="ai-statement-import-trigger"
-            className="button button-secondary ai-statement-import-button"
-            type="button"
-            onClick={onAiStatementImport}
-            aria-expanded={aiStatementImportOpen}
-            aria-controls="bank-import-panel"
-            ref={aiStatementImportButtonRef}
-            disabled={!canImport}
-            title={!canImport ? t('aiOffline') : undefined}
-          >
-            <ClipboardPaste aria-hidden="true" />
-            {t('aiStatementImportAction')}
-          </button>
-          <button
-            id="ai-copilot-trigger"
-            className="button button-secondary ai-copilot-button"
-            type="button"
-            onClick={onAiCopilot}
-            aria-expanded={aiCopilotOpen}
-            aria-controls="ai-copilot-panel"
-            ref={aiCopilotButtonRef}
-          >
-            <Sparkles aria-hidden="true" />
-            {t('aiCopilot')}
-          </button>
         </div>
       </ToolbarDisclosure>
     </div>

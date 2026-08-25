@@ -124,16 +124,19 @@ describe('calm transaction toolbar disclosures', () => {
     const moreIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-more-filters-disclosure"')
     const sortIndex = markup.indexOf('class="transaction-reference-filter transaction-sort-filter"')
     const actionsIndex = markup.indexOf('class="transaction-toolbar-disclosure transaction-actions-disclosure"')
+    const importIndex = markup.indexOf('id="csv-import-trigger"')
     const exportIndex = markup.indexOf('class="button button-secondary export-button"')
 
-    assert.ok(searchIndex >= 0 && searchIndex < reviewIndex)
-    assert.ok(typeIndex >= 0 && typeIndex < reviewIndex)
-    assert.ok(dateIndex >= 0 && dateIndex < reviewIndex)
+    assert.ok(searchIndex >= 0 && searchIndex < actionsIndex)
+    assert.ok(typeIndex >= 0 && typeIndex < actionsIndex)
+    assert.ok(dateIndex >= 0 && dateIndex < actionsIndex)
+    assert.ok(actionsIndex < reviewIndex)
+    assert.ok(actionsIndex < importIndex && importIndex < exportIndex)
     assert.ok(moreIndex < sortIndex)
-    assert.ok(actionsIndex < exportIndex)
+    assert.match(markup, /<summary aria-controls="transaction-actions-panel" aria-expanded="false"><span>Import \/ export<\/span>/)
+    assert.match(markup, /id="csv-import-trigger" class="button button-primary csv-import-button"/)
     assert.match(markup, /<summary aria-controls="transaction-review-filters-panel" aria-expanded="false">/)
     assert.match(markup, /<summary aria-controls="transaction-more-filters-panel" aria-expanded="false">/)
-    assert.match(markup, /<summary aria-controls="transaction-actions-panel" aria-expanded="false">/)
   })
 
   it('opens each disclosure when a contained filter or panel is active', () => {
@@ -152,7 +155,7 @@ describe('calm transaction toolbar disclosures', () => {
     assert.match(statementMarkup, /id="ai-statement-import-trigger"[^>]*aria-expanded="true"[^>]*aria-controls="bank-import-panel"/)
   })
 
-  it('releases the Actions disclosure after export reaches a terminal state', () => {
+  it('releases the import/export disclosure after export reaches a terminal state', () => {
     assert.equal(transactionActionsDisclosureActive(false, false, false, 'preparing'), true)
     assert.equal(transactionActionsDisclosureActive(false, false, false, 'ready'), false)
     assert.equal(transactionActionsDisclosureActive(false, false, false, 'error'), false)
