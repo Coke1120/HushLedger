@@ -33,6 +33,7 @@ export function EcbReferenceRateSettings({
   const [feedbackError, setFeedbackError] = useState(false)
 
   useEffect(() => {
+    if (!enabled) return
     let active = true
     void api<EcbReferenceRateResponse>('/api/exchange-rates/ecb')
       .then((response) => {
@@ -40,9 +41,9 @@ export function EcbReferenceRateSettings({
       })
       .catch(() => {
         if (active) setRates([])
-      })
+    })
     return () => { active = false }
-  }, [])
+  }, [enabled])
 
   async function fetchRates() {
     if (!enabled || fetching) return

@@ -1,11 +1,5 @@
-import {
-  enMessages,
-  frMessages,
-  jaMessages,
-  zhHantMessages,
-  type MessageDictionary,
-  type MessageKey,
-} from './messages'
+import { zhHantMessages } from './messages/zh-Hant'
+import type { MessageDictionary, MessageKey } from './messages/types'
 
 export const supportedLocales = ['zh-Hant', 'en', 'ja', 'fr'] as const
 export type Locale = (typeof supportedLocales)[number]
@@ -22,11 +16,23 @@ export const languageOptions: ReadonlyArray<{ locale: Locale; label: string }> =
   { locale: 'fr', label: 'Français' },
 ]
 
-export const dictionaries: Record<Locale, MessageDictionary> = {
+const loadedDictionaries: Partial<Record<Locale, MessageDictionary>> = {
   'zh-Hant': zhHantMessages,
-  en: enMessages,
-  ja: jaMessages,
-  fr: frMessages,
+}
+
+const localeLoaders: Record<Exclude<Locale, 'zh-Hant'>, () => Promise<MessageDictionary>> = {
+  en: () => import('./messages/en').then(({ enMessages }) => enMessages),
+  ja: () => import('./messages/ja').then(({ jaMessages }) => jaMessages),
+  fr: () => import('./messages/fr').then(({ frMessages }) => frMessages),
+}
+
+export async function loadLocale(locale: Locale) {
+  if (loadedDictionaries[locale] || locale === 'zh-Hant') return
+  loadedDictionaries[locale] = await localeLoaders[locale]()
+}
+
+function dictionaryFor(locale: Locale) {
+  return loadedDictionaries[locale] ?? zhHantMessages
 }
 
 const entityMessageKeys: Readonly<Record<string, MessageKey>> = {
@@ -106,10 +112,11 @@ export function translate(
     singularKey && count === 1
       ? singularKey
       : key
-  const template = dictionaries[locale][resolvedKey]
-    ?? dictionaries[locale][key]
-    ?? dictionaries['zh-Hant'][resolvedKey]
-    ?? dictionaries['zh-Hant'][key]
+  const dictionary = dictionaryFor(locale)
+  const template = dictionary[resolvedKey]
+    ?? dictionary[key]
+    ?? zhHantMessages[resolvedKey]
+    ?? zhHantMessages[key]
   if (typeof template !== 'string') return key
   return template.replace(/\{([A-Za-z][A-Za-z0-9]*)\}/g, (token, name: string) =>
     Object.hasOwn(values, name) ? formatValue(locale, values[name]) : token,

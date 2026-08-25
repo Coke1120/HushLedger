@@ -60,4 +60,20 @@ describe('connection failure banner', () => {
     assert.match(markup, /Displayed data is read-only/)
     assert.doesNotMatch(markup, /Demo data/)
   })
+
+  it('labels the public demo as read-only without offering a failing retry', () => {
+    const markup = renderToStaticMarkup(createElement(
+      I18nContext.Provider,
+      { value: context },
+      createElement(ConnectionBanner, {
+        source: 'demo',
+        online: true,
+        actionMessage: '',
+      }),
+    ))
+
+    assert.match(markup, /read-only sample data/)
+    assert.match(markup, /Editing is disabled/)
+    assert.doesNotMatch(markup, /<button/)
+  })
 })

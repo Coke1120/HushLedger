@@ -6,7 +6,7 @@ type ConnectionBannerProps = {
   source: DataSource
   online: boolean
   actionMessage: string
-  onRetry: () => void
+  onRetry?: () => void
 }
 
 export function ConnectionBanner({ source, online, actionMessage, onRetry }: ConnectionBannerProps) {
@@ -46,10 +46,12 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
         <span>
           <strong>{t('demoMode')}</strong> {t('demoMoneyData')}
         </span>
-        <button type="button" onClick={onRetry}>
-          <RefreshCw aria-hidden="true" />
-          {t('retry')}
-        </button>
+        {onRetry ? (
+          <button type="button" onClick={onRetry}>
+            <RefreshCw aria-hidden="true" />
+            {t('retry')}
+          </button>
+        ) : null}
       </div>
     )
   }
@@ -59,10 +61,12 @@ export function ConnectionBanner({ source, online, actionMessage, onRetry }: Con
       <div className="status-banner status-error" role="alert">
         <AlertTriangle aria-hidden="true" />
         <span>{t('moneyDataLoadFailed')}</span>
-        <button type="button" onClick={onRetry}>
-          <RefreshCw aria-hidden="true" />
-          {t('refresh')}
-        </button>
+        {onRetry ? (
+          <button type="button" onClick={onRetry}>
+            <RefreshCw aria-hidden="true" />
+            {t('refresh')}
+          </button>
+        ) : null}
       </div>
     )
   }

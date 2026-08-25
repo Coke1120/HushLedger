@@ -1,14 +1,27 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  dictionaries,
   resolveLocale,
   supportedLocales,
   translate,
   type Locale,
 } from './core'
+import {
+  enMessages,
+  frMessages,
+  jaMessages,
+  zhHantMessages,
+  type MessageDictionary,
+} from './messages'
 import { messageForError } from './localizedMessage'
 import { ApiError } from '../lib/api'
+
+const dictionaries: Record<Locale, MessageDictionary> = {
+  'zh-Hant': zhHantMessages,
+  en: enMessages,
+  ja: jaMessages,
+  fr: frMessages,
+}
 
 describe('locale resolution', () => {
   it('prefers a valid stored locale', () => {

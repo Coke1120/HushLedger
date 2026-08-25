@@ -16,7 +16,7 @@ monthly, and yearly recurring transactions and account transfers.
 Production deployments must be protected by Cloudflare Access.
 
 **Live demo:** [Try HushLedger in your browser](https://hushledger-demo.howailoklineage.workers.dev/).
-Use sample data only; this public deployment is not a private ledger.
+This deployment is an explicit read-only sample ledger and never accepts edits.
 
 You do not need to deploy HushLedger to use it. Local mode needs no Cloudflare
 account, domain, Access setup, or API key. Deploy only when you want the same
@@ -25,6 +25,7 @@ private ledger available from other devices or outside your computer.
 **New to deployment?** Follow the
 [beginner-friendly Cloudflare guide](docs/EASY_DEPLOY.md). It requires no Git
 knowledge and explains every command and dashboard click.
+Read the [changelog](CHANGELOG.md) before upgrading an existing deployment.
 
 [![HushLedger desktop dashboard](https://raw.githubusercontent.com/Coke1120/HushLedger/main/design/qa/desktop-1440-live.png)](https://github.com/Coke1120/HushLedger/blob/main/design/qa/desktop-1440-live.png)
 
@@ -552,9 +553,9 @@ Start Next.js. OpenNext's development bridge supplies the local D1 binding from
 npm run dev
 ```
 
-Open `http://localhost:3000`. Demo data remains only in the current page session
-when live data is unavailable. Mutations are blocked while offline; the app never
-pretends that an offline change was synchronized.
+Open `http://localhost:3000`. If the live ledger cannot be loaded, any displayed
+snapshot remains read-only. Mutations are blocked while offline; the app never
+substitutes writable demo data or pretends that an offline change was synchronized.
 
 `npm run dev` deliberately retires any HushLedger service worker on that origin
 and removes only HushLedger or legacy Workbox app-shell caches. Next.js development

@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { formatHongKongDate, formatMonthLabel } from '../lib/date'
 import { DEFAULT_LEDGER_CURRENCY, type SupportedCurrency } from '../lib/currency'
 import { formatMoneyForDisplay, shouldAutomaticallyMaskScreen } from '../lib/privacy'
 import { I18nContext, type I18nContextValue } from './context'
 import {
   LOCALE_STORAGE_KEY,
+  loadLocale,
   localizeEntity,
   resolveLocale,
   translate,
@@ -35,18 +36,28 @@ function setMetaContent(selector: string, value: string) {
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('zh-Hant')
+  const [locale, setActiveLocale] = useState<Locale>('zh-Hant')
   const [ledgerCurrency, setLedgerCurrency] = useState<SupportedCurrency>(DEFAULT_LEDGER_CURRENCY)
   const [requestedPrivacyMode, setPrivacyMode] = useState(false)
   // Conceal the initial render until browser visibility and focus are known.
   const [automaticPrivacyMode, setAutomaticPrivacyMode] = useState(true)
   const privacyMode = requestedPrivacyMode || automaticPrivacyMode
+  const localeRequest = useRef(0)
+
+  const setLocale = useCallback((nextLocale: Locale) => {
+    const request = ++localeRequest.current
+    void loadLocale(nextLocale)
+      .then(() => {
+        if (request === localeRequest.current) setActiveLocale(nextLocale)
+      })
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     const browserLocale = readBrowserLocale()
     const timeout = window.setTimeout(() => setLocale(browserLocale), 0)
     return () => window.clearTimeout(timeout)
-  }, [])
+  }, [setLocale])
 
   useEffect(() => {
     const syncAutomaticPrivacyMode = () => {
@@ -128,6 +139,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       locale,
       localizeEntityName,
       privacyMode,
+      setLocale,
       t,
     ],
   )

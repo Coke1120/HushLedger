@@ -108,6 +108,7 @@ export function useMoneyData(
   dateTo: string,
   registerAccountId: number | null,
   amountMinor: number | null = null,
+  publicDemo = false,
 ) {
   const { setLedgerCurrency, t } = useI18n()
   const [snapshot, setSnapshot] = useState<Snapshot>(() => (
@@ -116,7 +117,7 @@ export function useMoneyData(
       dateFrom, dateTo, amountMinor, undefined, importReviewStatus,
     )
   ))
-  const [source, setSource] = useState<DataSource>('loading')
+  const [source, setSource] = useState<DataSource>(publicDemo ? 'demo' : 'loading')
   const [online, setOnline] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<LocalizedMessage | null>(null)
@@ -124,7 +125,7 @@ export function useMoneyData(
   const [transactionPage, setTransactionPage] = useState<TransactionPageState>(emptyTransactionPage)
   const [snapshotVersion, setSnapshotVersion] = useState(0)
   const [aiProviderSettingsStatus, setAiProviderSettingsStatus] =
-    useState<AiProviderSettingsStatus>('loading')
+    useState<AiProviderSettingsStatus>(publicDemo ? 'error' : 'loading')
   const requestSequence = useRef(0)
   const aiProviderSettingsRef = useRef<AiProviderSettingsRow | null>(snapshot.aiProviderSettings)
   const demoFallbackAllowed = useRef(true)
@@ -241,8 +242,18 @@ export function useMoneyData(
     async (failureMode: RefreshFailureMode = 'demo') => {
       const sequence = ++requestSequence.current
       setTransactionPage(emptyTransactionPage())
-      setAiProviderSettingsStatus('loading')
       if (failureMode !== 'preserve') setSaveError(null)
+
+      if (publicDemo) {
+        setAiProviderSettingsStatus('error')
+        setOnline(navigator.onLine)
+        setDemoSnapshot()
+        writableSource.current = null
+        setSource('demo')
+        return false
+      }
+
+      setAiProviderSettingsStatus('loading')
 
       if (!navigator.onLine) {
         setOnline(false)
@@ -299,7 +310,7 @@ export function useMoneyData(
         return false
       }
     },
-    [fetchSnapshot, setDemoSnapshot, setLedgerCurrency],
+    [fetchSnapshot, publicDemo, setDemoSnapshot, setLedgerCurrency],
   )
 
   useEffect(() => {

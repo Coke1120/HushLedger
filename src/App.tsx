@@ -88,7 +88,15 @@ const initialAiSettings: AiProviderSettings = {
   model: '',
 }
 
-function App({ initialDate, initialMonth }: { initialDate: string; initialMonth: string }) {
+function App({
+  initialDate,
+  initialMonth,
+  publicDemo,
+}: {
+  initialDate: string
+  initialMonth: string
+  publicDemo: boolean
+}) {
   const { localizeEntityName, t } = useI18n()
   const scheduledOutlookToday = useHongKongToday()
   const { status: appUpdateStatus, setRestartBlocked } = useAppUpdate()
@@ -188,6 +196,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
     effectiveTransactionDateRange.to,
     registerAccountId,
     registerAccountId === null ? amountFilterMinor : null,
+    publicDemo,
   )
   const {
     clearActionMessage,
@@ -909,7 +918,7 @@ function App({ initialDate, initialMonth }: { initialDate: string; initialMonth:
             source={data.source}
             online={data.online}
             actionMessage={data.actionMessage}
-            onRetry={() => void data.refresh()}
+            onRetry={data.source === 'demo' ? undefined : () => void data.refresh()}
           />
           <MonthNavigator
             month={month}
