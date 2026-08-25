@@ -50,7 +50,7 @@
     "db:local": "node -r ./scripts/private-local-state.cjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply hushledger --local"
   },
   "dependencies": {
-    "jose": "^6.2.3",
+    "jose": "^6.2.10",
     "lucide-react": "^1.24.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
