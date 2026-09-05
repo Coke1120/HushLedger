@@ -213,10 +213,14 @@ records while diagnosing a production issue.
 ## 7. Back up and test recovery
 
 For routine app-level portability, Settings can download a versioned JSON file
-covering all six HushLedger ledger tables, including account transfers. The file is plaintext even though it
-has a SHA-256 integrity check, so move it immediately to encrypted storage. The
-in-app restore validates and previews first, but it still replaces the current
-ledger; use a separate test deployment for restore drills.
+covering the reporting currency, accounts, categories, emergency-fund checkpoint,
+recurring transaction and transfer rules, transactions, account transfers, import
+tombstones, and any explicitly fetched ECB reference-rate observations. See the
+[backup format and compatibility contract](../README.md#ledger-backup-and-restore)
+for the current schema and exclusions. The file is plaintext even though it has a
+SHA-256 integrity check, so move it immediately to encrypted storage. The in-app
+restore validates and previews first, but it still replaces the current ledger;
+use a separate test deployment for restore drills.
 
 Account opening balances and their dates are part of the account rows in this
 backup. After migration `0012`, verify one account-balance panel against a known

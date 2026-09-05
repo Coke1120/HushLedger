@@ -1,8 +1,9 @@
 # HushLedger product brief
 
-> Updated: 2026-07-19 (HKT)
+> Reviewed: 2026-09-06 (HKT)
 >
-> Status: core transaction, recurring-rule, and scheduled-transfer release implemented locally
+> Status: beta; core workflows implemented, with release evidence and priorities
+> tracked in [the product review](docs/PRODUCT_REVIEW.md)
 >
 > Product languages: Traditional Chinese (`zh-Hant`), English (`en`), Japanese
 > (`ja`), and French (`fr`)
@@ -25,6 +26,16 @@ Cloudflare D1
 
 Production is online-first and protected by Cloudflare Access. The project does
 not operate an independent database server or a multi-user identity system.
+
+The primary user is one person who wants to enter or import transactions, review
+their money, and keep control of their ledger. Local use is the shortest supported
+path; private multi-device deployment adds operator responsibilities for Access,
+updates, backups, and recovery. AI and public reference data are optional.
+
+The next delivery milestone is a dependable first session and repeatable recovery.
+Prioritize completing and verifying existing journeys before expanding financial
+features. See the [delivery priorities and acceptance criteria](docs/PRODUCT_REVIEW.md#delivery-plan)
+for the ordered backlog and evidence required to advance it.
 
 ## Core user journeys
 
@@ -223,7 +234,7 @@ default/reporting currency only until an explicit conversion stage exists.
 id                    client-generated UUID
 type                  income | expense
 amount_minor          positive integer minor units
-currency              the ledger-wide supported currency
+currency              the selected account's native supported currency
 account_id            active compatible account
 category_id           active matching category
 occurred_on           YYYY-MM-DD calendar date
@@ -293,7 +304,7 @@ instruction. Removing it does not alter the backing account or any ledger entry.
 ```text
 id                 client-generated UUID
 amount_minor       positive integer minor units
-currency           the ledger-wide supported currency
+currency           the shared native currency of both accounts
 from_account_id    source account
 to_account_id      distinct destination account
 occurred_on        YYYY-MM-DD calendar date
@@ -432,21 +443,25 @@ the client-only uncleared filter, and cannot be imported as ordinary transaction
 Both CSV downloads are plaintext and keep exact amounts even while screen privacy
 is enabled; user-entered text is neutralized against spreadsheet formulas.
 
-The schema-18 ledger JSON format covers the ledger currency and eight collections:
+The schema-20 ledger JSON format covers the reporting currency and nine collections:
 accounts, categories, the emergency-fund checkpoint, recurring transaction rules,
 scheduled-transfer rules,
-transactions, account transfers, and import tombstones. It excludes browser
+transactions, account transfers, import tombstones, and saved ECB reference rates. It excludes browser
 preferences and AI credentials. Its SHA-256
 checksum detects modification. Restore validates internal references, returns a
 no-write current-versus-backup report, requires `RESTORE`, and rechecks a
 trigger-maintained ledger revision inside the same D1 transaction before replacing
-the currency and all eight collections. Schema-8 through schema-17 backups remain
+the currency and all nine collections. Schema-8 through schema-19 backups remain
 compatible; pre-schema-14 backups upgrade to HKD, and schema-8 through schema-12
-do not invent an emergency-fund checkpoint. Schema-14 through schema-18 restores
-preserve the selected currency and never convert amounts. Only schemas 17–18
-contain scheduled-transfer rules or generated-transfer provenance. Schema 18
-preserves the structured import-review state; older formats reconstruct imported
+do not invent an emergency-fund checkpoint. Schema-14 and later restores
+preserve the selected currency and never convert amounts. Schema 17 and later
+contain scheduled-transfer rules or generated-transfer provenance. Schema 18 and later
+preserve the structured import-review state; older formats reconstruct imported
 rows from surviving import keys as unreviewed and leave manual rows unassigned.
+Schema 19 supports native account currencies; earlier formats preserve their
+single-currency contract. Schema 20 adds saved ECB reference rates; earlier formats
+restore with no invented rates. The canonical format is defined in
+[`src/lib/ledgerBackup.ts`](src/lib/ledgerBackup.ts).
 The in-app file limit is 7 MiB;
 larger or database-level recovery uses Wrangler D1 export and restore. The browser
 stores only the most recent backup-preparation and integrity-check dates; this
@@ -486,11 +501,11 @@ reminder does not prove that a backup file was retained off-platform.
 - Calm warm-white canvas, forest-green identity, restrained income and expense
   colors, and a system font stack that supports all four product languages.
 - Phone-first quick entry with a bottom sheet; useful tablet and desktop width.
-- A Settings page with immediate language switching and local-only preference
+- A Settings page with language switching and local-only preference
   persistence.
 - One D1-backed default/reporting currency selected before monetary history exists,
-  plus immutable native account currencies. There is no exchange-rate lookup or
-  conversion yet, so dashboard totals cover the reporting currency only.
+  plus immutable native account currencies. Optional public ECB reference rates
+  do not convert ledger amounts; dashboard totals cover the reporting currency only.
 - An optional emergency-fund checkpoint configured in Settings and reviewed on
   the monthly overview with explicit recorded-balance and non-reservation wording.
 - A persistent header indicator for temporary screen privacy, with no hover or
@@ -542,8 +557,8 @@ reminder does not prove that a backup file was retained off-platform.
   generic bank CSV import, private payee memory,
   recurring transaction and scheduled-transfer management, language settings, and the pristine-ledger currency
   setting.
-- Versioned schema-18 currency-plus-eight-collection JSON backup with schema-8
-  through schema-17 compatibility, SHA-256 integrity checking, preview-only
+- Versioned schema-20 currency-plus-nine-collection JSON backup with schema-8
+  through schema-19 compatibility, SHA-256 integrity checking, preview-only
   restore reports, stale-preview protection, and transactional replacement.
 - OpenAI-compatible model discovery and bank-text draft parsing with browser-tab
   provider settings, strict reviewable output, live duplicate preview, and only
@@ -562,8 +577,11 @@ isolated by active state plus category type.
 
 ### Implemented: user-configured AI bank-text parser
 
-The app accepts an OpenAI-compatible base URL, API key, and model held only in
-the current browser tab and sent to the Worker for each parse request. A user may
+The app accepts an OpenAI-compatible base URL, API key, and model held in
+the current browser tab, or explicitly saved with an AES-GCM-encrypted API key in
+D1 using an operator-managed encryption secret. Saved key material is decrypted
+only server-side; settings responses expose redacted metadata. Full-ledger JSON
+backups exclude AI settings. A user may
 paste online-banking text, inspect and edit parsed drafts, then explicitly confirm
 them. New rows are selected by default, possible duplicates require an explicit
 choice, and stable source tombstones prevent silent re-import after deletion. AI
@@ -571,11 +589,19 @@ never writes directly to D1 and never supplies authoritative integer amounts or
 database IDs. See
 [AI_BANK_IMPORT_PLAN.md](AI_BANK_IMPORT_PLAN.md).
 
-### Later reliability work
+### Delivery priorities
 
-- IndexedDB outbox and explicit sync/conflict policy.
-- Automated encrypted external backups.
-- Browser-level end-to-end test suite in CI.
+1. Complete first-use and import journeys, correct product documentation, and
+   add browser-level core journey coverage in CI.
+2. Rehearse upgrades and recovery against fictional ledgers, record evidence,
+   and validate the operator instructions with a new user.
+3. Evaluate automated encrypted external backups with explicit key ownership,
+   recovery, retention, and failure-notification requirements.
+4. Reconsider offline writes only when user evidence justifies an outbox and a
+   documented multi-device conflict policy. Online-first remains the commitment.
+
+These are ordered milestones, not dated commitments. Detailed acceptance and
+remaining limitations are maintained in [the product review](docs/PRODUCT_REVIEW.md).
 
 ## Core release definition of done
 
@@ -592,3 +618,13 @@ database IDs. See
   upgrade migrations succeed.
 - Cloudflare setup and Access boundary are documented without including secrets.
 - No production deployment is claimed without actual command output.
+- A new user can choose the reporting currency, configure an account, save a
+  fictional transaction, find it after reload, and explain its monthly effect
+  using the published instructions without undocumented assistance.
+- A historical CSV import ends with an explicit route to review unreviewed
+  imports across all dates, independent of the previous filters.
+- Core entry, import review, settings, and recovery journeys are checked by
+  keyboard and at a narrow mobile viewport in all four supported locales.
+- Release evidence records the tested revision, runtime, automated results,
+  browser checks, recovery exercise, and any unrun gates. Implemented features
+  alone do not establish production readiness.

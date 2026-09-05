@@ -22,6 +22,7 @@ import {
   csvImportPreviewResultSchema,
   parseHushLedgerCsv,
   recategorizeCsvImportReview,
+  type CsvImportCommitResult,
   type CsvImportIssue,
   type CsvImportIssueCode,
   type CsvImportPreviewResult,
@@ -38,6 +39,7 @@ type CsvImportPanelProps = {
   panelRef: RefObject<HTMLElement | null>
   onClose: () => void
   onImported: () => Promise<unknown>
+  onReviewImports: (status: 'unreviewed') => void
   onMutationStateChange: (mutating: boolean) => void
 }
 
@@ -48,6 +50,7 @@ export function CsvImportPanel({
   panelRef,
   onClose,
   onImported,
+  onReviewImports,
   onMutationStateChange,
 }: CsvImportPanelProps) {
   const { formatDate, formatMoney, localizeEntityName, t } = useI18n()
@@ -62,6 +65,7 @@ export function CsvImportPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
+  const [completedImport, setCompletedImport] = useState<CsvImportCommitResult | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const requestSequence = useRef(0)
   const requestController = useRef<AbortController | null>(null)
@@ -86,6 +90,7 @@ export function CsvImportPanel({
     setBusy(false)
     setError('')
     setStatus('')
+    setCompletedImport(null)
   }
 
   const chooseFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -250,6 +255,7 @@ export function CsvImportPanel({
     setBusy(true)
     setError('')
     setStatus('')
+    setCompletedImport(null)
     const sequence = ++requestSequence.current
     const controller = new AbortController()
     requestController.current = controller
@@ -267,6 +273,7 @@ export function CsvImportPanel({
       const result = csvImportCommitResultSchema.safeParse(response)
       if (!result.success) throw new Error('Invalid CSV import response')
       if (result.data.imported > 0 || result.data.matched > 0) await onImported()
+      setCompletedImport(result.data)
       setStatus(t('csvImportSuccess', {
         imported: result.data.imported,
         matched: result.data.matched,
@@ -364,6 +371,11 @@ export function CsvImportPanel({
       ) : null}
       {error ? <p className="form-error" role="alert">{error}</p> : null}
       <p className="settings-save-status" aria-live="polite" aria-atomic="true">{status}</p>
+      <CsvImportCompletion
+        result={completedImport}
+        disabled={!available || busy}
+        onReviewImports={onReviewImports}
+      />
 
       {issues.length > 0 ? (
         <div className="csv-import-issues" role="alert">
@@ -535,6 +547,32 @@ export function CsvImportPanel({
         </div>
       ) : null}
     </section>
+  )
+}
+
+export function CsvImportCompletion({
+  result,
+  disabled,
+  onReviewImports,
+}: {
+  result: CsvImportCommitResult | null
+  disabled: boolean
+  onReviewImports: (status: 'unreviewed') => void
+}) {
+  const { t } = useI18n()
+  if (!result || result.imported + result.matched === 0) return null
+
+  return (
+    <div className="ai-import-next-actions csv-import-next-actions">
+      <button
+        className="button button-secondary"
+        type="button"
+        disabled={disabled}
+        onClick={() => onReviewImports('unreviewed')}
+      >
+        {t('aiReviewUnreviewedImports')}
+      </button>
+    </div>
   )
 }
 

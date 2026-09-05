@@ -23,14 +23,18 @@ const context: I18nContextValue = {
   localizeEntityName: (name) => name,
 }
 
-function renderHeader(aiStatementImportConfigured: boolean, aiStatementImportOpen = false) {
+function renderHeader(
+  aiStatementImportConfigured: boolean,
+  aiStatementImportOpen = false,
+  addDisabled = false,
+) {
   return renderToStaticMarkup(createElement(
     I18nContext.Provider,
     { value: context },
     createElement(AppHeader, {
       view: 'transactions',
       navigationDisabled: false,
-      addDisabled: false,
+      addDisabled,
       aiStatementImportConfigured,
       aiStatementImportOpen,
       onAdd: () => undefined,
@@ -55,14 +59,24 @@ describe('header transaction entry', () => {
     assert.match(markup, /class="icon-button add-button"[^>]*aria-label="Add transaction"/)
   })
 
-  it('disables AI import until provider settings are usable without disabling manual entry', () => {
+  it('keeps the setup prompt reachable when a provider has not been configured', () => {
     const markup = renderHeader(false)
 
     assert.match(
       markup,
-      /header-ai-import-button[^>]*disabled=""[^>]*aria-describedby="header-ai-import-unavailable"[^>]*title="Save the AI provider settings/,
+      /header-ai-import-button[^>]*aria-describedby="header-ai-import-unavailable"[^>]*title="Save the AI provider settings/,
     )
     assert.match(markup, /id="header-ai-import-unavailable">Save the AI provider settings/)
+    assert.doesNotMatch(markup, /header-ai-import-button[^>]*disabled=""/)
     assert.doesNotMatch(markup, /class="icon-button add-button"[^>]*disabled=""/)
+  })
+
+  it('keeps statement entry disabled when ledger entry is unavailable or locked', () => {
+    for (const configured of [false, true]) {
+      const markup = renderHeader(configured, false, true)
+
+      assert.match(markup, /header-ai-import-button[^>]*disabled=""/)
+      assert.match(markup, /class="icon-button add-button"[^>]*disabled=""/)
+    }
   })
 })

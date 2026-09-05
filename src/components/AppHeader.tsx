@@ -103,7 +103,7 @@ export function AppHeader({
           className="button button-primary header-ai-import-button"
           type="button"
           onClick={(event) => onAiStatementImport(event.currentTarget)}
-          disabled={addDisabled || !aiStatementImportConfigured}
+          disabled={addDisabled}
           aria-expanded={aiStatementImportOpen}
           aria-controls="bank-import-panel"
           aria-describedby={!aiStatementImportConfigured

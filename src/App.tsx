@@ -1145,6 +1145,7 @@ function App({
                 panelRef={importPanelRef}
                 onClose={closeImport}
                 onImported={() => data.refresh('error')}
+                onReviewImports={openImportedTransactionReview}
                 onMutationStateChange={setImportMutationInProgress}
               />
             ) : null}

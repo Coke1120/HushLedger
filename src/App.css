@@ -6527,6 +6527,10 @@ button.account-register-row:focus-visible {
   justify-content: flex-end;
 }
 
+.csv-import-next-actions {
+  margin-top: 12px;
+}
+
 .ai-import-reconcile-action {
   display: grid;
   grid-template-columns: minmax(190px, 260px) auto;
