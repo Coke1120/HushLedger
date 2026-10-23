@@ -39,7 +39,7 @@ Official references:
 
 ## 1. Prepare the repository
 
-Install Node.js 22 or newer, clone the repository, and install the locked
+Install Node.js 22.13+ (22.x) or 24+, clone the repository, and install the locked
 dependencies:
 
 ```bash

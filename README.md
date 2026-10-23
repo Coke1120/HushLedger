@@ -348,7 +348,7 @@ storage and follow the restore and recovery process in
 ## Local development
 
 This is also the supported way to use HushLedger on one computer. Requirements:
-Node.js 22+ and npm 10+.
+Node.js 22.13+ (22.x) or 24+, and npm 10+.
 
 ```bash
 git clone https://github.com/Coke1120/HushLedger.git
