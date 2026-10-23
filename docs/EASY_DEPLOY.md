@@ -155,7 +155,7 @@ npx wrangler d1 migrations list hushledger --remote
 
 If Cloudflare asks for confirmation, check that the database name is
 `hushledger`, then answer `y`. Wait for the migrations to finish successfully.
-The applied list must include `0021_ai_provider_settings.sql` before you deploy
+The applied list must include `0022_paste_approvals.sql` before you deploy
 this version of the app.
 
 ## 7. Build and upload HushLedger
