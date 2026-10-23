@@ -78,7 +78,7 @@ const categories: Category[] = [
 const payeeSuggestions: PayeeSuggestion[] = [{
   payee: 'Cafe, Central',
   type: 'expense',
-  accountId: 3,
+  accountId: 2,
   categoryId: 12,
   lastUsedOn: '2026-07-12',
   useCount: 3,
@@ -228,6 +228,11 @@ describe('generic bank CSV import', () => {
       { accounts, categories, currency: 'HKD', payeeSuggestions },
     )
 
+    const otherAccount = await mapBankCsvDocument(
+      parsed.document, baseMapping({ rememberPayeeCategories: true }),
+      { accounts, categories, currency: 'HKD', payeeSuggestions: payeeSuggestions.map((item) => ({ ...item, accountId: 3 })) },
+    )
+    assert.deepEqual(otherAccount.rows.map(({ categoryId }) => categoryId), [10, 10])
     assert.deepEqual(remembered.rows.map(({ categoryId }) => categoryId), [12, 10])
     assert.deepEqual(remembered.rows.map(({ accountId }) => accountId), [2, 2])
     assert.deepEqual(defaulted.rows.map(({ categoryId }) => categoryId), [10, 10])

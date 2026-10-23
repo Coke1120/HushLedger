@@ -59,7 +59,7 @@ export const POST = apiRoute(async (request) => {
   const [accounts, categories, payeeSuggestions] = await Promise.all([
     listAccounts(database),
     listCategories(database),
-    listPayeeSuggestions(database),
+    listPayeeSuggestions(database, parsed.data.accountId),
   ])
   const account = accounts.find(
     (candidate) =>

@@ -752,6 +752,7 @@ function buildRestoreStatements(
       SELECT 1, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE COALESCE((SELECT revision FROM ledger_state WHERE id = 1), -1) <> ?
     `).bind(expectedRevision, expectedRevision),
+    database.prepare("UPDATE paste_operations SET state = 'invalidated' WHERE state = 'approved'"),
     database.prepare('DELETE FROM transaction_import_keys'),
     database.prepare('DELETE FROM ecb_reference_rates'),
     database.prepare('DELETE FROM transactions'),

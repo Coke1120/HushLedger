@@ -55,7 +55,7 @@ describe('header transaction entry', () => {
       markup,
       /header-ai-import-button[^>]*aria-expanded="true"[^>]*aria-controls="bank-import-panel"/,
     )
-    assert.match(markup, />Paste bank \/ card transactions<\/span><\/button>/)
+    assert.match(markup, />Paste transactions<\/span><\/button>/)
     assert.match(markup, /class="icon-button add-button"[^>]*aria-label="Add transaction"/)
   })
 

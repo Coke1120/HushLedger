@@ -112,7 +112,7 @@ export function AppHeader({
           title={!aiStatementImportConfigured ? t('aiConfigureFirst') : undefined}
         >
           <ClipboardPaste aria-hidden="true" />
-          <span>{t('aiStatementImportAction')}</span>
+          <span>{t('pasteAction')}</span>
         </button>
         {!aiStatementImportConfigured ? (
           <span className="sr-only" id="header-ai-import-unavailable">

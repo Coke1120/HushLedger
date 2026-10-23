@@ -5,7 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useRef, useState } from 'reac
 import { AppHeader } from './components/AppHeader'
 import { AiCopilotPanel } from './components/AiCopilotPanel'
 import { aiCopilotActionIsCurrent } from './components/aiCopilotActionSafety'
-import { BankImportPanel } from './components/BankImportPanel'
+import { PasteTransactionsPanel as BankImportPanel } from './components/PasteTransactionsPanel'
 import { AccountTransferDialog } from './components/AccountTransferDialog'
 import { AccountTransferList } from './components/AccountTransferList'
 import { AccountBalances } from './components/AccountBalances'
@@ -128,7 +128,7 @@ function App({
     to: string
   } | null>(null)
   const [duplicatesOnly, setDuplicatesOnly] = useState(false)
-  const [view, setView] = useState<AppView>('overview')
+  const [view, setView] = useState<AppView>('transactions')
   const [overviewReview, setOverviewReview] = useState<OverviewReview>('spending')
   const [settingsCategory, setSettingsCategory] = useState<SettingsCategory>('ledger')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -1043,6 +1043,7 @@ function App({
                 {t('monthTransactions')}
                 <ChevronRight aria-hidden="true" />
               </button>
+              <details className="transaction-tools"><summary>{t('pasteMore')}</summary>
               <TransactionToolbar
                 search={search}
                 amountFilterMinor={amountFilterMinor}
@@ -1090,6 +1091,7 @@ function App({
                 aiStatementImportButtonRef={aiStatementImportButtonRef}
                 aiCopilotButtonRef={aiCopilotButtonRef}
               />
+              </details>
               {view === 'overview' && overviewTransactionFiltersActive ? (
                 <div className="transaction-preview-filter-notice">
                   <p>{t('overviewTransactionFiltersActive')}</p>

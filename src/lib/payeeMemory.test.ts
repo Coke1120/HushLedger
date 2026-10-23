@@ -68,6 +68,18 @@ const suggestions: PayeeSuggestion[] = [
 ]
 
 describe('payee memory', () => {
+  it('uses an approved historical amount only to rank category references', () => {
+    const alternate = { ...categories[0], id: 9, name: 'Books' }
+    const history = [
+      { ...suggestions[0], amountMinor: 4800 },
+      { ...suggestions[0], amountMinor: 8000, categoryId: 9 },
+    ]
+    assert.deepEqual(rememberPayeeReferences(history, 'Corner Cafe', 'expense', accounts,
+      [...categories, alternate], 8000), { accountId: 1, categoryId: 9 })
+    assert.deepEqual(rememberPayeeReferences(history, 'Corner Cafe', 'expense', accounts,
+      [...categories, alternate], 9500), { accountId: 1, categoryId: 3 })
+    assert.equal(history[1].amountMinor, 8000)
+  })
   it('matches a known payee without case or surrounding-space sensitivity', () => {
     assert.deepEqual(
       rememberPayeeReferences(suggestions, '  corner CAFE ', 'expense', accounts, categories),

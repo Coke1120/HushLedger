@@ -124,7 +124,9 @@ export function CsvImportPanel({
         const delimiter = detectBankCsvDelimiter(text)
         const bank = parseBankCsvDocument(text, delimiter)
         const suggestions = bank.document
-          ? await api<PayeeSuggestion[]>('/api/payee-suggestions', { signal: controller.signal }).catch(() => [])
+          ? (await Promise.all(accounts.filter((account) => account.isActive).map((account) =>
+              api<PayeeSuggestion[]>(`/api/payee-suggestions?accountId=${account.id}`, { signal: controller.signal }).catch(() => []),
+            ))).flat()
           : []
         if (sequence !== requestSequence.current) return
         setBankDocument(bank.document)

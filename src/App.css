@@ -8935,3 +8935,65 @@ button:not(:disabled):not([aria-disabled='true']):active {
     transform: none !important;
   }
 }
+
+/* Paste review shares the ledger palette and native controls. */
+.transaction-tools { grid-column: 1 / -1; width: 100%; }
+.transaction-tools > summary, .paste-panel summary { cursor: pointer; color: var(--muted); padding: 12px 0; }
+.paste-panel { margin: 24px 0; padding: clamp(16px, 3vw, 32px); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+.paste-heading { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.paste-heading h2 { display: flex; align-items: center; gap: 10px; font-size: 24px; }
+.paste-heading p { max-width: 72ch; color: var(--muted); line-height: 1.6; margin: 12px 0 24px; }
+.paste-panel fieldset { min-width: 0; padding: 0; border: 0; margin: 0; }
+.paste-inputs { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+.paste-panel label { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 600; min-width: 0; }
+.paste-panel input, .paste-panel select, .paste-panel textarea { width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 10px; font: inherit; font-size: 15px; }
+.paste-panel textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+.paste-panel input[type=checkbox] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--brand); }
+.paste-panel .primary-button { border: 0; border-radius: 8px; padding: 12px 16px; background: var(--brand); color: white; font-size: 14px; font-weight: 650; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; }
+.paste-panel button:disabled { opacity: .45; cursor: not-allowed; }
+.paste-panel button, .paste-panel summary { min-height: 44px; }
+.paste-text { grid-column: 1 / -1; }
+.paste-inputs > button { justify-self: start; }
+.paste-rows { margin-top: 24px; }
+.paste-row { padding: 20px 0; border-top: 1px solid var(--line); }
+.paste-row > fieldset { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(150px, 1.6fr) 100px minmax(100px, 1fr) minmax(130px, 1.2fr); gap: 12px; align-items: end; }
+.paste-row .paste-select { grid-column: 1 / -1; flex-direction: row; align-items: center; }
+.paste-row .primary-button { grid-column: 4 / -1; justify-self: end; }
+.paste-row.is-saved { opacity: .7; }
+.paste-warning { background: var(--warning-bg); color: var(--warning); padding: 12px; border-radius: 8px; margin: 12px 0; font-size: 14px; }
+.paste-panel .paste-warning label, .paste-panel label.paste-warning { flex-direction: row; align-items: center; }
+.paste-row blockquote { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; padding-left: 12px; border-left: 2px solid var(--line-strong); color: var(--muted); }
+.paste-footer { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 18px 0; border-top: 1px solid var(--line); }
+.paste-footer span { font-size: 14px; color: var(--muted); }
+.paste-panel .form-error { color: var(--error); background: var(--error-bg); padding: 12px; }
+@media (max-width: 700px) {
+  .paste-panel { padding: 16px; margin: 16px 0; }
+  .paste-heading h2 { font-size: 20px; }
+  .paste-inputs { grid-template-columns: 1fr; }
+  .paste-row { margin-bottom: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; }
+  .paste-row > fieldset { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .paste-row > fieldset > label:nth-of-type(3), .paste-row > fieldset > label:nth-of-type(6) { grid-column: 1 / -1; }
+  .paste-row .primary-button { grid-column: 1 / -1; width: 100%; }
+  .paste-footer { align-items: stretch; flex-direction: column; }
+}
+
+.transactions-panel:has(.paste-panel) > .transactions-heading,
+.transactions-panel:has(.paste-panel) > .account-transfers { display: none; }
+
+.paste-panel { scroll-margin-top: 100px; }
+.paste-panel .text-button, .paste-panel .paste-more button,
+.paste-panel [aria-live] button { background: var(--surface); color: var(--brand); border: 1px solid var(--line-strong); border-radius: 8px; padding: 10px 14px; font: inherit; font-size: 14px; margin-top: 10px; cursor: pointer; }
+.paste-source > summary { font-weight: 600; color: var(--ink); }
+@media (max-width: 700px) {
+  .app-header .header-ai-import-button { width: auto; padding: 8px 10px; min-height: 44px; max-width: 150px; }
+  .app-header .header-ai-import-button span { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; font-size: 12px; }
+}
+.paste-heading > .icon-button { flex: 0 0 44px; }
+@media (min-width: 901px) {
+  .paste-row > fieldset { grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.5fr) minmax(110px, .8fr) minmax(100px, 1fr) minmax(125px, 1fr) auto; }
+  .paste-row .primary-button { grid-column: auto; }
+}
+@media (min-width: 701px) and (max-width: 900px) {
+  .paste-row > fieldset { grid-template-columns: 1fr 1fr; }
+  .paste-row .primary-button { grid-column: 1 / -1; }
+}

@@ -194,6 +194,7 @@ export const bankImportDraftSchema = z
     accountId: z.number().int().positive(),
     categoryId: z.number().int().positive().nullable(),
     payee: z.string().trim().max(80),
+    categorySource: z.enum(['history', 'model', 'fallback']).optional(),
     confidence: z.number().min(0).max(1),
     flags: z.array(aiDraftFlagSchema).max(9),
   })

@@ -2442,14 +2442,10 @@ async function verifyWorkerApi() {
   const payeeSuggestions = await api(baseUrl, '/api/payee-suggestions')
   assert.equal(payeeSuggestions.response.status, 200)
   assert.match(payeeSuggestions.response.headers.get('cache-control') ?? '', /no-store/)
-  assert.deepEqual(payeeSuggestions.payload.data, [{
-    payee: 'export bulk',
-    type: 'expense',
-    accountId: 1,
-    categoryId: 3,
-    lastUsedOn: today,
-    useCount: 206,
-  }])
+  // Unapproved manual rows and an unspecified account must not feed suggestion history.
+  assert.deepEqual(payeeSuggestions.payload.data, [])
+  const scopedHistory = await api(baseUrl, '/api/payee-suggestions?accountId=1')
+  assert.deepEqual(scopedHistory.payload.data, [])
 
   const categorySummary = await api(baseUrl, `/api/summary?month=${month}`)
   assert.equal(categorySummary.response.status, 200)
@@ -7539,6 +7535,41 @@ async function verifyWorkerApi() {
   ))
   assert(upgradedSchema8Backup.payload.data.transactions.every(({ cleared }) => cleared === true))
 
+  // Synthetic approval lifecycle: no write before consent, scoped history, retry and undo.
+  const pasteRow = {
+    id: '99000000-0000-4000-8000-000000000001',
+    importKey: `ai:statement:row:${'c'.repeat(64)}`,
+    type: 'expense', amountMinor: 1234, currency: 'HKD',
+    accountId: 1, categoryId: 3, occurredOn: today, cleared: true,
+    payee: 'Fictional approval merchant', note: '', duplicateConfirmed: false,
+  }
+  const pastePreview = await api(baseUrl, '/api/imports/approve', {
+    method: 'POST', body: { mode: 'preview', rows: [pasteRow] },
+  })
+  assert.equal(pastePreview.response.status, 200, JSON.stringify(pastePreview.payload))
+  const approveRequest = {
+    mode: 'approve', operationId: '99000000-0000-4000-8000-000000000002',
+    expectedRevision: pastePreview.payload.data.revision, rows: [pasteRow],
+  }
+  const approved = await api(baseUrl, '/api/imports/approve', { method: 'POST', body: approveRequest })
+  assert.equal(approved.response.status, 200, JSON.stringify(approved.payload))
+  assert.equal(approved.payload.data.count, 1)
+  const retried = await api(baseUrl, '/api/imports/approve', { method: 'POST', body: approveRequest })
+  assert.deepEqual(retried.payload, approved.payload)
+  const approvedHistory = await api(baseUrl, '/api/payee-suggestions?accountId=1')
+  assert(approvedHistory.payload.data.some((item) => item.payee === pasteRow.payee))
+  const otherHistory = await api(baseUrl, '/api/payee-suggestions?accountId=2')
+  assert(!otherHistory.payload.data.some((item) => item.payee === pasteRow.payee))
+  const undo = await api(baseUrl, '/api/imports/approve', {
+    method: 'POST', body: { mode: 'undo', operationId: approveRequest.operationId },
+  })
+  assert.equal(undo.response.status, 200, JSON.stringify(undo.payload))
+  assert.equal(undo.payload.data.state, 'undone')
+  const undoneHistory = await api(baseUrl, '/api/payee-suggestions?accountId=1')
+  assert(!undoneHistory.payload.data.some((item) => item.payee === pasteRow.payee))
+  const afterUndo = await api(baseUrl, '/api/imports/approve', { method: 'POST', body: approveRequest })
+  assert.equal(afterUndo.payload.data.state, 'undone')
+
   return {
     ...aiSettingsEvidence,
     createdRules: createdRules.length,
@@ -8194,8 +8225,9 @@ try {
     JSON.stringify({
       ok: true,
       runtime: 'next-open-next-workerd',
-      freshMigrations: '0001-0021',
-      upgradeMigration: '0004-to-0021-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-import-review-emergency-fund-goals-ecb-reference-rates-and-ai-provider-settings',
+      freshMigrations: '0001-0022',
+      pasteApprovalHistoryUndo: true,
+      upgradeMigration: '0004-to-0022-preserved-data-fks-indexes-triggers-yearly-end-dates-recurring-transfers-import-review-emergency-fund-goals-ecb-reference-rates-and-ai-provider-settings',
       ...currencyEvidence,
       ...apiEvidence,
       ...nextAiEvidence,
