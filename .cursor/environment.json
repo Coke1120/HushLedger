@@ -1,0 +1,5 @@
+{
+  "name": "hushledger",
+  "user": "ubuntu",
+  "install": "bash .cursor/install-cbm.sh && npm ci"
+}
