@@ -54,7 +54,9 @@ type CompletedImportActions = {
   hasFollowUp: boolean
 }
 
-type BankImportPanelProps = {
+export type BankImportPanelProps = {
+  initialStatementText?: string
+  initialAccountId?: number
   settings: AiProviderSettings
   persistedSettings: AiProviderSettingsRow | null
   settingsConflict: boolean
@@ -77,6 +79,8 @@ type BankImportPanelProps = {
 }
 
 export function BankImportPanel({
+  initialStatementText = '',
+  initialAccountId,
   settings,
   persistedSettings,
   settingsConflict,
@@ -95,11 +99,11 @@ export function BankImportPanel({
   const { formatDate, formatMoney, locale, localizeEntityName, privacyMode, t } = useI18n()
   const activeAccounts = accounts.filter((account) => account.isActive)
   const [accountId, setAccountId] = useState(
-    activeAccounts.length === 1 ? activeAccounts[0]?.id ?? 0 : 0,
+    initialAccountId ?? (activeAccounts.length === 1 ? activeAccounts[0]?.id ?? 0 : 0),
   )
   const selectedAccount = activeAccounts.find((account) => account.id === accountId)
   const [dateOrder, setDateOrder] = useState<AiDateOrder>(() => defaultDateOrder(locale))
-  const [statementText, setStatementText] = useState('')
+  const [statementText, setStatementText] = useState(initialStatementText)
   const [drafts, setDrafts] = useState<EditableBankImportDraft[]>([])
   const [verificationEvidence, setVerificationEvidence] =
     useState<BankStatementVerificationEvidence | null>(null)

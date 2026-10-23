@@ -374,12 +374,14 @@ export async function listCategories(database: D1Database): Promise<Category[]> 
   return result.results.map((row) => ({ ...row, isActive: row.isActive === 1 }))
 }
 
-export async function listPayeeSuggestions(database: D1Database): Promise<PayeeSuggestion[]> {
+export async function listPayeeSuggestions(database: D1Database, accountId?: number): Promise<PayeeSuggestion[]> {
+  if (!accountId) return []
   const result = await database.prepare(`
     WITH ranked AS (
       SELECT
         trim(payee) AS payee,
         type,
+        amount_minor AS amountMinor,
         account_id AS accountId,
         category_id AS categoryId,
         occurred_on AS lastUsedOn,
@@ -387,18 +389,21 @@ export async function listPayeeSuggestions(database: D1Database): Promise<PayeeS
           PARTITION BY lower(trim(payee)), type
         ) AS useCount,
         ROW_NUMBER() OVER (
-          PARTITION BY lower(trim(payee)), type
+          PARTITION BY lower(trim(payee)), type, amount_minor
           ORDER BY occurred_on DESC, created_at DESC, id DESC
         ) AS recency
       FROM transactions
-      WHERE trim(payee) <> ''
+      WHERE account_id = ? AND EXISTS (
+        SELECT 1 FROM transaction_approvals a
+        WHERE a.transaction_id = transactions.id AND a.approved_version = transactions.updated_at
+      ) AND trim(payee) <> ''
     )
-    SELECT payee, type, accountId, categoryId, lastUsedOn, useCount
+    SELECT payee, type, accountId, categoryId, lastUsedOn, useCount, amountMinor
     FROM ranked
     WHERE recency = 1
     ORDER BY lastUsedOn DESC, payee COLLATE NOCASE ASC
     LIMIT 100
-  `).all<PayeeSuggestion>()
+  `).bind(accountId).all<PayeeSuggestion>()
 
   return result.results
 }
@@ -1095,9 +1100,19 @@ export async function setTransactionsImportReviewStatus(
         SELECT desired_count = matched_count
         FROM review_guard
       )
-  `).bind(desired, input.status).run()
+    RETURNING id, updated_at
+  `).bind(desired, input.status).all<{ id: string; updated_at: string }>()
 
-  return Number(updated.meta.changes) > 0
+  if (input.status === 'reviewed' && updated.results.length > 0) {
+    // Bind the exact reviewed version, never a later edit that raced the response.
+    await database.batch(updated.results.map((row) => database.prepare(`
+      INSERT OR REPLACE INTO transaction_approvals(transaction_id, approved_version)
+      SELECT id, updated_at FROM transactions
+      WHERE id = ? AND updated_at = ? AND import_review_status = 'reviewed'
+    `).bind(row.id, row.updated_at)))
+  }
+
+  return updated.results.length > 0
     ? { kind: 'updated', count: input.transactions.length }
     : { kind: 'version_conflict' }
 }

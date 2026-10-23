@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "desktop": "1440x1100",
+  "mobile": "390x844",
+  "noHorizontalOverflow": true,
+  "noWritesBeforeApproval": true,
+  "lostResponseRetry": true,
+  "explicitDuplicate": true,
+  "editedBatchApproval": true,
+  "scopedHistory": true,
+  "undo": true,
+  "browserErrors": []
+}

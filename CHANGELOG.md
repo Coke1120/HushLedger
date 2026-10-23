@@ -5,25 +5,42 @@ remain the source of truth for published artifacts.
 
 ## Unreleased
 
+## [0.1.0-beta.3] - 2026-10-23
+
 ### Added
 
 - Native currencies for individual accounts without mixing them into reporting-currency totals.
 - Opt-in ECB reference-rate observations for future display-only reporting features.
 - Encrypted, persisted AI provider settings with conflict-safe updates.
 - Pasted-statement preview, reconciliation, transfer recognition, and durable import deduplication.
+- A simplified paste, edit, and approve workflow with mobile cards, explicit row or selected-batch approval, duplicate confirmation, idempotent retries, and guarded undo.
+- Account-scoped suggestions from current approved transaction versions; matching historical amounts only rank category suggestions and never replace pasted amounts.
+- A complete tracked-source snapshot of main at `68e71a70224096de52a18c454a1f88ca6a8d3e07` under `legacy/`, with a checksum and restoration instructions.
 
 ### Changed
 
 - Reworked transaction-import entry points and dense desktop review workflows.
 - Kept failed or offline ledger snapshots read-only instead of enabling demo mutations.
 - Restored the complete CI verification and dependency-audit gate.
+- Refreshed compatible stable dependencies and documented compatibility holds in `docs/dependency-reviews/2026-10-23.md`.
+- Made Transactions the default screen and collapsed advanced transaction tools.
 
 ### Upgrade notes
 
 - Back up the ledger before upgrading.
 - Apply D1 migrations `0019_multi_currency_accounts.sql`,
-  `0020_ecb_reference_rates.sql`, and `0021_ai_provider_settings.sql` in order.
+  `0020_ecb_reference_rates.sql`, `0021_ai_provider_settings.sql`, and
+  `0022_paste_approvals.sql` in order. Apply all pending migrations before starting
+  the updated application, including local installations.
 - Configure `AI_SETTINGS_ENCRYPTION_KEY_V1` before storing an AI provider API key.
+- Migration 0022 backfills approval only for explicitly reviewed imports. Any later
+  transaction edit invalidates its approval until explicitly reviewed again.
+- Portable JSON ledger backups exclude approval/undo receipts. Restore invalidates
+  outstanding receipts and clears historical suggestion eligibility; imported
+  transactions can be explicitly reviewed again. D1 backups retain these tables.
+- Keep a database backup for recovery; schema rollback is not provided. No live
+  migration or production deployment is performed by publishing this release.
+- Node.js must satisfy `^22.13.0 || >=24.0.0`, with npm 10 or newer.
 
 ## [0.1.0-beta.2] - 2026-07-14
 
@@ -39,3 +56,4 @@ remain the source of truth for published artifacts.
 
 [0.1.0-beta.2]: https://github.com/Coke1120/HushLedger/compare/v0.1.0-beta.1...v0.1.0-beta.2
 [0.1.0-beta.1]: https://github.com/Coke1120/HushLedger/releases/tag/v0.1.0-beta.1
+[0.1.0-beta.3]: https://github.com/Coke1120/HushLedger/compare/v0.1.0-beta.2...v0.1.0-beta.3

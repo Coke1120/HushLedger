@@ -4,8 +4,8 @@ import { listPayeeSuggestions } from '../../../server/money'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = apiRoute(async () => jsonSuccess(
-  await listPayeeSuggestions(await getDatabase()),
+export const GET = apiRoute(async (request) => jsonSuccess(
+  await listPayeeSuggestions(await getDatabase(), Number(new URL(request.url).searchParams.get('accountId'))),
 ))
 
 export const HEAD = apiNotFound

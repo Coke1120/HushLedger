@@ -39,7 +39,7 @@ Official references:
 
 ## 1. Prepare the repository
 
-Install Node.js 22 or newer, clone the repository, and install the locked
+Install Node.js 22.13+ (22.x) or 24+, clone the repository, and install the locked
 dependencies:
 
 ```bash
@@ -106,6 +106,11 @@ Do not deploy a build containing saved AI settings until
 `0021_ai_provider_settings.sql` appears in the applied migration list. On an
 existing Worker, also configure `AI_SETTINGS_ENCRYPTION_KEY_V1` as described in
 [Step 8](#8-use-ai-drafts-safely) before deploying the updated code.
+
+This release also requires `0022_paste_approvals.sql` before the updated
+application starts. It adds version-bound approved history and paste approval/undo
+receipts. Read the [approval and restore behavior](paste-review/README.md) before
+upgrading; portable JSON restores clear historical suggestion eligibility.
 
 ## 4. Create the Worker without a public route
 
@@ -319,6 +324,7 @@ invalidation. See
 - [ ] Remote D1 migrations are applied to the intended database.
 - [ ] Migration `0021_ai_provider_settings.sql` was applied before deploying code
       that persists AI settings.
+- [ ] Migration `0022_paste_approvals.sql` was applied before starting this release.
 - [ ] The D1 binding is `DB`, the placeholder is gone, and `database_id` contains
       no token or secret.
 - [ ] Initial deploy has no `workers.dev`, preview, custom-domain, or route URL.

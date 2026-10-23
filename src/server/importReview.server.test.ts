@@ -191,6 +191,10 @@ if (!childRun) {
   }
 
   const TEST_SCHEMA = `
+    CREATE TABLE transaction_approvals (
+      transaction_id TEXT PRIMARY KEY,
+      approved_version TEXT NOT NULL
+    );
     CREATE TABLE accounts (
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,

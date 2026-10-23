@@ -741,6 +741,7 @@ export type ScheduledOutlookSummary = {
 }
 
 export type PayeeSuggestion = {
+  amountMinor?: number
   payee: string
   type: TransactionType
   accountId: number

@@ -108,7 +108,7 @@ export function TransactionDialog({
   )
   const selectedAccount = selectableAccounts.find((account) => account.id === accountId)
   const draftCurrency = selectedAccount?.currency ?? ledgerCurrency
-  const suggestedPayees = useMemo(() => payeeOptions(suggestions, type), [suggestions, type])
+  const suggestedPayees = useMemo(() => payeeOptions(suggestions.filter((item) => item.accountId === accountId), type), [suggestions, type, accountId])
   const hasActiveReferences = Boolean(
     transaction
     && accounts.some((account) => account.id === transaction.accountId && account.isActive)
@@ -141,7 +141,7 @@ export function TransactionDialog({
   ) => {
     if (transaction || draft) return
     const remembered = rememberPayeeReferences(
-      nextSuggestions,
+      nextSuggestions.filter((item) => item.accountId === accountId),
       nextPayee,
       nextType,
       accounts,
@@ -157,7 +157,7 @@ export function TransactionDialog({
     if (applyAccount) setAccountId(remembered.accountId ?? 0)
     if (applyCategory) setCategoryId(remembered.categoryId ?? 0)
     setPayeeMemoryApplied(applyAccount || applyCategory)
-  }, [accounts, categories, draft, transaction])
+  }, [accounts, categories, draft, transaction, accountId])
 
   useEffect(() => {
     busyRef.current = busy
@@ -182,7 +182,7 @@ export function TransactionDialog({
   useEffect(() => {
     if (transaction || draft || !online) return
     let active = true
-    void api<PayeeSuggestion[]>('/api/payee-suggestions')
+    void api<PayeeSuggestion[]>(`/api/payee-suggestions?accountId=${accountId}`)
       .then((items) => {
         if (!active) return
         setSuggestions(items)
@@ -192,7 +192,7 @@ export function TransactionDialog({
     return () => {
       active = false
     }
-  }, [applyPayeeMemory, draft, online, transaction])
+  }, [applyPayeeMemory, draft, online, transaction, accountId])
 
   useEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null

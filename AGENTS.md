@@ -6,7 +6,7 @@ HushLedger is a Next.js 16 App Router application deployed through OpenNext to C
 
 ## Build, Test, and Development Commands
 
-- `npm ci` installs the locked dependencies (Node 22+, npm 10+).
+- `npm ci` installs the locked dependencies (Node 22.13+ (22.x) or 24+, npm 10+).
 - `npm run db:local` applies all migrations to the local D1 database.
 - `npm run dev` starts the loopback-only Next.js development server.
 - `npm test` runs TypeScript unit tests and local-state script tests.

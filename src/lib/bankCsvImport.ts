@@ -224,11 +224,12 @@ export async function mapBankCsvDocument(
 
     const rememberedCategoryId = mapping.rememberPayeeCategories
       ? rememberPayeeReferences(
-          references.payeeSuggestions ?? [],
+          (references.payeeSuggestions ?? []).filter((item) => item.accountId === account.id),
           payee,
           type,
           references.accounts,
           references.categories,
+          amountMinor,
         )?.categoryId
       : null
     const input: TransactionInput = {

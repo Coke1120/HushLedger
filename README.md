@@ -348,7 +348,7 @@ storage and follow the restore and recovery process in
 ## Local development
 
 This is also the supported way to use HushLedger on one computer. Requirements:
-Node.js 22+ and npm 10+.
+Node.js 22.13+ (22.x) or 24+, and npm 10+.
 
 ```bash
 git clone https://github.com/Coke1120/HushLedger.git
@@ -562,6 +562,7 @@ npm run types:worker
 | `0019_multi_currency_accounts.sql` | Preserves native currencies per account and dependent monetary rows, while keeping the ledger currency as a reporting currency until explicit conversion is added. |
 | `0020_ecb_reference_rates.sql` | Adds immutable, explicitly fetched EUR-base ECB reference-rate observations without modifying ledger money. |
 | `0021_ai_provider_settings.sql` | Adds single-row AI provider settings with an AES-GCM ciphertext, IV, and encryption-key version; app ledger backups deliberately exclude this row. |
+| `0022_paste_approvals.sql` | Adds version-bound approved history and durable paste approval/undo receipts; transaction edits invalidate approval eligibility. |
 
 Apply migrations locally:
 
@@ -573,7 +574,9 @@ Remote migrations modify production data. Confirm the Cloudflare account,
 database, and backups before following the
 [Cloudflare deployment guide](docs/CLOUDFLARE_SETUP.md).
 Apply `0021_ai_provider_settings.sql` before deploying code that persists AI
-settings.
+settings. Apply all pending migrations through `0022_paste_approvals.sql` before
+starting this release. See the [paste-review guide](docs/paste-review/README.md)
+for approval, retry, undo, and backup/restore behavior.
 
 ## API
 
@@ -606,7 +609,8 @@ PATCH  /api/categories  (reorder one complete type/status group)
 GET    /api/categories/:id
 PUT    /api/categories/:id
 PATCH  /api/categories/:id
-GET    /api/payee-suggestions  (latest references for up to 100 known payees)
+GET    /api/payee-suggestions?accountId=ID  (up to 100 approved current-version references in that account)
+POST   /api/imports/approve  (`preview`, explicit `approve`, or version-guarded `undo`)
 POST   /api/transactions/query  (primary private query; JSON filters in the body; returns capped rows plus the uncapped summary)
 GET    /api/transactions?...  (legacy compatibility; URL query filters, latest 200 rows)
 GET    /api/transactions/summary?...  (legacy compatibility; URL query filters, uncapped aggregate)

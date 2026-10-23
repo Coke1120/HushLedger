@@ -17,13 +17,17 @@ export function rememberPayeeReferences(
   type: TransactionType,
   accounts: readonly Account[],
   categories: readonly Category[],
+  amountMinor?: number,
 ): RememberedPayeeReferences | null {
   const normalizedPayee = normalizePayee(payee)
   if (!normalizedPayee) return null
 
-  const suggestion = suggestions.find(
+  const matches = suggestions.filter(
     (item) => item.type === type && normalizePayee(item.payee) === normalizedPayee,
   )
+  // A repeated amount helps rank categories; it never changes the source amount.
+  const suggestion = (amountMinor === undefined ? undefined
+    : matches.find((item) => item.amountMinor === amountMinor)) ?? matches[0]
   if (!suggestion) return null
 
   const accountId = accounts.some(
@@ -47,9 +51,9 @@ export function payeeOptions(
   suggestions: readonly PayeeSuggestion[],
   type: TransactionType,
 ) {
-  return suggestions
+  return [...new Set(suggestions
     .filter((suggestion) => suggestion.type === type)
-    .map((suggestion) => suggestion.payee)
+    .map((suggestion) => suggestion.payee))]
 }
 
 export function normalizePayee(payee: string) {

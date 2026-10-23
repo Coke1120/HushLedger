@@ -496,6 +496,7 @@ async function normalizeDrafts(
       row.direction,
       [],
       input.categories,
+      amountMinor,
     )?.categoryId
     const rememberedCategory = input.categories.find(
       (candidate) => candidate.id === rememberedCategoryId,
@@ -586,6 +587,7 @@ async function normalizeDrafts(
       currency: input.currency,
       accountId: input.accountId,
       categoryId: category?.id ?? null,
+      categorySource: rememberedCategory ? 'history' : suggestedCategory ? 'model' : 'fallback',
       payee: row.description,
       confidence: row.confidence,
       flags,
