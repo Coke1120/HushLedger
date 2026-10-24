@@ -1,6 +1,13 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-bookworm-slim AS build
+FROM node:22-bookworm-slim AS base
+
+# The paired workerd runtime validates HTTPS with the system CA bundle.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS build
 
 WORKDIR /app
 
@@ -10,7 +17,7 @@ RUN npm ci
 COPY . .
 RUN npm run build:cloudflare
 
-FROM node:22-bookworm-slim AS runtime
+FROM base AS runtime
 
 WORKDIR /app
 
