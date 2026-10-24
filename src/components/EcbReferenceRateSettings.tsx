@@ -1,4 +1,4 @@
-import { Landmark } from 'lucide-react'
+import { ArrowUpRight, Landmark, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { message, messageForError, renderMessage, useI18n, type LocalizedMessage } from '../i18n'
 import { api } from '../lib/api'
@@ -39,9 +39,12 @@ export function EcbReferenceRateSettings({
       .then((response) => {
         if (active) setRates(response.rates)
       })
-      .catch(() => {
-        if (active) setRates([])
-    })
+      .catch((error) => {
+        if (active) {
+          setFeedback(messageForError(error, 'errorEcbReferenceRatesUnavailable'))
+          setFeedbackError(true)
+        }
+      })
     return () => { active = false }
   }, [enabled])
 
@@ -80,6 +83,7 @@ export function EcbReferenceRateSettings({
         {!enabled ? <p className="emergency-fund-settings-unavailable">{t('ecbReferenceRatesUnavailable')}</p> : null}
         <div className="emergency-fund-form-actions">
           <button className="button button-primary" type="button" disabled={!enabled || fetching} onClick={fetchRates}>
+            <RefreshCw className={fetching ? 'ecb-fetch-spinner' : undefined} aria-hidden="true" />
             {fetching ? t('ecbReferenceRatesFetching') : t('ecbReferenceRatesFetch')}
           </button>
         </div>
@@ -87,15 +91,22 @@ export function EcbReferenceRateSettings({
         {rates === null ? null : rates.length === 0 ? (
           <p className="ecb-reference-rates-empty">{t('ecbReferenceRatesEmpty')}</p>
         ) : (
-          <ul className="ecb-reference-rates-list" aria-label={t('ecbReferenceRatesTitle')}>
+          <details className="ecb-rates-details">
+            <summary>{t('ecbReferenceRatesCount', { count: rates.length })}</summary>
+            <ul className="ecb-reference-rates-list" aria-label={t('ecbReferenceRatesTitle')}>
             {rates.map((rate) => (
               <li key={`${rate.quoteCurrency}-${rate.observedOn}`}>
                 <strong>1 EUR = {rate.rate} {rate.quoteCurrency}</strong>
                 <span>{t('ecbReferenceRatesObservedOn', { date: rate.observedOn })}</span>
+                <span>{t('ecbReferenceRatesFetchedAt', { date: rate.fetchedAt.slice(0, 10) })}</span>
               </li>
             ))}
-          </ul>
+            </ul>
+          </details>
         )}
+        <a className="ecb-source-link" href="https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html" target="_blank" rel="noreferrer">
+          {t('ecbReferenceRatesSource')} <ArrowUpRight aria-hidden="true" />
+        </a>
 
         <p
           className={`emergency-fund-feedback${feedbackError ? ' is-error' : ''}`}

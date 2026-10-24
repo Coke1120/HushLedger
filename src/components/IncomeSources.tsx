@@ -2,6 +2,7 @@ import { CircleDollarSign } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { Summary } from '../lib/schema'
+import { CategoryDonut } from './CategoryDonut'
 
 type IncomeSourcesProps = {
   summary: Summary
@@ -58,7 +59,16 @@ export function IncomeSources({ summary, loading, onSelect }: IncomeSourcesProps
           <span>{t('noIncomeSourcesHelp')}</span>
         </div>
       ) : (
-        <>
+        <div className="composition-layout">
+          <CategoryDonut
+            label={t('income')}
+            total={summary.income}
+            items={(sources ?? []).map((source) => ({
+              key: String(source.categoryId), name: source.name,
+              amountMinor: source.amountMinor, color: source.categoryColor,
+            }))}
+          />
+          <div className="composition-detail">
           <ol className="category-spending-list" id="income-sources-list">
             {visibleSources?.map((source) => {
               const share = summary.income > 0 ? source.amountMinor / summary.income : 0
@@ -125,7 +135,8 @@ export function IncomeSources({ summary, loading, onSelect }: IncomeSourcesProps
               </button>
             </div>
           ) : null}
-        </>
+          </div>
+        </div>
       )}
     </section>
   )

@@ -1,8 +1,9 @@
-import { ChartNoAxesColumnIncreasing } from 'lucide-react'
+import { ChartPie } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import { shiftMonth } from '../lib/date'
 import type { Summary } from '../lib/schema'
+import { CategoryDonut } from './CategoryDonut'
 
 type CategorySpendingProps = {
   summary: Summary
@@ -44,7 +45,7 @@ export function CategorySpending({
         amountMinor: payee.amountMinor,
         transactionCount: payee.transactionCount,
         previousMonthAmountMinor: undefined,
-        color: 'var(--accent)',
+        color: ['#17483c', '#4b8172', '#9c7945', '#547f9c', '#a86162', '#7b70a2'][indexForPayee(payee.payee) % 6],
         onSelect: () => onSelectPayee(payee.payee),
       }))
   const payeeBreakdown = breakdown === 'payee'
@@ -66,7 +67,7 @@ export function CategorySpending({
     >
       <header className="category-spending-heading">
         <span className="category-spending-heading-icon" aria-hidden="true">
-          <ChartNoAxesColumnIncreasing />
+          <ChartPie />
         </span>
         <div>
           <h2 id="category-spending-title">{t('spendingBreakdown')}</h2>
@@ -105,7 +106,9 @@ export function CategorySpending({
           <span>{t(payeeBreakdown ? 'noPayeeSpendingHelp' : 'noCategorySpendingHelp')}</span>
         </div>
       ) : (
-        <>
+        <div className="composition-layout">
+          <CategoryDonut items={items} total={summary.expense} label={t('expense')} />
+          <div className="composition-detail">
           <ol className="category-spending-list" id={listId}>
             {visibleItems.map((item) => {
               const share = summary.expense > 0 ? item.amountMinor / summary.expense : 0
@@ -139,6 +142,13 @@ export function CategorySpending({
               const comparison = rawComparison && privacyMode
                 ? t('sensitiveTextHidden')
                 : rawComparison
+              const delta = previousAmount == null ? null : item.amountMinor - previousAmount
+              const compactComparison = privacyMode ? '—'
+                : previousAmount === 0 ? t('compositionNoPrevious')
+                : delta === 0 ? t('compositionUnchanged')
+                : delta !== null && Number.isSafeInteger(delta)
+                  ? (delta > 0 ? '+' : '−') + formatMoney(Math.abs(delta))
+                  : comparison
               const reviewLabel = t(
                 payeeBreakdown ? 'reviewPayeeSpending' : 'reviewCategorySpending',
                 {
@@ -166,7 +176,7 @@ export function CategorySpending({
                       <span>
                         <strong>{item.name}</strong>
                         <small>{transactions}</small>
-                        {comparison ? <small>{comparison}</small> : null}
+                        {comparison ? <small title={comparison}>{compactComparison}</small> : null}
                       </span>
                     </span>
                     <span className="category-spending-amount">
@@ -205,8 +215,13 @@ export function CategorySpending({
               </button>
             </div>
           ) : null}
-        </>
+          </div>
+        </div>
       )}
     </section>
   )
+}
+
+function indexForPayee(value: string) {
+  return [...value].reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) >>> 0, 0)
 }
