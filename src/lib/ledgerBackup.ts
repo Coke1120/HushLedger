@@ -815,7 +815,7 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   )
 
   collectDuplicateIssues(data.accounts, (row) => String(row.id), 'accounts', 'id', issues)
-  collectDuplicateIssues(data.accounts, (row) => row.name.toLowerCase(), 'accounts', 'name', issues)
+  collectDuplicateIssues(data.accounts, (row) => sqliteNoCaseName(row.name), 'accounts', 'name', issues)
   collectDuplicateIssues(
     data.accounts.filter((row) => row.localizationKey !== null),
     (row) => row.localizationKey ?? '',
@@ -834,7 +834,7 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   )
   collectDuplicateIssues(
     data.categories,
-    (row) => `${row.type}:${row.name.toLowerCase()}`,
+    (row) => `${row.type}:${sqliteNoCaseName(row.name)}`,
     'categories',
     'name',
     issues,
@@ -972,6 +972,11 @@ export function validateLedgerDataRelations(data: LedgerBackupData): LedgerValid
   })
 
   return issues
+}
+
+function sqliteNoCaseName(name: string) {
+  // Match the ASCII-only NOCASE comparison used when creating references.
+  return name.replace(/[A-Z]/g, (letter) => letter.toLowerCase())
 }
 
 function collectDuplicateIssues<T>(

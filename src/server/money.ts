@@ -866,7 +866,11 @@ export async function updateTransaction(
         WHEN import_review_status IS NOT NULL AND ? = 1 THEN 'unreviewed'
         ELSE import_review_status
       END,
-      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
     WHERE id = ? AND updated_at = ?
       AND EXISTS (
         SELECT 1
