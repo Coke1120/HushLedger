@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: macos-package-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   package:
