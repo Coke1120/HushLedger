@@ -83,6 +83,7 @@ def verify(directory, tag, commit):
         resources + "build.json", resources + "AppIcon.icns", resources + "messages.json",
         resources + "server.mjs", resources + "lifecycle.mjs", resources + "LICENSE",
         resources + "server/config.json", resources + "server/worker/custom-worker.js",
+        resources + "server/node_modules/wrangler/bin/wrangler.js",
         resources + "server/scripts/private-local-state.cjs",
         resources + "server/migrations/0022_paste_approvals.sql",
     ])
@@ -168,6 +169,10 @@ def publish(directory, tag, commit, api, notes):
     files = verify(directory, tag, commit)
     require(api.tag_commit(tag) == commit, "Remote release tag moved")
     require(api.json("GET", "/git/ref/heads/main")["object"]["sha"] == commit, "Release source must be current main")
+    checks = api.json("GET", "/commits/" + commit + "/check-runs?per_page=100")["check_runs"]
+    require(any(item["name"] == "verify" and item["head_sha"] == commit
+                and item["status"] == "completed" and item["conclusion"] == "success"
+                for item in checks), "Current main must pass its complete CI verify gate")
     try:
         release = api.json("GET", "/releases/tags/" + tag)
     except urllib.error.HTTPError as error:

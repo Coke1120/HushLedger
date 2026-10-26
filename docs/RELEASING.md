@@ -26,7 +26,8 @@ uploads four downloads:
 - A .README.txt describing installation and trust limitations.
 - A .sha256 covering the other three downloads.
 
-The job downloads every uploaded asset and verifies its actual bytes and size
+The job first requires a successful complete CI verify check on the exact main
+commit. It downloads every uploaded asset and verifies its actual bytes and size
 against the local validated build. It checks the remote tag and current main
 again before publishing. A failed upload or verification leaves the release a
 draft. A rerun can reuse matching draft assets, but refuses conflicting assets

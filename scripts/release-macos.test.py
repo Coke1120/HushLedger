@@ -48,6 +48,7 @@ class Fixture:
         }
         for name in ("AppIcon.icns", "messages.json", "server.mjs", "lifecycle.mjs", "LICENSE",
                      "server/config.json", "server/scripts/private-local-state.cjs",
+                     "server/node_modules/wrangler/bin/wrangler.js",
                      "server/migrations/0022_paste_approvals.sql", "server/assets/index.html"):
             self.entries[self.resources + name] = b"synthetic required resource"
         self.non_executable = set()
@@ -81,6 +82,7 @@ class FakeGitHub:
         self.downloads = 0
         self.exists = True
         self.listed_draft = False
+        self.source_checks_pass = True
 
     def tag_commit(self, tag):
         return self.remote_commit
@@ -89,6 +91,9 @@ class FakeGitHub:
         self.calls.append((method, endpoint, value))
         if endpoint == "/git/ref/heads/main":
             return {"object": {"sha": COMMIT}}
+        if endpoint.endswith("/check-runs?per_page=100"):
+            return {"check_runs": [{"name": "verify", "head_sha": COMMIT, "status": "completed",
+                                   "conclusion": "success" if self.source_checks_pass else "failure"}]}
         if endpoint == "/releases/tags/" + TAG:
             if not self.exists:
                 raise urllib.error.HTTPError("https://api.github.com/synthetic", 404, "missing", {}, None)
@@ -233,6 +238,13 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tag moved"):
             release.publish(self.fixture.directory, TAG, COMMIT, api, "synthetic notes")
         self.assertEqual(api.calls, [])
+
+    def test_failed_source_ci_never_creates_or_uploads_a_release(self):
+        api = FakeGitHub(self.fixture)
+        api.source_checks_pass = False
+        with self.assertRaisesRegex(ValueError, "complete CI"):
+            release.publish(self.fixture.directory, TAG, COMMIT, api, "synthetic notes")
+        self.assertFalse(any(method in ("POST", "UPLOAD", "PATCH") for method, _, _ in api.calls))
 
     def test_published_release_is_not_overwritten(self):
         api = FakeGitHub(self.fixture)
