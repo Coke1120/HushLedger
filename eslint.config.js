@@ -19,4 +19,17 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Keep Cloudflare's vendored CommonJS validators unchanged.
+    files: ['.cursor/skills/security-audit/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': ['error', {
+        allow: ['^node:', '^(?:fs|path|util)$', '^\\./(?:report-schema\\.json|validate-(?:findings|coverage-ledger)\\.cjs)$'],
+      }],
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^error$',
+      }],
+    },
+  },
 ])
