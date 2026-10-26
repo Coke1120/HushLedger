@@ -31,6 +31,14 @@ Write intent-first commit subjects, for example `Keep public reference data opt-
 
 Never commit secrets, `.wrangler/`, local databases, exports, backups, or real financial data. Store money as integer minor units and transaction dates as `YYYY-MM-DD`. Report vulnerabilities privately as directed by `SECURITY.md`.
 
+## Security audit skill
+
+- Skill path: `.cursor/skills/security-audit/`
+- Use only when Leo explicitly asks for a security audit, pen-test, or full security review.
+- Not always-on. Do not run it on every PR or feature task.
+- Full audit mode is expensive (multi-agent). Prefer guidance mode unless Leo asks for a full audit or report artifacts.
+- Source: Cloudflare [security-audit-skill](https://github.com/cloudflare/security-audit-skill) (MIT).
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
