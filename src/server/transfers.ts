@@ -202,7 +202,11 @@ export async function updateAccountTransfer(
       from_cleared = ?,
       to_cleared = ?,
       note = ?,
-      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      updated_at = CASE
+        WHEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') > updated_at
+          THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+        ELSE strftime('%Y-%m-%dT%H:%M:%fZ', updated_at, '+0.001 seconds')
+      END
     WHERE id = ? AND updated_at = ? AND ? <> ?
       AND EXISTS (
         SELECT 1 FROM accounts

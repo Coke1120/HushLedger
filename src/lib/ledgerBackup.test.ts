@@ -319,6 +319,21 @@ function ledgerDataWithoutTransfers(data: LedgerBackupData) {
 }
 
 describe('ledger backups', () => {
+  it('matches SQLite NOCASE for names without folding accented characters', () => {
+    const data = ledgerData()
+    data.accounts[0].name = 'Épargne'
+    data.accounts[1].name = 'épargne'
+    data.categories[0].name = 'Épicerie'
+    data.categories.push({ ...data.categories[0], id: 99, name: 'épicerie', localizationKey: null })
+    assert.deepEqual(validateLedgerDataRelations(data), [])
+
+    data.accounts[1].name = 'ÉPARGNE'
+    data.categories[data.categories.length - 1].name = 'ÉPICERIE'
+    const issues = validateLedgerDataRelations(data)
+    assert(issues.some(issue => issue.path === 'data.accounts.1.name'))
+    assert(issues.some(issue => issue.path === `data.categories.${data.categories.length - 1}.name`))
+  })
+
   it('requires an explicit and strict export request', () => {
     assert.deepEqual(
       ledgerBackupExportRequestSchema.parse({ mode: 'export' }),
