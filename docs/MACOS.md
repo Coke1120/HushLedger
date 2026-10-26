@@ -116,10 +116,11 @@ npm run smoke:macos
 shasum -a 256 -c HushLedger-<version>-macos-arm64.sha256
 ```
 
-The GitHub job has `contents: read`; it does not create or edit releases, move
-tags, deploy services, or attach release assets. An approved publication of this
-workflow is required before hosted runs are available. Attaching the verified ZIP
-to a GitHub Release is a separate publication action.
+The build job has `contents: read`. For version-tag pushes, a separate release
+job receives `contents: write` after the complete source gate and native smoke
+pass. It validates the actual app ZIP, uploads it and its sidecars to a draft
+release, then downloads and verifies every asset before publishing. It never
+moves tags or deploys services. See [release instructions](RELEASING.md).
 
 These are ad-hoc signed previews, not Developer ID signed or notarized software.
 macOS may block a downloaded archive. The scripts do not remove quarantine or
