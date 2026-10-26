@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 permissions:
@@ -34,6 +34,9 @@ jobs:
 
       - name: Test, typecheck, lint, build, and integrate
         run: npm run verify
+
+      - name: Test app archive and release publication guards
+        run: PYTHONDONTWRITEBYTECODE=1 python3 scripts/release-macos.test.py
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high

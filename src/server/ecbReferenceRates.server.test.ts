@@ -103,11 +103,18 @@ if (!childRun) {
         'https://data-api.ecb.europa.eu/service/data/EXR/D..EUR.SP00.A?lastNObservations=1&format=csvdata',
       )
       assert.equal(accept, 'text/csv')
-      assert.equal(redirect, 'error')
+      assert.equal(redirect, 'manual')
       assert.deepEqual(rates, [{ quoteCurrency: 'USD', rate: '1.1424', observedOn: '2026-07-13' }])
     })
 
     it('fails closed for upstream errors, oversized responses, and malformed CSV', async () => {
+      await assert.rejects(
+        () => fetchEcbReferenceRates(async (_url, init) => {
+          assert.equal(init?.redirect, 'manual')
+          return new Response('', { status: 302, headers: { location: 'https://untrusted.example/' } })
+        }),
+        EcbReferenceRateUnavailableError,
+      )
       await assert.rejects(
         () => fetchEcbReferenceRates(async () => new Response('', { status: 503 })),
         EcbReferenceRateUnavailableError,

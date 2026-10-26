@@ -33,7 +33,9 @@ export async function fetchEcbReferenceRates(
   try {
     const response = await fetcher(ECB_REFERENCE_RATE_URL, {
       headers: { Accept: 'text/csv' },
-      redirect: 'error',
+      // workerd does not implement "error". Manual also prevents a redirect
+      // from widening the fixed ECB destination; non-2xx responses fail below.
+      redirect: 'manual',
       signal: controller.signal,
     })
     if (!response.ok) throw new EcbReferenceRateUnavailableError()

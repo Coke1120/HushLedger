@@ -1,4 +1,5 @@
 import type { KeyboardEvent, ReactNode } from 'react'
+import { ArrowLeftRight, CalendarClock, ChartPie, CircleDollarSign, ListChecks, TrendingUp } from 'lucide-react'
 import { useI18n, type MessageKey } from '../i18n'
 
 export type OverviewReview = 'netWorth' | 'cashFlow' | 'income' | 'spending' | 'plans' | 'outlook'
@@ -6,13 +7,14 @@ export type OverviewReview = 'netWorth' | 'cashFlow' | 'income' | 'spending' | '
 const reviewOptions: ReadonlyArray<{
   value: OverviewReview
   labelKey: MessageKey
+  shortLabelKey: MessageKey
 }> = [
-  { value: 'netWorth', labelKey: 'netWorthTrendTitle' },
-  { value: 'cashFlow', labelKey: 'cashFlowTrend' },
-  { value: 'income', labelKey: 'incomeSourcesTitle' },
-  { value: 'spending', labelKey: 'spendingBreakdown' },
-  { value: 'plans', labelKey: 'monthlyPlansTitle' },
-  { value: 'outlook', labelKey: 'scheduledOutlookTitle' },
+  { value: 'netWorth', labelKey: 'netWorthTrendTitle', shortLabelKey: 'reviewNetWorth' },
+  { value: 'cashFlow', labelKey: 'cashFlowTrend', shortLabelKey: 'reviewCashFlow' },
+  { value: 'income', labelKey: 'incomeSourcesTitle', shortLabelKey: 'income' },
+  { value: 'spending', labelKey: 'spendingBreakdown', shortLabelKey: 'reviewSpending' },
+  { value: 'plans', labelKey: 'monthlyPlansTitle', shortLabelKey: 'reviewPlans' },
+  { value: 'outlook', labelKey: 'scheduledOutlookTitle', shortLabelKey: 'reviewOutlook' },
 ]
 
 type OverviewMonthlyReviewProps = {
@@ -27,6 +29,8 @@ export function OverviewMonthlyReview({
   onChange,
 }: OverviewMonthlyReviewProps) {
   const { t } = useI18n()
+  const icons = { netWorth: TrendingUp, cashFlow: ArrowLeftRight, income: CircleDollarSign,
+    spending: ChartPie, plans: ListChecks, outlook: CalendarClock }
 
   const selectFromKeyboard = (
     event: KeyboardEvent<HTMLButtonElement>,
@@ -63,6 +67,7 @@ export function OverviewMonthlyReview({
       >
         {reviewOptions.map((option, index) => {
           const active = selected === option.value
+          const Icon = icons[option.value]
           return (
             <button
               id={`overview-review-tab-${option.value}`}
@@ -70,18 +75,21 @@ export function OverviewMonthlyReview({
               type="button"
               role="tab"
               aria-selected={active}
+              aria-label={t(option.labelKey)}
               aria-controls="overview-review-panel"
               tabIndex={active ? 0 : -1}
               className={active ? 'is-active' : undefined}
               onClick={() => onChange(option.value)}
               onKeyDown={(event) => selectFromKeyboard(event, index)}
             >
-              {t(option.labelKey)}
+              <Icon aria-hidden="true" />
+              <span>{t(option.shortLabelKey)}</span>
             </button>
           )
         })}
       </div>
       <div
+        key={selected}
         id="overview-review-panel"
         className="overview-review-panel"
         role="tabpanel"
