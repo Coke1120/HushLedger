@@ -17,6 +17,7 @@
 }
 
 html {
+  scrollbar-gutter: stable;
   min-width: 320px;
   min-height: 100%;
   background: #f4f6f2;

@@ -26,6 +26,7 @@ next-env.d.ts
 /exports/
 /backups/
 output/playwright/
+/dist/
 
 # Editor directories and files
 .vscode/*

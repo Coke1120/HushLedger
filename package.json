@@ -42,12 +42,16 @@
     "lint": "eslint . --max-warnings 0 && oxlint --deny-warnings",
     "lint:fast": "oxlint --deny-warnings",
     "preview": "npm run build:cloudflare && node -r ./scripts/private-local-state.cjs ./node_modules/wrangler/bin/wrangler.js dev",
-    "test": "tsx --import ./scripts/load-test-locales.ts --test src/**/*.test.ts worker/*.test.ts && node --test scripts/private-local-state.test.cjs",
+    "test": "tsx --import ./scripts/load-test-locales.ts --test src/**/*.test.ts worker/*.test.ts && node --test scripts/private-local-state.test.cjs scripts/macos-package.test.mjs",
     "test:integration": "node scripts/worker-integration.mjs",
     "typecheck": "tsc --noEmit --pretty false",
     "types:worker": "wrangler types --env-file ./scripts/worker-types.env",
     "verify": "npm test && npm run typecheck && npm run types:worker -- --check && npm run lint && npm run build:cloudflare && npm run test:integration -- --skip-build",
-    "db:local": "node -r ./scripts/private-local-state.cjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply hushledger --local"
+    "db:local": "node -r ./scripts/private-local-state.cjs ./node_modules/wrangler/bin/wrangler.js d1 migrations apply hushledger --local",
+    "package:macos": "node scripts/package-macos.mjs",
+    "archive:macos": "node scripts/archive-macos.mjs",
+    "smoke:macos": "node scripts/smoke-macos.mjs",
+    "test:macos": "node --test desktop/macos/*.test.mjs scripts/macos-package.test.mjs"
   },
   "dependencies": {
     "jose": "^6.2.13",
@@ -76,6 +80,9 @@
       "glob": "10.5.0"
     },
     "postcss": "8.5.31",
-    "workerd": "1.20260712.1"
+    "workerd": "1.20261019.1",
+    "miniflare@5.20261019.2-beta": {
+      "undici": "7.30.1"
+    }
   }
 }

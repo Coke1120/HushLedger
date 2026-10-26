@@ -8,6 +8,7 @@ export default defineConfig([
   globalIgnores([
     '.next/**',
     '.open-next/**',
+    'dist/**',
     'node_modules/**',
     '.wrangler/**',
     '.omx/**',
@@ -17,6 +18,19 @@ export default defineConfig([
     rules: {
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // Keep Cloudflare's vendored CommonJS validators unchanged.
+    files: ['.cursor/skills/security-audit/*.cjs'],
+    rules: {
+      '@typescript-eslint/no-require-imports': ['error', {
+        allow: ['^node:', '^(?:fs|path|util)$', '^\\./(?:report-schema\\.json|validate-(?:findings|coverage-ledger)\\.cjs)$'],
+      }],
+      '@typescript-eslint/no-unused-vars': ['error', {
+        argsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^error$',
+      }],
     },
   },
 ])
