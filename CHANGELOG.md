@@ -5,6 +5,25 @@ remain the source of truth for published artifacts.
 
 ## Unreleased
 
+## [0.1.0-beta.4] - 2026-10-26
+
+### Added
+
+- Native Apple Silicon macOS app downloads with bundled runtime, provenance and checksums.
+- Cloudflare's opt-in security-audit skill with upstream MIT attribution.
+- Cloud macOS release verification that publishes only after uploaded app downloads pass integrity checks.
+
+### Fixed
+
+- Keep accepted accented account/category names compatible with full-ledger backup export.
+- Reject stale transaction/transfer updates and deletes when edits share a millisecond.
+- Stabilize desktop window widths, monthly composition charts and packaged ECB refresh.
+
+### Upgrade notes
+
+- No new migration beyond 0022; back up the ledger before replacing an installed app.
+- Apple Silicon previews require macOS 13.5+, are ad-hoc signed and are not notarized.
+
 ## [0.1.0-beta.3] - 2026-10-23
 
 ### Added
