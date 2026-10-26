@@ -50,7 +50,8 @@ describe('overview monthly review', () => {
     ))
 
     assert.equal(markup.match(/role="tab"/g)?.length, 6)
-    assert.match(markup, /aria-selected="true"[^>]*>Spending breakdown/)
+    assert.match(markup, /aria-selected="true" aria-label="Spending breakdown"/)
+    assert.match(markup, /<span>Spending<\/span>/)
     assert.match(markup, /role="tabpanel" aria-labelledby="overview-review-tab-spending"/)
     assert.match(markup, /spending-content/)
     assert.doesNotMatch(markup, /net-worth-content/)

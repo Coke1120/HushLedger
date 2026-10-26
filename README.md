@@ -26,6 +26,7 @@ Read the [changelog](CHANGELOG.md) before upgrading an existing deployment.
 - **Use it on one computer:** [Set up local mode](#local-development), or use
   [Docker Desktop or Apple Container](#containerized-local-use). Local mode needs
   no Cloudflare account, domain, Access setup, or AI provider key.
+- **Mac desktop preview:** [Build the Apple Silicon app and download workflow artifacts](docs/MACOS.md). The preview is ad-hoc signed and not notarized.
 - **Use it privately across devices:** Follow the
   [beginner-friendly Cloudflare deployment guide](docs/EASY_DEPLOY.md). It explains
   every command and dashboard step, including the required Access protection.

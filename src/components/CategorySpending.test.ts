@@ -79,6 +79,28 @@ function renderCategorySpending(source: Summary, privateMode = false) {
 }
 
 describe('complete spending breakdown review', () => {
+  it('charts the complete breakdown while the full labelled list remains expandable', () => {
+    const markup = renderCategorySpending(summary)
+    assert.equal(markup.match(/class="composition-segment"/g)?.length, 7)
+    assert.match(markup, /7 categories/)
+    assert.match(markup, /aria-controls="category-spending-category-list"/)
+  })
+
+  it('does not expose slice sizes or offsets in privacy mode', () => {
+    const markup = renderCategorySpending(summary, true)
+    assert.doesNotMatch(markup, /stroke-dasharray|stroke-dashoffset|composition-segment|composition-divider/)
+    assert.doesNotMatch(markup, /HK\$280\.00/)
+  })
+
+  it('keeps signed values readable without drawing a misleading negative pie', () => {
+    const markup = renderCategorySpending({
+      ...summary, expense: -100,
+      expenseByCategory: [{ ...summary.expenseByCategory[0], amountMinor: -100 }],
+    })
+    assert.match(markup, /A share chart needs a complete, non-negative total/)
+    assert.doesNotMatch(markup, /composition-segment/)
+    assert.match(markup, /category-spending-row/)
+  })
   it('keeps long breakdowns concise until the user deliberately expands them', () => {
     const markup = renderCategorySpending(summary)
 
