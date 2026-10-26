@@ -138,6 +138,14 @@ class ReleaseTests(unittest.TestCase):
     def test_complete_app_and_provenance(self):
         self.assertEqual(len(self.verify()), 4)
 
+    def test_preview_archive_is_checked_but_cannot_be_published(self):
+        self.fixture.manifest["sourceRef"] = None
+        self.fixture.entries[self.fixture.resources + "build.json"] = json.dumps(self.fixture.manifest).encode()
+        self.fixture.write()
+        self.assertEqual(len(release.verify(self.fixture.directory, TAG, COMMIT, preview=True)), 4)
+        with self.assertRaisesRegex(ValueError, "release tag"):
+            release.publish(self.fixture.directory, TAG, COMMIT, FakeGitHub(self.fixture), "synthetic notes")
+
     def test_source_zip_is_rejected(self):
         self.fixture.entries = {"README.md": b"source archive"}
         self.fixture.write()

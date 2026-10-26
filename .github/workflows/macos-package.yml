@@ -79,6 +79,12 @@ jobs:
           RELEASE_COMMIT: ${{ steps.source.outputs.source_sha }}
         run: python3 scripts/release-macos.py verify --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
 
+      - name: Validate preview app ZIP and exact source provenance
+        if: github.ref_type != 'tag'
+        env:
+          PREVIEW_COMMIT: ${{ github.sha }}
+        run: python3 scripts/release-macos.py verify-preview --commit "$PREVIEW_COMMIT"
+
       - name: Retain macOS downloads
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

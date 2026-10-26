@@ -48,7 +48,7 @@ def arm64(header):
     return False
 
 
-def verify(directory, tag, commit):
+def verify(directory, tag, commit, preview=False):
     version = version_for(tag)
     require(re.fullmatch(r"[0-9a-f]{40}", commit), "Expected a full source commit")
     directory = Path(directory)
@@ -65,7 +65,8 @@ def verify(directory, tag, commit):
     require(all(file_digest(path) == checksums[path.name] for path in paths[:3]), "Release download checksum mismatch")
     manifest = json.loads(paths[1].read_text())
     require(manifest.get("releaseVersion") == version and manifest.get("version") == version.split("-")[0], "Build version mismatch")
-    require(manifest.get("sourceCommit") == commit and manifest.get("sourceRef") == tag, "Build source does not match release tag")
+    require(manifest.get("sourceCommit") == commit, "Build source does not match expected commit")
+    require(manifest.get("sourceRef") == tag or (preview and manifest.get("sourceRef") is None), "Build source does not match release tag")
     require(manifest.get("sourceDirty") is False, "Release source must be clean")
     require(re.fullmatch(r"[0-9a-f]{64}", manifest.get("sourceTreeSha256", "")), "Missing source tree provenance")
     require(manifest.get("architecture") == "arm64", "Expected an arm64 build")
@@ -217,11 +218,17 @@ def preflight(tag):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("source", "verify", "publish"))
-    parser.add_argument("--tag", required=True)
+    parser.add_argument("mode", choices=("source", "verify", "verify-preview", "publish"))
+    parser.add_argument("--tag")
     parser.add_argument("--commit")
     parser.add_argument("--directory", default="dist/macos")
     args = parser.parse_args()
+    if args.mode == "verify-preview":
+        tag = "v" + json.loads(Path("package.json").read_text())["version"]
+        files = verify(args.directory, tag, args.commit, preview=True)
+        print("Verified preview app ZIP and provenance:", ", ".join(files))
+        return
+    require(args.tag is not None, "A release tag is required")
     if args.mode == "source":
         commit = preflight(args.tag)
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
